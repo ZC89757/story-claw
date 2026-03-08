@@ -1,6 +1,6 @@
 {
   "name": "vision-builder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI-powered novel-to-storyboard pipeline. Transform web novels into visual short drama panels.",
   "type": "module",
   "license": "MIT",
