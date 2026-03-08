@@ -51,7 +51,7 @@ npm install -g vision-builder
 ### 本地开发
 
 ```bash
-git clone https://github.com/你的用户名/vision-builder.git
+git clone https://github.com/ZC89757/vision-builder.git
 cd vision-builder
 npm install
 npm start
@@ -315,7 +315,12 @@ vision-builder/
 
 进度保存在 `改编进度.json` 中，重新运行会从上次的下一集继续。角色和场景资源不会重复生成。
 
+### 生成效果
+
+<img width="1204" height="820" alt="image" src="https://github.com/user-attachments/assets/2f7e1053-8a72-42d7-abad-6e0d6120c2d9" />
+
 ---
+
 
 ## 技术栈
 
