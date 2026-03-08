@@ -1,0 +1,5 @@
+{
+    "provider": "openai",
+    "model": "gpt-4o",
+    "api_key": "sk-your-api-key-here"
+}

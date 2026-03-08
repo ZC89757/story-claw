@@ -1,0 +1,5 @@
+{
+    "api_key": "sk-your-api-key-here",
+    "model": "google/gemini-3.1-flash-image-preview",
+    "base_url": "https://your-api-endpoint.com/api/vertex-ai"
+}

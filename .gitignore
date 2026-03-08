@@ -1,0 +1,29 @@
+# 依赖
+node_modules/
+dist/
+
+# 配置文件（含 API key）
+config.json
+image_gen_config.json
+
+# 运行时产物
+workspace/
+agent-data/
+agent-logs/
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code 临时文件
+.claude/
+tmpclaude-*
+nul
+check_dir.txt
+
+# 系统文件
+.DS_Store
+Thumbs.db

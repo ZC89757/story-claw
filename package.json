@@ -1,0 +1,43 @@
+{
+  "name": "vision-builder",
+  "version": "1.0.0",
+  "description": "AI-powered novel-to-storyboard pipeline. Transform web novels into visual short drama panels.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZC89757/vision-builder.git"
+  },
+  "keywords": [
+    "ai",
+    "storyboard",
+    "novel",
+    "short-drama",
+    "gemini",
+    "llm",
+    "image-generation"
+  ],
+  "bin": {
+    "vision-builder": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "runner/",
+    "tools/",
+    "ui/",
+    "utils/",
+    "agent.ts",
+    "cli.ts",
+    "config.example.json",
+    "image_gen_config.example.json"
+  ],
+  "scripts": {
+    "start": "node --import tsx cli.ts"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "0.52.8",
+    "@mariozechner/pi-ai": "0.52.8",
+    "@mariozechner/pi-coding-agent": "0.52.8",
+    "tsx": "^4.21.0"
+  }
+}
