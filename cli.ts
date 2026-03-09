@@ -1,5 +1,5 @@
 /**
- * Vision Builder — CLI 入口
+ * Story Claw — CLI 入口
  *
  * 命令行交互界面，支持 /status、/solo、/custom、/help、/exit 命令。
  */
@@ -13,7 +13,7 @@ import { runCustom } from "./runner/custom.js";
 import { ensureSetup } from "./utils/setup.js";
 
 async function main() {
-  // 首次运行引导：检查 ~/.vision-builder/ 配置
+  // 首次运行引导：检查 ~/.story-claw/ 配置
   const ready = await ensureSetup();
   if (!ready) {
     process.exit(0);

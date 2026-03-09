@@ -1,12 +1,12 @@
 {
-  "name": "vision-builder",
+  "name": "story-claw",
   "version": "1.0.1",
   "description": "AI-powered novel-to-storyboard pipeline. Transform web novels into visual short drama panels.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ZC89757/vision-builder.git"
+    "url": "git+https://github.com/ZC89757/story-claw.git"
   },
   "keywords": [
     "ai",
@@ -18,7 +18,7 @@
     "image-generation"
   ],
   "bin": {
-    "vision-builder": "./bin/cli.js"
+    "story-claw": "./bin/cli.js"
   },
   "files": [
     "bin/",

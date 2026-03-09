@@ -1,16 +1,16 @@
-# Vision Builder
+# Story Claw
 
 English | [中文](./README_CN.md)
 
 **AI-powered novel-to-storyboard pipeline.** Feed in novel chapters, get fully illustrated storyboard panels automatically.
 
-From raw novel text to visual storyboards, Vision Builder wraps the entire pipeline into a single command: script adaptation → structured parsing → character/scene image generation → shot composition → final panel synthesis.
+From raw novel text to visual storyboards, Story Claw wraps the entire pipeline into a single command: script adaptation → structured parsing → character/scene image generation → shot composition → final panel synthesis.
 
 ---
 
 ## How It Works
 
-Vision Builder orchestrates multiple AI agents to adapt novel text into short drama storyboards, episode by episode:
+Story Claw orchestrates multiple AI agents to adapt novel text into short drama storyboards, episode by episode:
 
 ```
 Novel Chapters (.txt)
@@ -47,14 +47,14 @@ Storyboard Panels + Script (.md) + Structured Data (.json)
 ### Global Install (Recommended)
 
 ```bash
-npm install -g vision-builder
+npm install -g story-claw
 ```
 
 ### Local Development
 
 ```bash
-git clone https://github.com/ZC89757/vision-builder.git
-cd vision-builder
+git clone https://github.com/ZC89757/story-claw.git
+cd story-claw
 npm install
 npm start
 ```
@@ -72,15 +72,15 @@ npm start
 ### 1. First-Run Setup
 
 ```bash
-vision-builder
+story-claw
 ```
 
 On first launch, an interactive setup wizard guides you through creating two config files:
 
 | Config File | Purpose | Location |
 |-------------|---------|----------|
-| `config.json` | LLM agent (script writing / parsing / storyboard director) | `~/.vision-builder/` |
-| `image_gen_config.json` | Gemini image generation API | `~/.vision-builder/` |
+| `config.json` | LLM agent (script writing / parsing / storyboard director) | `~/.story-claw/` |
+| `image_gen_config.json` | Gemini image generation API | `~/.story-claw/` |
 
 ### 2. Prepare Novel Files
 
@@ -100,7 +100,7 @@ my-novel/
 
 ```bash
 cd your-working-directory
-vision-builder
+story-claw
 ```
 
 Interactive CLI commands:
@@ -164,7 +164,7 @@ workspace/
 
 ## Configuration
 
-### LLM Config (`~/.vision-builder/config.json`)
+### LLM Config (`~/.story-claw/config.json`)
 
 ```json
 {
@@ -182,7 +182,7 @@ workspace/
 | `api_key` | Yes | API key |
 | `base_url` | No | Custom endpoint; omit to use the official API |
 
-### Image Generation Config (`~/.vision-builder/image_gen_config.json`)
+### Image Generation Config (`~/.story-claw/image_gen_config.json`)
 
 ```json
 {
@@ -263,7 +263,7 @@ An LLM storyboard director agent designs shot composition for each beat (wide / 
 ## Project Structure
 
 ```
-vision-builder/
+story-claw/
 ├── bin/cli.js              CLI entry point (shebang)
 ├── cli.ts                  Interactive command-line interface
 ├── agent.ts                Agent infrastructure (Session / Sub-agent)

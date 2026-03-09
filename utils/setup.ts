@@ -1,7 +1,7 @@
 /**
  * setup.ts — 首次运行引导
  *
- * 检查 CONFIG_DIR (~/.vision-builder/) 中是否存在配置文件，
+ * 检查 CONFIG_DIR (~/.story-claw/) 中是否存在配置文件，
  * 若缺失则交互式引导用户创建。
  */
 
