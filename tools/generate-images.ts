@@ -105,26 +105,28 @@ function parseValidation(raw: string): {
 }
 
 // ── Panel validation sub-agent 系统提示 ───────────────────────────────────
-const PANEL_VALIDATION_SYSTEM = `你是分镜图校验员。任务：对比底图与生成的分镜图，只校验人物和场景背景两项。
+const PANEL_VALIDATION_SYSTEM = `你是分镜图校验员。任务：对比底图与生成的分镜图，校验人物、场景背景、人体结构三项。
 
-请先用 read 工具读取底图和分镜图，然后**只**校验以下 2 项：
+请先用 read 工具读取底图和分镜图，然后**只**校验以下 3 项：
 1. **人物存在性**：分镜图中是否凭空出现了底图中不存在的人物？只看人物是否多出，不检查人物数量减少、缺失、外貌差异。
 2. **场景背景一致性**：分镜图的背景环境是否来自底图的场景？只看背景是否完全无关，不检查角色动作、姿态、构图、拍摄角度等差异。
+3. **人体结构**：画面中是否存在明显的人体解剖错误？只检查：某个人物的手超过2只、脚超过2只、手臂/腿明显多余（同侧出现两条手臂等）。手指粘连/融合不算不通过。景别为大远景或人物极小时本项直接通过。
 
 禁止校验范围：角色动作、姿态、表情、手持物品、站位、构图、拍摄角度、景别。这些差异属于分镜导演的正常创作，不算不通过。
 
 校验完成后，只输出如下 JSON，不要有任何其他内容：
 {
-  "pass": true 或 false（全部 2 项通过才为 true）,
+  "pass": true 或 false（全部 3 项通过才为 true）,
   "checks": {
     "characters": "通过 / 不通过：原因",
-    "scene": "通过 / 不通过：原因"
+    "scene": "通过 / 不通过：原因",
+    "anatomy": "通过 / 不通过：原因"
   },
-  "retry_prompt": "一段可以直接发给生图 API 的完整 prompt（pass=false 时填写）。在原 prompt 基础上针对不通过的项做最小幅度修改，输出修改后的完整 prompt 文本，不要输出修改说明或指令。"
+  "retry_prompt": "一段可以直接发给生图 API 的完整 prompt（pass=false 时填写）。在原 prompt 基础上针对不通过的项做最小幅度修改；若 anatomy 不通过，在 prompt 末尾追加：每个人物只有两只手两只脚，人体结构解剖正确。输出修改后的完整 prompt 文本，不要输出修改说明或指令。"
 }`;
 
 // ── 构建一次性合成 prompt ─────────────────────────────────────────────────
-function buildCompositePrompt(frame: Frame, clothingMap: Map<string, string>): string {
+function buildCompositePrompt(frame: Frame, clothingMap: Map<string, string>, ethnicity: string): string {
   const chars = frame.characters;
   if (chars.length === 0) return "";
 
@@ -145,6 +147,7 @@ function buildCompositePrompt(frame: Frame, clothingMap: Map<string, string>): s
     ``,
     `要求：`,
     `- 真人写实摄影风格`,
+    `- 所有人物为${ethnicity}`,
   ].join("\n");
 }
 
@@ -202,6 +205,7 @@ export async function generateCompositeFrames(
   novelName: string,
   episodeNum: number,
   runSubAgent: SubAgentFactory,
+  ethnicity = "东亚面孔，亚裔",
 ): Promise<CompositeFrameResult> {
   const ctx = buildContext(sceneData, sceneId, novelName, episodeNum);
   const results: string[] = [];
@@ -241,7 +245,7 @@ export async function generateCompositeFrames(
       (name) => path.join(ctx.charsDir, `${name}.png`),
     );
 
-    const originalPrompt = buildCompositePrompt(frame, ctx.clothingMap);
+    const originalPrompt = buildCompositePrompt(frame, ctx.clothingMap, ethnicity);
 
     console.log(`\n[composite] 帧 ${num} 开始合成（${chars.length} 个角色）`);
 
@@ -307,7 +311,9 @@ export async function generateCompositeFrames(
 // beatPanelsMap: beat num → panels 数组（每个 panel 含 { id, prompt }）
 // ══════════════════════════════════════════════════════════════════════════
 
-const PROMPT_SUFFIX = "\n画幅比例16:9，真人写实摄影风格。";
+function buildPromptSuffix(aspectRatio: string): string {
+  return `\n画幅比例${aspectRatio}，真人写实摄影风格。人物视线自然，不刻意直视镜头。人物与场景光影自然融合，无合成痕迹。`;
+}
 
 export async function generatePanelImages(
   sceneData: any,
@@ -316,6 +322,7 @@ export async function generatePanelImages(
   episodeNum: number,
   beatPanelsMap: Map<number, any[]>,
   runSubAgent: SubAgentFactory,
+  aspectRatio = "9:16",
 ): Promise<string[]> {
   const ctx = buildContext(sceneData, sceneId, novelName, episodeNum);
   const results: string[] = [];
@@ -359,7 +366,7 @@ export async function generatePanelImages(
       const panelNum = String(pi + 1).padStart(2, "0");
 
       // LLM 直接写的 prompt + 硬编码后缀
-      const originalPanelPrompt = `${p.prompt}${PROMPT_SUFFIX}`;
+      const originalPanelPrompt = `${p.prompt}${buildPromptSuffix(aspectRatio)}`;
 
       const panelPath = path.join(ctx.panelsDir, `panel_${prefix}${numStr}_p${panelNum}.png`);
       const panelImages = inputImagePath ? [inputImagePath] : [];

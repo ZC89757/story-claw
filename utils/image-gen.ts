@@ -1,11 +1,13 @@
 /**
- * image-gen.ts — Gemini 图像生成统一接口
+ * image-gen.ts — 图像生成统一接口
  *
- * 直接在 Node.js 中调用 Gemini API 生成图像。
+ * 调用 OpenAI Images API 生成图像。
  *
  * 功能：
- *   0 张图 → 文生图 (txt2img)
- *   N 张图 → 多图生图 (img2img)
+ *   0 张图 → 文生图，调用 POST /images/generations
+ *   N 张图 → 图生图，调用 POST /images/edits（multipart/form-data）
+ *
+ * 响应格式：data[0].b64_json
  */
 
 import fs from "node:fs/promises";
@@ -29,19 +31,6 @@ async function loadConfig(): Promise<ImageGenConfig> {
   return _config;
 }
 
-// ── 图片读取 ──────────────────────────────────────────────────────────────
-function mimeFromExt(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase();
-  const map: Record<string, string> = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".bmp": "image/bmp",
-  };
-  return map[ext] ?? "image/png";
-}
-
 // ── 核心生成函数 ──────────────────────────────────────────────────────────
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 3000;
@@ -51,7 +40,7 @@ const RETRY_DELAY_MS = 3000;
  *
  * @param prompt     提示词文本
  * @param outputPath 输出图片保存路径
- * @param images     输入图片路径列表（0 张=文生图，N 张=多图生图）
+ * @param images     输入图片路径列表（0 张=文生图，N 张=图生图）
  * @returns          保存路径
  * @throws           连续 MAX_RETRIES 次失败时抛出错误
  */
@@ -62,21 +51,8 @@ export async function generateImage(
 ): Promise<string> {
   const config = await loadConfig();
 
-  // 构建 contents: [image_parts..., prompt_text]
-  const contents: any[] = [];
-  for (const imgPath of images) {
-    const data = await fs.readFile(imgPath);
-    contents.push({
-      inlineData: {
-        mimeType: mimeFromExt(imgPath),
-        data: data.toString("base64"),
-      },
-    });
-  }
-  contents.push({ text: prompt });
-
   const mode = images.length === 0 ? "txt2img" : `img2img (${images.length} images)`;
-  console.log(`  模式: ${mode}，调用 Gemini API...`);
+  console.log(`  模式: ${mode}，调用图像生成 API...`);
   console.log(`  prompt: ${prompt}`);
   for (const img of images) {
     console.log(`  参考图: ${path.basename(img)}`);
@@ -85,47 +61,61 @@ export async function generateImage(
   // 确保输出目录存在
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
-  // 使用 fetch 直接调用 Gemini REST API
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const url = `${config.base_url}/v1/models/${config.model}:generateContent`;
-      const body = {
-        contents: [{ role: "user", parts: contents }],
-        generationConfig: {
-          responseModalities: ["TEXT", "IMAGE"],
-        },
-      };
+      let resp: Response;
 
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${config.api_key}`,
-        },
-        body: JSON.stringify(body),
-      });
+      if (images.length === 0) {
+        // 文生图：POST /images/generations（JSON body）
+        const url = `${config.base_url}/images/generations`;
+        resp = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${config.api_key}`,
+          },
+          body: JSON.stringify({
+            model: config.model,
+            prompt,
+            n: 1,
+          }),
+        });
+      } else {
+        // 图生图：POST /images/edits（multipart/form-data）
+        const url = `${config.base_url}/images/edits`;
+        const form = new FormData();
+        form.append("model", config.model);
+        form.append("prompt", prompt);
+        form.append("n", "1");
+
+        for (let i = 0; i < images.length; i++) {
+          const imgBuf = await fs.readFile(images[i]);
+          const blob = new Blob([imgBuf], { type: "image/png" });
+          form.append("image[]", blob, path.basename(images[i]));
+        }
+
+        resp = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${config.api_key}`,
+          },
+          body: form,
+        });
+      }
 
       if (!resp.ok) {
         const errText = await resp.text();
         console.log(`  [${attempt}/${MAX_RETRIES}] HTTP ${resp.status}: ${errText.slice(0, 200)}`);
       } else {
         const result: any = await resp.json();
-
-        if (!result.candidates || result.candidates.length === 0) {
-          const reason = result.promptFeedback?.blockReason ?? "unknown";
-          console.log(`  [${attempt}/${MAX_RETRIES}] 请求被拦截（block_reason: ${reason}）`);
-        } else {
-          const parts = result.candidates[0]?.content?.parts ?? [];
-          for (const part of parts) {
-            if (part.inlineData) {
-              const imgBuf = Buffer.from(part.inlineData.data, "base64");
-              await fs.writeFile(outputPath, imgBuf);
-              console.log(`  已保存: ${outputPath}`);
-              return outputPath;
-            }
-          }
-          console.log(`  [${attempt}/${MAX_RETRIES}] 未收到图片数据`);
+        const b64 = result?.data?.[0]?.b64_json;
+        if (b64) {
+          const imgBuf = Buffer.from(b64, "base64");
+          await fs.writeFile(outputPath, imgBuf);
+          console.log(`  已保存: ${outputPath}`);
+          return outputPath;
         }
+        console.log(`  [${attempt}/${MAX_RETRIES}] 未收到图片数据，响应: ${JSON.stringify(result).slice(0, 200)}`);
       }
     } catch (err) {
       console.log(`  [${attempt}/${MAX_RETRIES}] API 异常: ${err}`);

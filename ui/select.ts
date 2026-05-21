@@ -12,6 +12,8 @@ export interface NovelSelection {
   sourcePath: string;
   episode: number;
   nextChapter: number;
+  ethnicity: string;
+  aspectRatio: string;
 }
 
 interface Progress {
@@ -26,6 +28,39 @@ function ask(rl: readline.Interface, prompt: string): Promise<string> {
   return new Promise((resolve) => {
     rl.question(prompt, (answer) => resolve(answer.trim()));
   });
+}
+
+const ETHNICITY_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: "亚裔（东亚面孔）", value: "东亚面孔，亚裔" },
+  { label: "欧美白人", value: "欧美面孔，白人" },
+  { label: "非裔", value: "非洲裔面孔，黑人" },
+  { label: "拉丁裔", value: "拉丁美洲裔面孔" },
+  { label: "南亚裔", value: "南亚裔面孔" },
+];
+
+/** 交互选择分镜画幅比例 */
+async function selectAspectRatio(rl: readline.Interface): Promise<string> {
+  console.log("\n  选择分镜画幅比例：");
+  console.log("  [1] 竖屏 9:16（默认）");
+  console.log("  [2] 横屏 16:9");
+  console.log();
+  const choice = await ask(rl, "  请选择（回车 = 竖屏 9:16）: ");
+  return choice === "2" ? "16:9" : "9:16";
+}
+
+/** 交互选择人物人种风格 */
+async function selectEthnicity(rl: readline.Interface): Promise<string> {
+  console.log("\n  选择人物人种风格：");
+  for (let i = 0; i < ETHNICITY_OPTIONS.length; i++) {
+    console.log(`  [${i + 1}] ${ETHNICITY_OPTIONS[i].label}`);
+  }
+  console.log();
+  const choice = await ask(rl, "  请选择（回车 = 亚裔）: ");
+  const num = parseInt(choice, 10);
+  if (num >= 1 && num <= ETHNICITY_OPTIONS.length) {
+    return ETHNICITY_OPTIONS[num - 1].value;
+  }
+  return ETHNICITY_OPTIONS[0].value; // 默认亚裔
 }
 
 /** 扫描小说文件夹中的章节文件数量 */
@@ -110,11 +145,16 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
     const confirm = await ask(rl, "  确认开始？(Y/n): ");
     if (confirm.toLowerCase() === "n") return null;
 
+    const ethnicity = await selectEthnicity(rl);
+    const aspectRatio = await selectAspectRatio(rl);
+
     return {
       novelName: novel.novel_name,
       sourcePath: novel.source_path ?? "",
       episode,
       nextChapter,
+      ethnicity,
+      aspectRatio,
     };
   }
 
@@ -166,11 +206,16 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
     const confirm = await ask(rl, "  确认开始？(Y/n): ");
     if (confirm.toLowerCase() === "n") return null;
 
+    const ethnicity = await selectEthnicity(rl);
+    const aspectRatio = await selectAspectRatio(rl);
+
     return {
       novelName,
       sourcePath: folderPath,
       episode: 1,
       nextChapter: 1,
+      ethnicity,
+      aspectRatio,
     };
   }
 

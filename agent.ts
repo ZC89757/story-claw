@@ -13,6 +13,7 @@ import path from "node:path";
 import {
   AuthStorage,
   createAgentSession,
+  DefaultResourceLoader,
   ModelRegistry,
   SessionManager,
   SettingsManager,
@@ -145,23 +146,32 @@ export async function createSession(
   sessionFile: string,
   customTools: ToolDefinition[],
   systemPrompt: string,
+  builtinTools = [writeTool, readTool],
 ): Promise<AgentSession> {
   const { authStorage, modelRegistry, model, settingsManager } = await getSharedResources();
   const sessionManager = SessionManager.open(sessionFile);
 
+  const resourceLoader = new DefaultResourceLoader({
+    systemPrompt,
+    cwd: DATA_DIR,
+    agentsFilesOverride: () => ({ agentsFiles: [] }),
+    appendSystemPromptOverride: () => [],
+  });
+  await resourceLoader.reload();
+
   const { session } = await createAgentSession({
-    cwd: process.cwd(),
+    cwd: DATA_DIR,
     agentDir: DATA_DIR,
     authStorage,
     modelRegistry,
     model,
-    tools: [writeTool, readTool],
+    tools: builtinTools,
     customTools,
     sessionManager,
     settingsManager,
+    resourceLoader,
   });
 
-  session.agent.setSystemPrompt(systemPrompt);
   return session;
 }
 
@@ -187,6 +197,7 @@ export async function runSubAgent(
   systemPrompt: string,
   taskPrompt: string,
   logPrefix = "[Sub]",
+  builtinTools = [writeTool, readTool],
 ): Promise<string> {
   const tempFile = path.join(
     DATA_DIR,
@@ -198,7 +209,7 @@ export async function runSubAgent(
   const logPath = path.join(AGENT_LOGS_DIR, `${safePrefix}_${Date.now()}.log`);
   const logStream = createWriteStream(logPath, { encoding: "utf-8" });
 
-  const session = await createSession(tempFile, customTools, systemPrompt);
+  const session = await createSession(tempFile, customTools, systemPrompt, builtinTools);
 
   let lastText = "";
   let currentText = "";

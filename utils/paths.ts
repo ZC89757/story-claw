@@ -13,8 +13,9 @@
  *       characters/                角色图      {角色名}.png（跨集共享）
  *       scenes/                    场景底图    {场景名}.png（跨集共享）
  *       ep01/                      第1集
- *         {小说名}_第1集.md        剧本
- *         scene_data.json          场景结构化数据（parse_script 输出）
+ *         scene_data.json          场景结构化数据
+ *         scripts/                 分场剧本（每场景一个文件）
+ *           {场景名}.md
  *         panels_scene_XX.json     分镜构图（direct_storyboard 输出）
  *         character_frames/        合成帧图    frame_XX.png（按集隔离）
  *         storyboard_panels/       分镜图片    panel_*.png（按集隔离）
@@ -48,13 +49,23 @@ export const novelPaths = {
   progress: (novelName: string) =>
     path.join(PATHS.workspace, novelName, "改编进度.json"),
 
-  /** 短剧剧本：workspace/{名}/ep{XX}/{名}_第X集.md */
-  script: (novelName: string, episodeNum: number) =>
+  /** 分场剧本目录：workspace/{名}/ep{XX}/scripts/ */
+  scriptsDir: (novelName: string, episodeNum: number) =>
     path.join(
       PATHS.workspace,
       novelName,
       `ep${String(episodeNum).padStart(2, "0")}`,
-      `${novelName}_第${episodeNum}集.md`,
+      "scripts",
+    ),
+
+  /** 单场景剧本文件：workspace/{名}/ep{XX}/scripts/{场景名}.md */
+  sceneScript: (novelName: string, episodeNum: number, sceneName: string) =>
+    path.join(
+      PATHS.workspace,
+      novelName,
+      `ep${String(episodeNum).padStart(2, "0")}`,
+      "scripts",
+      `${sceneName}.md`,
     ),
 
   /** 场景结构化数据：workspace/{名}/ep{XX}/scene_data.json */
@@ -74,9 +85,25 @@ export const novelPaths = {
   scenesDir: (novelName: string) =>
     path.join(PATHS.workspace, novelName, "scenes"),
 
-  /** 角色图完整路径 */
+  /** 角色 JSON 路径：workspace/{名}/characters/{角色名}.json */
+  characterJson: (novelName: string, charName: string) =>
+    path.join(PATHS.workspace, novelName, "characters", `${charName}.json`),
+
+  /** 角色原型图路径：workspace/{名}/characters/{角色名}_原型.png */
+  characterProtoImage: (novelName: string, charName: string) =>
+    path.join(PATHS.workspace, novelName, "characters", `${charName}_原型.png`),
+
+  /** 角色造型图路径：workspace/{名}/characters/{角色名}_{阶段}.png */
+  characterStageImage: (novelName: string, charName: string, stage: string) =>
+    path.join(PATHS.workspace, novelName, "characters", `${charName}_${stage}.png`),
+
+  /** 角色图完整路径（兼容旧接口，等同于原型图） */
   characterImage: (novelName: string, charName: string) =>
-    path.join(PATHS.workspace, novelName, "characters", `${charName}.png`),
+    path.join(PATHS.workspace, novelName, "characters", `${charName}_原型.png`),
+
+  /** 场景 JSON 路径：workspace/{名}/scenes/{场景名}.json */
+  sceneJson: (novelName: string, locationName: string) =>
+    path.join(PATHS.workspace, novelName, "scenes", `${locationName}.json`),
 
   /** 场景底图完整路径 */
   sceneImage: (novelName: string, locationName: string) =>
@@ -89,4 +116,24 @@ export const novelPaths = {
   /** 分镜图片目录：workspace/{名}/ep{XX}/storyboard_panels/ */
   storyboardPanelsDir: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "storyboard_panels"),
+
+  /** 画面预设文件：workspace/{名}/ep{XX}/画面预设.txt */
+  visualPreset: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "画面预设.txt"),
+
+  /** 分镜 JSONL：workspace/{名}/ep{XX}/storyboard_{场景名}.jsonl */
+  storyboardJsonl: (novelName: string, episodeNum: number, sceneName: string) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `storyboard_${sceneName}.jsonl`),
+
+  /** 渲染输出目录：workspace/{名}/ep{XX}/render_{场景名}/ */
+  renderDir: (novelName: string, episodeNum: number, sceneName: string) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `render_${sceneName}`),
+
+  /** 场景最终视频（含TTS）：workspace/{名}/ep{XX}/render_{场景名}/final.mp4 */
+  sceneFinalVideo: (novelName: string, episodeNum: number, sceneName: string) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `render_${sceneName}`, "final.mp4"),
+
+  /** voice_map：workspace/{名}/voice_map.json（跨集共享） */
+  voiceMap: (novelName: string) =>
+    path.join(PATHS.workspace, novelName, "voice_map.json"),
 };

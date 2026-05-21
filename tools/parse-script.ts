@@ -1,9 +1,9 @@
 /**
- * ① 剧本解析工具 — LLM 推理任务
+ * ② 剧本切分工具 — LLM 推理任务
  *
- * 将短剧剧本 .md 解析为结构化场景 JSON。
- * 这个工具不调用 Python，而是读取文件内容后返回给 Agent，
- * 由 Agent（LLM）自身完成结构化解析。
+ * 读取章节原文 + 已分析完成的场景 JSON 列表，
+ * 由 Agent（LLM）按场景将原文切分为 ## 场景X 格式，
+ * 原文逐字保留，不改写。
  */
 
 import fs from "node:fs/promises";
@@ -11,70 +11,84 @@ import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { PROJECT_ROOT } from "../utils/run-python.js";
+import { novelPaths } from "../utils/paths.js";
 import { OUTPUT_SCHEMAS } from "./schemas.js";
 
 export const parseScriptTool: ToolDefinition = {
   name: "parse_script",
-  label: "剧本解析",
+  label: "剧本切分",
   description:
-    "读取短剧剧本 .md 文件内容，提取场景结构供后续解析。" +
-    "Agent 应根据返回的剧本文本，自行解析出结构化的场景 JSON " +
-    "(scenes/beats/characters/emotions/shot_hints)，" +
-    "然后将 JSON 写入文件供下游使用。",
+    "读取章节原文和已分析的场景 JSON，由 Agent 将原文按场景切分，" +
+    "输出 ## 场景X 格式的剧本文件。原文逐字保留，不改写。",
   parameters: Type.Object({
-    script_file: Type.String({ description: ".md 剧本文件路径（绝对或相对于项目根目录）" }),
+    novel_name:    Type.String({ description: "小说名称" }),
+    episode_num:   Type.Number({ description: "集数编号" }),
+    chapter_files: Type.String({ description: "章节文件路径列表，JSON 数组" }),
+    scene_names:   Type.String({ description: "本集涉及的场景名列表，JSON 数组，需与场景 JSON 的 location 字段完全一致" }),
   }),
   execute: async (_toolCallId: string, params: any) => {
-    const rawPath = String(params.script_file);
-    const filePath = path.isAbsolute(rawPath) ? rawPath : path.join(PROJECT_ROOT, rawPath);
+    const novelName  = String(params.novel_name);
+    const episodeNum = Number(params.episode_num);
 
-    // 剧本位于 ep 目录内，scene_data.json 存放在同级目录
-    const sceneDataPath = path.join(path.dirname(filePath), "scene_data.json");
-
-    // 扫描已有场景底图，供 LLM 复用（场景图位于小说 workspace 的 scenes/ 目录）
-    const novelDir = path.dirname(path.dirname(filePath));  // ep目录的上一级
-    const scenesDir = path.join(novelDir, "scenes");
-    let existingScenes: string[] = [];
+    let chapterPaths: string[];
+    let sceneNames: string[];
     try {
-      const files = await fs.readdir(scenesDir);
-      existingScenes = files.filter(f => f.endsWith(".png")).map(f => f.replace(/\.png$/, ""));
+      chapterPaths = JSON.parse(String(params.chapter_files));
+      sceneNames   = JSON.parse(String(params.scene_names));
     } catch {
-      // 目录尚不存在，忽略
+      return { content: [{ type: "text" as const, text: `chapter_files 或 scene_names 格式错误，需要 JSON 数组` }], details: {} };
     }
-    const existingScenesText = existingScenes.length > 0
-      ? `\n已存在的场景底图（locations 约束中"已有底图"指这些）：\n${existingScenes.map(s => `- ${s}`).join("\n")}\n`
-      : "";
 
-    // 扫描已有角色参考图，供 LLM 复用（角色图位于小说 workspace 的 characters/ 目录）
-    const charsDir = path.join(novelDir, "characters");
-    let existingChars: string[] = [];
-    try {
-      const files = await fs.readdir(charsDir);
-      existingChars = files.filter(f => f.endsWith(".png")).map(f => f.replace(/\.png$/, ""));
-    } catch {
-      // 目录尚不存在，忽略
+    // 读取章节原文
+    const chapterTexts: string[] = [];
+    for (const p of chapterPaths) {
+      const absPath = path.isAbsolute(p) ? p : path.join(PROJECT_ROOT, p);
+      try {
+        const text = await fs.readFile(absPath, "utf-8");
+        chapterTexts.push(`=== ${path.basename(absPath)} ===\n\n${text}`);
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `读取章节失败: ${absPath}\n${err}` }], details: {} };
+      }
     }
-    const existingCharsText = existingChars.length > 0
-      ? `\n已存在的角色参考图（若剧本中的角色与以下名称指同一人，必须使用已有名称，不得新建）：\n${existingChars.map(s => `- ${s}`).join("\n")}\n`
-      : "";
 
-    try {
-      const content = await fs.readFile(filePath, "utf-8");
-      return {
-        content: [{ type: "text" as const, text:
-          `剧本文件已读取（${content.length} 字符）。` +
-          existingCharsText +
-          existingScenesText + "\n" +
-          `请解析以下剧本内容，提取结构化 JSON，\n` +
-          `然后用内置 write 工具将结果保存到：${sceneDataPath}\n\n` +
-          OUTPUT_SCHEMAS["parse_script"] + "\n\n" +
-          `剧本内容：\n` +
-          content
-        }],
-        details: {},
-      };
-    } catch (err) {
-      return { content: [{ type: "text" as const, text: `读取剧本文件失败: ${err}` }], details: {} };
+    // 读取各场景 JSON
+    const sceneJsonTexts: string[] = [];
+    for (const name of sceneNames) {
+      const jsonPath = novelPaths.sceneJson(novelName, name);
+      try {
+        const content = await fs.readFile(jsonPath, "utf-8");
+        sceneJsonTexts.push(`[${name}]\n${content}`);
+      } catch {
+        sceneJsonTexts.push(`[${name}] （JSON 文件不存在）`);
+      }
     }
+
+    const outputPath = novelPaths.script(novelName, episodeNum);
+    const epDir      = novelPaths.episodeDir(novelName, episodeNum);
+
+    return {
+      content: [{ type: "text" as const, text:
+        `章节原文和场景信息已读取，请完成切分任务。\n\n` +
+
+        `== 场景列表 ==\n${sceneJsonTexts.join("\n\n")}\n\n` +
+
+        `== 章节原文 ==\n${chapterTexts.join("\n\n")}\n\n` +
+
+        `== 你的任务 ==\n` +
+        `根据以上场景列表，将章节原文切分为对应的场景段落。\n` +
+        `切分规则：\n` +
+        `- 每个场景以 ## 场景X：{场景名} · {时间/地点} 开头\n` +
+        `- 场景名必须与场景 JSON 的 location 字段完全一致\n` +
+        `- 时间/地点 补充该场景在原文中对应的时间和具体地点描述\n` +
+        `- 原文段落逐字保留，不得改写、删减或添加任何内容\n` +
+        `- 若原文某段同时涉及多个场景，按叙事逻辑拆分到对应场景下\n\n` +
+        `完成后用内置 write 工具将结果保存到：${outputPath}\n` +
+        `（若目录不存在请先创建：${epDir}）\n` +
+        `保存完毕后在最终回复末行写明：\n` +
+        `剧本文件路径: ${outputPath}\n\n` +
+        OUTPUT_SCHEMAS["segment_script"]
+      }],
+      details: {},
+    };
   },
 };

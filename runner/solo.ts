@@ -1,47 +1,75 @@
 /**
- * Solo 模式 — 全自动执行 A→B→C→E→F
+ * Solo 模式 — 全自动执行 A→B→E→F
  */
 
+import fs from "node:fs/promises";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
-import { stageA, stageB, stageC, stageEF } from "./pipeline.js";
+import { visualPreset, archive, segment, storyboard, renderScene } from "./pipeline.js";
+import type { RenderProgress } from "./pipeline.js";
+import { novelPaths } from "../utils/paths.js";
 
 export async function runSolo(sel: NovelSelection) {
   const title = `${sel.novelName} 第${sel.episode}集`;
   const p = createProgress();
 
   try {
-    // A 剧本创作
+    // 画面预设
     p.start(0, title);
-    const scriptFile = await stageA(sel);
-    p.done(0, title, scriptFile.split(/[/\\]/).pop());
+    const presetPath = await visualPreset(sel);
+    p.done(0, title, "画面预设.txt");
 
-    // B 剧本解析
+    // 资源建档
     p.start(1, title);
-    const sceneDataFile = await stageB(sel, scriptFile);
-    p.done(1, title, "scene_data.json");
+    const archiveResult = await archive(sel, presetPath);
+    p.done(1, title, `场景${archiveResult.sceneNames.length}个`);
 
-    // C 资源生成
+    // 剧本分场
     p.start(2, title);
-    const cResult = await stageC(sel, sceneDataFile, (msg) => {
-      p.update(2, title, msg);
-    });
-    p.done(2, title, `角色${cResult.newChars} 场景${cResult.newScenes} 跳过${cResult.skipped}`);
+    const scriptsDir = await segment(sel, archiveResult, presetPath);
+    p.done(2, title, "scripts/");
 
-    // E+F 分镜与画面
+    // 分镜制作
     p.start(3, title);
-    await stageEF(sel, sceneDataFile, scriptFile, (prog) => {
+    await storyboard(sel, scriptsDir, (prog) => {
       p.updateSubLines(3, title, [
-        `分镜导演  ${progressBar(prog.storyboard.done, prog.storyboard.total)}`,
-        `画面合成  ${progressBar(prog.panels.done, prog.panels.total)}`,
+        `分镜  ${progressBar(prog.done, prog.total)}`,
       ]);
     });
     p.done(3, title);
 
-    // 完成
-    const epDir = sceneDataFile.replace(/[/\\]scene_data\.json$/, "");
+    // 渲染（每个场景的 JSONL → 视频+TTS → final.mp4，各场景并行）
+    p.start(4, title);
+    const jsonlFiles = (await fs.readdir(novelPaths.episodeDir(sel.novelName, sel.episode)))
+      .filter((f) => f.startsWith("storyboard_") && f.endsWith(".jsonl"))
+      .map((f) => f.replace(/^storyboard_/, "").replace(/\.jsonl$/, ""));
+
+    const renderProgress: Record<string, RenderProgress> = {};
+    const updateRenderSubLines = () => {
+      p.updateSubLines(4, title,
+        Object.values(renderProgress).map(
+          (rp) => `${rp.scene}  ${progressBar(rp.done, rp.total)}`,
+        ),
+      );
+    };
+
+    await Promise.all(
+      jsonlFiles.map((sceneName) =>
+        renderScene(sel, sceneName, (rp) => {
+          renderProgress[sceneName] = rp;
+          updateRenderSubLines();
+        }),
+      ),
+    );
+    p.done(4, title, `${jsonlFiles.length} 个场景`);
+
+    // 更新改编进度
+    const prog = JSON.parse(await fs.readFile(novelPaths.progress(sel.novelName), "utf-8"));
+    prog.next_chapter += 1;
+    await fs.writeFile(novelPaths.progress(sel.novelName), JSON.stringify(prog, null, 4), "utf-8");
+
     console.log(`\n  ${"=".repeat(50)}`);
-    console.log(`  完成！产物目录: ${epDir}`);
+    console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
     console.log();
   } catch (err) {
     console.error(`\n  x 流水线出错: ${err}\n`);

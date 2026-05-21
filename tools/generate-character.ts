@@ -1,55 +1,109 @@
 /**
- * ③ 角色生成工具 — 调用 Gemini API 文生图
+ * 角色生成工具 — 调用图像 API 生成角色参考图
  *
- * 根据角色描述生成真人写实风格参考图。
- * Prompt 模板锁死为 "真人写实摄影风格，自然光"。
+ * 两种模式（由 stage 参数决定，约定大于配置）：
+ *   无 stage → 文生图，生成原型图（{name}_原型.png）
+ *   有 stage → 图生图，以原型图为参考生成造型图（{name}_{stage}.png）
  */
 
+import fs from "node:fs/promises";
 import { Type } from "@sinclair/typebox";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { novelPaths } from "../utils/paths.js";
 import { generateImage } from "../utils/image-gen.js";
 
-/** 风格锁定的 prompt 模板 */
-function buildCharacterPrompt(name: string, ageDesc: string, clothing: string): string {
-  return (
-    `请生成一个角色设计参考图，白色纯净背景。` +
-    `必须是真人写实摄影风格，像真实照片一样。` +
-    `禁止：卡通、漫画、简笔画、动漫、手绘、插画风格。` +
-    `人物特征：${ageDesc}，${clothing}。` +
-    `表情：自然正面。` +
-    `画面包含：正面全身、侧面全身、背面全身三个视角，以及一个正面脸部特写。` +
-    `风格：真人实拍写实，高清，自然光影。`
-  );
-}
-
 export const generateCharacterTool: ToolDefinition = {
   name: "generate_character",
   label: "角色生成",
   description:
-    "调用 Gemini API 文生图，根据角色卡生成真人写实风格的角色参考图。" +
-    "Prompt 模板已锁死为 '真人写实摄影风格，自然光'，禁止风格漂移。" +
-    "输入小说名、角色名、年龄描述、服装描述，输出参考图路径。",
+    "生成角色参考图。" +
+    "不传 stage：文生图，生成原型图（该时代便服下的基础体貌），每角色只需生成一次。" +
+    "传入 stage：图生图，以原型图为参考生成造型图，prompt 只需描述本阶段服装/道具/特殊状态。",
   parameters: Type.Object({
-    novel_name: Type.String({ description: "小说名称（对应 workspace 下的文件夹名）" }),
-    name: Type.String({ description: "角色名，如 '魏俊熙'" }),
-    age_desc: Type.String({ description: "年龄描述，如 '18岁少年，身材偏瘦'" }),
-    clothing: Type.String({ description: "服装描述，如 '蓝色T恤、牛仔裤、双肩背包'" }),
+    novel_name: Type.String({ description: "小说名称" }),
+    name:       Type.String({ description: "角色名，用于文件命名" }),
+    prompt:     Type.String({
+      description:
+        "生图提示词。" +
+        "无 stage 时：描述角色基础体貌，包括年龄、身形、面部特征、发型等。" +
+        "有 stage 时：只描述本阶段造型变化，如服装、随身道具、特殊身体状态，无需重复描述体貌。",
+    }),
+    ethnicity:  Type.String({ description: "人种描述，如「东亚面孔，亚裔」" }),
+    stage:      Type.Optional(Type.String({
+      description: "造型阶段名，有值时进入造型图模式（图生图），值用于文件命名，如「受伤阶段」",
+    })),
   }),
   execute: async (_toolCallId: string, params: any) => {
     const novelName = String(params.novel_name);
-    const name = String(params.name);
-    const ageDesc = String(params.age_desc);
-    const clothing = String(params.clothing);
-    const outputPath = novelPaths.characterImage(novelName, name);
+    const name      = String(params.name);
+    const prompt    = String(params.prompt);
+    const ethnicity = String(params.ethnicity ?? "东亚面孔，亚裔");
+    const stage     = params.stage ? String(params.stage) : undefined;
 
-    const prompt = buildCharacterPrompt(name, ageDesc, clothing);
+    const charsDir = novelPaths.charactersDir(novelName);
+    await fs.mkdir(charsDir, { recursive: true });
 
-    await generateImage(prompt, outputPath);
+    const protoPath = novelPaths.characterProtoImage(novelName, name);
 
-    return {
-      content: [{ type: "text" as const, text: `角色 ${name} 参考图已生成: ${outputPath}` }],
-      details: {},
-    };
+    if (!stage) {
+      // ── 原型图模式（文生图）──────────────────────────────────
+      try {
+        await fs.access(protoPath);
+        return {
+          content: [{ type: "text" as const, text: `原型图已存在，跳过生成: ${protoPath}` }],
+          details: {},
+        };
+      } catch { /* 不存在，继续生成 */ }
+
+      const fullPrompt =
+        `真人写实摄影风格，白色纯净背景。` +
+        `必须像真实照片，禁止卡通、漫画、动漫、手绘风格。` +
+        `人物特征：${ethnicity}，${prompt}。` +
+        `服装为该时代背景下最普通的日常便服，无配饰，不携带任何物品。` +
+        `画面包含：正面全身、侧面全身、背面全身、正面脸部特写，四视角排列。` +
+        `高清，自然光影。`;
+
+      await generateImage(fullPrompt, protoPath);
+
+      return {
+        content: [{ type: "text" as const, text: `角色 ${name} 原型图已生成: ${protoPath}` }],
+        details: {},
+      };
+
+    } else {
+      // ── 造型图模式（图生图）──────────────────────────────────
+      try {
+        await fs.access(protoPath);
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: `原型图不存在，请先生成原型图: ${protoPath}` }],
+          details: {},
+        };
+      }
+
+      const stagePath = novelPaths.characterStageImage(novelName, name, stage);
+
+      try {
+        await fs.access(stagePath);
+        return {
+          content: [{ type: "text" as const, text: `造型图已存在，跳过生成: ${stagePath}` }],
+          details: {},
+        };
+      } catch { /* 不存在，继续生成 */ }
+
+      const fullPrompt =
+        `基于参考图中的角色，保持其面部特征、体型、发型完全一致。` +
+        `人物特征：${ethnicity}。` +
+        `本阶段造型：${prompt}。` +
+        `画面包含：正面全身、侧面全身、背面全身、正面脸部特写，四视角排列。` +
+        `真人写实摄影风格，白色纯净背景，高清，自然光影。`;
+
+      await generateImage(fullPrompt, stagePath, [protoPath]);
+
+      return {
+        content: [{ type: "text" as const, text: `角色 ${name}「${stage}」造型图已生成: ${stagePath}` }],
+        details: {},
+      };
+    }
   },
 };

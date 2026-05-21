@@ -10,8 +10,10 @@ import path from "node:path";
 import readline from "node:readline";
 import { CONFIG_DIR } from "./run-python.js";
 
-const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
+const CONFIG_FILE          = path.join(CONFIG_DIR, "config.json");
 const IMAGE_GEN_CONFIG_FILE = path.join(CONFIG_DIR, "image_gen_config.json");
+const VIDEO_CONFIG_FILE     = path.join(CONFIG_DIR, "video_config.json");
+const TTS_CONFIG_FILE       = path.join(CONFIG_DIR, "tts_config.json");
 
 function ask(rl: readline.Interface, question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -35,10 +37,12 @@ async function fileExists(p: string): Promise<boolean> {
 export async function ensureSetup(): Promise<boolean> {
   await fs.mkdir(CONFIG_DIR, { recursive: true });
 
-  const hasConfig = await fileExists(CONFIG_FILE);
+  const hasConfig   = await fileExists(CONFIG_FILE);
   const hasImageGen = await fileExists(IMAGE_GEN_CONFIG_FILE);
+  const hasVideo    = await fileExists(VIDEO_CONFIG_FILE);
+  const hasTts      = await fileExists(TTS_CONFIG_FILE);
 
-  if (hasConfig && hasImageGen) return true;
+  if (hasConfig && hasImageGen && hasVideo && hasTts) return true;
 
   // 需要引导
   console.log("\n  首次运行，需要配置 API 密钥。");
@@ -108,6 +112,56 @@ export async function ensureSetup(): Promise<boolean> {
       const config = { api_key: apiKey, model, base_url: baseUrl };
       await fs.writeFile(IMAGE_GEN_CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", "utf-8");
       console.log(`  已保存: ${IMAGE_GEN_CONFIG_FILE}\n`);
+    }
+
+    // ── video_config.json（视频生成配置）──
+    if (!hasVideo) {
+      console.log("  ── 视频生成配置 (video_config.json) ──\n");
+
+      const apiKey = await ask(rl, "  api_key: ");
+      if (!apiKey) { console.log("  api_key 不能为空，中止。"); return false; }
+
+      const baseUrl = await ask(rl, "  base_url (如 https://zenmux.ai/api/vertex-ai): ");
+      if (!baseUrl) { console.log("  base_url 不能为空，中止。"); return false; }
+
+      const config = {
+        api_key: apiKey,
+        base_url: baseUrl,
+        models: [
+          "bytedance/doubao-seedance-2.0",
+          "bytedance/doubao-seedance-1.5-pro",
+          "google/veo-3.1-generate-001",
+        ],
+        default_duration: 5,
+        concurrency: 4,
+      };
+      await fs.writeFile(VIDEO_CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      console.log(`  已保存: ${VIDEO_CONFIG_FILE}\n`);
+    }
+
+    // ── tts_config.json（MiMo TTS 配置）──
+    if (!hasTts) {
+      console.log("  ── TTS 配置 (tts_config.json) ──");
+      console.log("  使用小米 MiMo TTS API\n");
+
+      const apiKey = await ask(rl, "  api_key: ");
+      if (!apiKey) { console.log("  api_key 不能为空，中止。"); return false; }
+
+      const baseUrl = await ask(rl, "  base_url (直接回车使用默认 https://token-plan-cn.xiaomimimo.com/v1): ");
+      const proxy   = await ask(rl, "  proxy (如 http://127.0.0.1:7890，不需要直接回车): ");
+
+      const config = {
+        api_key: apiKey,
+        base_url: baseUrl || "https://token-plan-cn.xiaomimimo.com/v1",
+        chat_model: "mimo-v2.5-pro",
+        tts_model: "mimo-v2.5-tts",
+        ...(proxy ? { proxy } : {}),
+        voices: { "冰糖": "女", "茉莉": "女", "苏打": "男", "白桦": "男" },
+        narrator_voice: "白桦",
+        concurrency: 4,
+      };
+      await fs.writeFile(TTS_CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      console.log(`  已保存: ${TTS_CONFIG_FILE}\n`);
     }
 
     console.log("  配置完成！\n");
