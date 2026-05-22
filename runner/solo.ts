@@ -3,11 +3,16 @@
  */
 
 import fs from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { visualPreset, archive, segment, storyboard, renderScene } from "./pipeline.js";
 import type { RenderProgress } from "./pipeline.js";
+import { initRenderLog } from "./render.js";
 import { novelPaths } from "../utils/paths.js";
+
+const execFileAsync = promisify(execFile);
 
 export async function runSolo(sel: NovelSelection) {
   const title = `${sel.novelName} 第${sel.episode}集`;
@@ -40,9 +45,14 @@ export async function runSolo(sel: NovelSelection) {
 
     // 渲染（每个场景的 JSONL → 视频+TTS → final.mp4，各场景并行）
     p.start(4, title);
-    const jsonlFiles = (await fs.readdir(novelPaths.episodeDir(sel.novelName, sel.episode)))
-      .filter((f) => f.startsWith("storyboard_") && f.endsWith(".jsonl"))
-      .map((f) => f.replace(/^storyboard_/, "").replace(/\.jsonl$/, ""));
+    initRenderLog(novelPaths.episodeDir(sel.novelName, sel.episode) + "/render.log");
+    const storyboardsDir = novelPaths.storyboardsDir(sel.novelName, sel.episode);
+    let jsonlFiles: string[] = [];
+    try {
+      jsonlFiles = (await fs.readdir(storyboardsDir))
+        .filter((f) => f.startsWith("storyboard_") && f.endsWith(".jsonl"))
+        .map((f) => f.replace(/^storyboard_/, "").replace(/\.jsonl$/, ""));
+    } catch { /* storyboards/ 目录不存在则跳过 */ }
 
     const renderProgress: Record<string, RenderProgress> = {};
     const updateRenderSubLines = () => {
@@ -62,6 +72,32 @@ export async function runSolo(sel: NovelSelection) {
       ),
     );
     p.done(4, title, `${jsonlFiles.length} 个场景`);
+
+    // ── 合并集视频（按 archiveResult.sceneNames 顺序拼接 final.mp4）──
+    if (jsonlFiles.length > 0 && archiveResult.sceneNames.length > 0) {
+      const episodeVideoPath = novelPaths.episodeVideo(sel.novelName, sel.episode);
+      const epDir = novelPaths.episodeDir(sel.novelName, sel.episode);
+      const concatListPath = `${epDir}/concat_list.txt`;
+
+      // 按 archiveResult.sceneNames 排序，只包含已渲染的场景
+      const orderedScenes = archiveResult.sceneNames.filter((s) => jsonlFiles.includes(s));
+      const concatLines = orderedScenes
+        .map((s) => `file '${novelPaths.sceneFinalVideo(sel.novelName, sel.episode, s).replace(/\\/g, "/")}'`)
+        .join("\n");
+
+      await fs.writeFile(concatListPath, concatLines + "\n", "utf-8");
+
+      await execFileAsync("ffmpeg", [
+        "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", concatListPath,
+        "-c", "copy",
+        episodeVideoPath,
+      ]);
+
+      await fs.unlink(concatListPath).catch(() => {});
+    }
 
     // 更新改编进度
     const prog = JSON.parse(await fs.readFile(novelPaths.progress(sel.novelName), "utf-8"));

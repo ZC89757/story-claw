@@ -44,11 +44,27 @@ export const generateCharacterTool: ToolDefinition = {
     await fs.mkdir(charsDir, { recursive: true });
 
     const protoPath = novelPaths.characterProtoImage(novelName, name);
+    const jsonPath  = novelPaths.characterJson(novelName, name);
+
+    /** 读取已有 JSON，不存在则返回初始结构 */
+    async function loadJson(): Promise<{ name: string; base_prompt: string; stages: Array<{ stage: string; prompt: string }> }> {
+      try {
+        return JSON.parse(await fs.readFile(jsonPath, "utf-8"));
+      } catch {
+        return { name, base_prompt: "", stages: [] };
+      }
+    }
 
     if (!stage) {
       // ── 原型图模式（文生图）──────────────────────────────────
       try {
         await fs.access(protoPath);
+        // 图已存在，但仍确保 JSON 里 base_prompt 有值
+        const data = await loadJson();
+        if (!data.base_prompt) {
+          data.base_prompt = prompt;
+          await fs.writeFile(jsonPath, JSON.stringify(data, null, 2), "utf-8");
+        }
         return {
           content: [{ type: "text" as const, text: `原型图已存在，跳过生成: ${protoPath}` }],
           details: {},
@@ -64,6 +80,11 @@ export const generateCharacterTool: ToolDefinition = {
         `高清，自然光影。`;
 
       await generateImage(fullPrompt, protoPath);
+
+      // 写入角色 JSON
+      const data = await loadJson();
+      data.base_prompt = prompt;
+      await fs.writeFile(jsonPath, JSON.stringify(data, null, 2), "utf-8");
 
       return {
         content: [{ type: "text" as const, text: `角色 ${name} 原型图已生成: ${protoPath}` }],
@@ -99,6 +120,13 @@ export const generateCharacterTool: ToolDefinition = {
         `真人写实摄影风格，白色纯净背景，高清，自然光影。`;
 
       await generateImage(fullPrompt, stagePath, [protoPath]);
+
+      // 追加造型阶段到 JSON
+      const data = await loadJson();
+      if (!data.stages.some((s) => s.stage === stage)) {
+        data.stages.push({ stage, prompt });
+        await fs.writeFile(jsonPath, JSON.stringify(data, null, 2), "utf-8");
+      }
 
       return {
         content: [{ type: "text" as const, text: `角色 ${name}「${stage}」造型图已生成: ${stagePath}` }],

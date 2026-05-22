@@ -116,7 +116,7 @@ export async function getSharedResources() {
           compat: { supportsDeveloperRole: false },
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextWindow: 200000,
-          maxTokens: 64000,
+          maxTokens: 128000,
         }],
       });
       model = modelRegistry.find(provider, modelId);

@@ -23,6 +23,33 @@ import type { NovelSelection } from "../ui/select.js";
 
 const execFileAsync = promisify(execFile);
 
+// ── 渲染日志（同时写文件）────────────────────────────────────────────────────
+
+let _logStream: fsSync.WriteStream | null = null;
+
+export function initRenderLog(logPath: string) {
+  fsSync.mkdirSync(path.dirname(logPath), { recursive: true });
+  _logStream = fsSync.createWriteStream(logPath, { flags: "w" });
+  _logStream.write(`渲染开始 ${new Date().toLocaleString()}\n${"=".repeat(60)}\n`);
+
+  const origLog   = console.log.bind(console);
+  const origError = console.error.bind(console);
+
+  const ts = () => {
+    const d = new Date();
+    return `[${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}]`;
+  };
+
+  console.log = (...args: any[]) => {
+    origLog(...args);
+    _logStream?.write(ts() + " " + args.map(String).join(" ") + "\n");
+  };
+  console.error = (...args: any[]) => {
+    origError(...args);
+    _logStream?.write(ts() + " [ERROR] " + args.map(String).join(" ") + "\n");
+  };
+}
+
 // ── 配置加载 ──────────────────────────────────────────────────────────────────
 
 function loadConfig(name: string): any {
@@ -48,53 +75,45 @@ const IMAGE_RETRY_SLEEP = 3000; // ms
 const VIDEO_API_KEY  = vidCfg.api_key as string;
 const VIDEO_BASE_URL = (vidCfg.base_url ?? "https://zenmux.ai/api/vertex-ai") as string;
 const VIDEO_MODELS   = (vidCfg.models ?? [
-  "bytedance/doubao-seedance-2.0",
-  "bytedance/doubao-seedance-1.5-pro",
-  "google/veo-3.1-generate-001",
+  "google/veo-3.1-lite-generate-001",
 ]) as string[];
-const VIDEO_DEFAULT_DURATION = (vidCfg.default_duration ?? 5) as number;
+const VIDEO_DEFAULT_DURATION = (vidCfg.default_duration ?? 4) as number;
 const VIDEO_CONCURRENCY      = (vidCfg.concurrency ?? 4) as number;
 const VIDEO_MAX_RETRIES      = 3;
 const VIDEO_RETRY_SLEEP      = 5000; // ms
 const VIDEO_MODEL_DURATIONS: Record<string, number[]> = {
-  "google/veo-3.1-generate-001": [4, 6, 8],
+  "google/veo-3.1-lite-generate-001": [4, 6, 8],
 };
 const REAL_PERSON_KEYWORDS = [
   "real person", "realPerson", "real_person", "human face", "face detection", "真人", "人脸",
 ];
 
 // LLM（资源选择）
-const LLM_API_KEY  = llmCfg.api_key as string;
-const LLM_BASE_URL = (llmCfg.base_url ?? "https://zenmux.ai/api/v1") as string;
-const LLM_MODEL    = (llmCfg.model   ?? "anthropic/claude-sonnet-4.6") as string;
+const LLM_API_KEY    = llmCfg.api_key as string;
+const LLM_BASE_URL   = (llmCfg.base_url  ?? "https://zenmux.ai/api/v1") as string;
+const LLM_MODEL      = (llmCfg.model     ?? "anthropic/claude-sonnet-4.6") as string;
+const LLM_TIMEOUT_MS = (llmCfg.timeout_ms ?? 300_000) as number;
 
 // TTS（MiMo）
 const MIMO_API_KEY    = ttsCfg.api_key as string;
 const MIMO_BASE_URL   = (ttsCfg.base_url   ?? "https://token-plan-cn.xiaomimimo.com/v1") as string;
-const MIMO_CHAT_MODEL = (ttsCfg.chat_model ?? "mimo-v2.5-pro") as string;
 const MIMO_TTS_MODEL  = (ttsCfg.tts_model  ?? "mimo-v2.5-tts") as string;
-const MIMO_PROXY      = (ttsCfg.proxy      ?? "http://127.0.0.1:7890") as string;
 const MIMO_VOICES     = (ttsCfg.voices     ?? { "冰糖": "女", "茉莉": "女", "苏打": "男", "白桦": "男" }) as Record<string, string>;
 const MIMO_NARRATOR   = (ttsCfg.narrator_voice ?? "白桦") as string;
 const TTS_CONCURRENCY = (ttsCfg.concurrency ?? 4) as number;
 
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
-async function getGenAI() {
-  const { GoogleGenAI } = await import("@google/genai");
-  return new GoogleGenAI({ apiKey: IMAGE_API_KEY, httpOptions: { baseUrl: IMAGE_BASE_URL, apiVersion: "v1" } });
-}
+
 
 async function getVideoGenAI() {
   const { GoogleGenAI } = await import("@google/genai");
-  return new GoogleGenAI({ apiKey: VIDEO_API_KEY, httpOptions: { baseUrl: VIDEO_BASE_URL, apiVersion: "v1" } });
+  return new GoogleGenAI({ apiKey: VIDEO_API_KEY, vertexai: true, httpOptions: { baseUrl: VIDEO_BASE_URL, apiVersion: "v1" } });
 }
 
-async function getOpenAI(apiKey: string, baseUrl: string, proxy?: string) {
+async function getOpenAI(apiKey: string, baseUrl: string) {
   const { default: OpenAI } = await import("openai");
-  // Node 18+ 原生支持 http_proxy 环境变量，或通过 httpAgent 传代理
-  // 这里简单传 fetch 选项；如需代理可扩展
-  return new OpenAI({ apiKey, baseUrl });
+  return new OpenAI({ apiKey, baseURL: baseUrl, timeout: LLM_TIMEOUT_MS, maxRetries: 1 });
 }
 
 // ── 工具函数 ───────────────────────────────────────────────────────────────────
@@ -285,14 +304,26 @@ async function selectResources(
   }
   parts.push(`\n${catalog.text}`);
 
-  const resp = await client.chat.completions.create({
-    model: LLM_MODEL,
-    messages: [
-      { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
-      { role: "user",   content: parts.join("\n") },
-    ],
-    temperature: 0,
-  });
+  let resp: any;
+  try {
+    resp = await client.chat.completions.create({
+      model: LLM_MODEL,
+      messages: [
+        { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
+        { role: "user",   content: parts.join("\n") },
+      ],
+      temperature: 0,
+    });
+  } catch (e: any) {
+    console.error(
+      `[selectResources] LLM 调用失败`,
+      `type=${e?.constructor?.name}`,
+      `status=${e?.status ?? "-"}`,
+      `cause=${e?.cause?.code ?? e?.cause?.message ?? "-"}`,
+      `msg=${e?.message}`,
+    );
+    throw e;
+  }
 
   let raw = resp.choices[0].message.content?.trim() ?? "{}";
   if (raw.includes("```")) {
@@ -328,27 +359,42 @@ async function generateImage(
   await imgSem.acquire();
   try {
     console.log(`    [生图] 提交: ${path.basename(outputPath)}（参考图 ${refPaths.length} 张）`);
-    const ai = await getGenAI();
     let lastErr: unknown;
 
     for (let attempt = 1; attempt <= IMAGE_MAX_RETRIES; attempt++) {
       try {
-        let imageBytes: Uint8Array;
+        let resp: Response;
         if (refPaths.length > 0) {
-          const referenceImages = await Promise.all(refPaths.map(async (p, i) => ({
-            referenceId: i + 1,
-            referenceImage: { imageBytes: Buffer.from(await fs.readFile(p)).toString("base64") },
-          })));
-          const resp = await (ai.models as any).editImage({
-            model: IMAGE_MODEL, prompt, referenceImages,
+          const form = new FormData();
+          form.append("model", IMAGE_MODEL);
+          form.append("prompt", prompt);
+          form.append("n", "1");
+          for (const p of refPaths) {
+            const blob = new Blob([await fs.readFile(p)], { type: "image/png" });
+            form.append("image[]", blob, path.basename(p));
+          }
+          resp = await fetch(`${IMAGE_BASE_URL}/images/edits`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${IMAGE_API_KEY}` },
+            body: form,
           });
-          imageBytes = resp.generatedImages[0].image.imageBytes;
         } else {
-          const resp = await (ai.models as any).generateImages({ model: IMAGE_MODEL, prompt });
-          imageBytes = resp.generatedImages[0].image.imageBytes;
+          resp = await fetch(`${IMAGE_BASE_URL}/images/generations`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${IMAGE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1 }),
+          });
         }
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+        }
+        const result: any = await resp.json();
+        const b64 = result?.data?.[0]?.b64_json;
+        if (!b64) throw new Error(`未收到图片数据: ${JSON.stringify(result).slice(0, 200)}`);
+
         await fs.mkdir(path.dirname(outputPath), { recursive: true });
-        await fs.writeFile(outputPath, imageBytes);
+        await fs.writeFile(outputPath, Buffer.from(b64, "base64"));
         console.log(`    [生图] 已保存: ${path.basename(outputPath)}`);
         return;
       } catch (e) {
@@ -378,7 +424,7 @@ async function tryGenerateVideo(
   const op = await (ai.models as any).generateVideos({
     model,
     prompt,
-    image: { imageBytes: imgBase64 },
+    image: { imageBytes: imgBase64, mimeType: "image/png" },
     config: { aspectRatio: "16:9", resolution: "1080p", durationSeconds: duration },
   });
 
@@ -386,7 +432,7 @@ async function tryGenerateVideo(
   let current = op;
   while (!current.done) {
     await sleep(15000);
-    current = await (ai.operations as any).get(current);
+    current = await (ai.operations as any).getVideosOperation({ operation: current });
   }
   if (current.error) throw new Error(`API 错误: ${JSON.stringify(current.error)}`);
 
@@ -399,7 +445,7 @@ async function tryGenerateVideo(
   let videoBytes: Buffer;
   const v = videos[0].video;
   if (v.videoBytes) {
-    videoBytes = Buffer.from(v.videoBytes);
+    videoBytes = Buffer.from(v.videoBytes, "base64");
   } else if (v.uri) {
     const r = await fetch(v.uri);
     videoBytes = Buffer.from(await r.arrayBuffer());
@@ -491,6 +537,7 @@ async function processGroup(
   group: any,
   prevPanelContext: any | null,
   videoEvents: Map<string, { resolve: () => void; promise: Promise<void> }>,
+  prevGroupLastPanelKey: string | null,
 ): Promise<{ groupVideo: string | null; lastPanelContext: any | null }> {
   const panels   = group.panels ?? [];
   const fullText = group.text ?? "";
@@ -573,9 +620,7 @@ async function processGroup(
         if (pi > 0) {
           prevKey = `${groupIdx},${pi - 1}`;
         } else if (groupIdx > 0) {
-          // 跨 group：找上一 group 最后一个 panel
-          const prevGroupPanelCount = panels.length; // 近似，实际在 main 传入
-          prevKey = null; // 由 main 层传入的 prevPanelKey 处理（见下方）
+          prevKey = prevGroupLastPanelKey;
         }
 
         if (prevKey && videoEvents.has(prevKey)) {
@@ -693,9 +738,9 @@ const TTS_TOOL_DEF = {
 
 async function ttsPhase1Annotate(fullText: string): Promise<any[]> {
   console.log("[TTS Phase 1] LLM 标注文本片段...");
-  const client = await getOpenAI(MIMO_API_KEY, MIMO_BASE_URL);
+  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
   const resp = await client.chat.completions.create({
-    model: MIMO_CHAT_MODEL,
+    model: LLM_MODEL,
     messages: [
       { role: "system", content: TTS_ANNOTATE_SYSTEM },
       { role: "user",   content: fullText },
@@ -712,7 +757,7 @@ async function ttsPhase1Annotate(fullText: string): Promise<any[]> {
 
 async function ttsPhase2AssignVoices(segments: any[], voiceMap: Record<string, string>): Promise<Record<string, string>> {
   console.log("[TTS Phase 2] LLM 分配声音...");
-  const client = await getOpenAI(MIMO_API_KEY, MIMO_BASE_URL);
+  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
 
   // 过滤掉旁白（由 config 固定，不交给 LLM 选择）
   const chars: Record<string, string> = {};
@@ -729,7 +774,7 @@ async function ttsPhase2AssignVoices(segments: any[], voiceMap: Record<string, s
   ].join("\n\n");
 
   const resp = await client.chat.completions.create({
-    model: MIMO_CHAT_MODEL,
+    model: LLM_MODEL,
     messages: [
       { role: "system", content: TTS_ASSIGN_SYSTEM },
       { role: "user",   content: userContent },
@@ -759,13 +804,10 @@ async function ttsExecApi(text: string, voice: string, stylePrompt: string, outp
     stream: false,
   };
 
-  const proxyAgent = MIMO_PROXY ? { dispatcher: undefined as any } : undefined;
-
   const resp = await fetch(`${MIMO_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: { "api-key": MIMO_API_KEY, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-    // Node 18 内置 fetch 不支持 proxy，若需要代理请配置 HTTPS_PROXY 环境变量
   });
 
   const data = await resp.json() as any;
@@ -779,7 +821,7 @@ async function ttsPhase3GenerateAll(segments: any[], voiceMap: Record<string, st
   await fs.mkdir(tmpDir, { recursive: true });
 
   const ttsSem = new Semaphore(TTS_CONCURRENCY);
-  const client = await getOpenAI(MIMO_API_KEY, MIMO_BASE_URL);
+  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
 
   const tasks = segments.map(async (seg: any, i: number): Promise<string> => {
     const voice      = voiceMap[seg.speaker] ?? MIMO_NARRATOR;
@@ -790,7 +832,7 @@ async function ttsPhase3GenerateAll(segments: any[], voiceMap: Record<string, st
       console.log(`  [TTS seg ${String(i).padStart(2, "0")}] [${seg.speaker}→${voice}] ${seg.text.slice(0, 35)}...`);
 
       const resp = await client.chat.completions.create({
-        model: MIMO_CHAT_MODEL,
+        model: LLM_MODEL,
         messages: [
           { role: "system", content: TTS_AGENT_SYSTEM },
           { role: "user",   content: `文本：${seg.text}\n声音：${voice}\n风格描述：${seg.style}` },
@@ -880,9 +922,7 @@ export async function renderScene(
   const outputDir    = novelPaths.renderDir(sel.novelName, ep, sceneName);
   const finalVideo   = novelPaths.sceneFinalVideo(sel.novelName, ep, sceneName);
   const voiceMapPath = novelPaths.voiceMap(sel.novelName);
-  const workspaceDir = path.join(
-    path.dirname(path.dirname(jsonlPath)), // workspace/{novelName}
-  );
+  const workspaceDir = novelPaths.workspaceDir(sel.novelName);
 
   await fs.mkdir(outputDir, { recursive: true });
 
@@ -908,9 +948,12 @@ export async function renderScene(
     let prevPanelCtx: any | null = null;
 
     for (let i = 0; i < groups.length; i++) {
+      const prevGroupLastPanelKey = i > 0
+        ? `${i - 1},${(groups[i - 1].panels ?? []).length - 1}`
+        : null;
       const { groupVideo, lastPanelContext } = await processGroup(
         imgSem, vidSem, outputDir, catalog,
-        i, groups[i], prevPanelCtx, videoEvents,
+        i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey,
       );
       if (groupVideo) groupVideos.push(groupVideo);
       prevPanelCtx = lastPanelContext;
@@ -928,7 +971,19 @@ export async function renderScene(
   const ttsTask = runTtsPipeline(rawContent, outputDir, voiceMapPath, sceneName);
 
   // ── 等待两个管线都完成 ──
-  const [videoOnlyPath, ttsPath] = await Promise.all([videoTask, ttsTask]);
+  const [videoResult, ttsResult] = await Promise.allSettled([videoTask, ttsTask]);
+
+  if (videoResult.status === "rejected") {
+    console.error(`[${sceneName}] 视频管线失败: ${videoResult.reason}`);
+    throw videoResult.reason;
+  }
+  if (ttsResult.status === "rejected") {
+    console.error(`[${sceneName}] TTS 管线失败: ${ttsResult.reason}`);
+    throw ttsResult.reason;
+  }
+
+  const videoOnlyPath = videoResult.value;
+  const ttsPath       = ttsResult.value;
 
   // ── 合并：以 TTS 音频时长为准 ──
   await mergeVideoAudio(videoOnlyPath, ttsPath, finalVideo);

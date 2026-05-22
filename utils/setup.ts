@@ -132,7 +132,7 @@ export async function ensureSetup(): Promise<boolean> {
           "bytedance/doubao-seedance-1.5-pro",
           "google/veo-3.1-generate-001",
         ],
-        default_duration: 5,
+        default_duration: 4,
         concurrency: 4,
       };
       await fs.writeFile(VIDEO_CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", "utf-8");
@@ -148,14 +148,12 @@ export async function ensureSetup(): Promise<boolean> {
       if (!apiKey) { console.log("  api_key 不能为空，中止。"); return false; }
 
       const baseUrl = await ask(rl, "  base_url (直接回车使用默认 https://token-plan-cn.xiaomimimo.com/v1): ");
-      const proxy   = await ask(rl, "  proxy (如 http://127.0.0.1:7890，不需要直接回车): ");
 
       const config = {
         api_key: apiKey,
         base_url: baseUrl || "https://token-plan-cn.xiaomimimo.com/v1",
         chat_model: "mimo-v2.5-pro",
         tts_model: "mimo-v2.5-tts",
-        ...(proxy ? { proxy } : {}),
         voices: { "冰糖": "女", "茉莉": "女", "苏打": "男", "白桦": "男" },
         narrator_voice: "白桦",
         concurrency: 4,

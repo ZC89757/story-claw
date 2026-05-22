@@ -121,9 +121,17 @@ export const novelPaths = {
   visualPreset: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "画面预设.txt"),
 
-  /** 分镜 JSONL：workspace/{名}/ep{XX}/storyboard_{场景名}.jsonl */
+  /** 分镜 JSONL 目录：workspace/{名}/ep{XX}/storyboards/ */
+  storyboardsDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "storyboards"),
+
+  /** 分镜 JSONL：workspace/{名}/ep{XX}/storyboards/storyboard_{场景名}.jsonl */
   storyboardJsonl: (novelName: string, episodeNum: number, sceneName: string) =>
-    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `storyboard_${sceneName}.jsonl`),
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "storyboards", `storyboard_${sceneName}.jsonl`),
+
+  /** 集最终视频：workspace/{名}/ep{XX}/ep{XX}.mp4 */
+  episodeVideo: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `ep${String(episodeNum).padStart(2, "0")}.mp4`),
 
   /** 渲染输出目录：workspace/{名}/ep{XX}/render_{场景名}/ */
   renderDir: (novelName: string, episodeNum: number, sceneName: string) =>
