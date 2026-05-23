@@ -263,13 +263,15 @@ const RESOURCE_SELECTOR_SYSTEM = `你是分镜资源选择专员。根据 panel 
    - 特写 / 近景：优先选角色图（面部细节重要），场景图可省略
    - 中景：角色图 + 场景图
    - 全景 / 远景：场景图为主，角色图可选
-3. 角色造型图优先于原型图（如有与当前剧情匹配的造型阶段）
-4. 改写 image_prompt：将原提示词中对人物外貌的文字描述替换为 "the person in image N"，
+3. 「完整场景上下文」字段提供了本场景的全部原文，用于判断人物当前处于剧情的哪个阶段（如入学、受伤、变装等），
+   「当前原文」字段是本 panel 对应的那句话。根据完整上下文选择与当前剧情阶段匹配的角色造型图
+4. 角色造型图优先于原型图（如有与当前剧情匹配的造型阶段）
+5. 改写 image_prompt：将原提示词中对人物外貌的文字描述替换为 "the person in image N"，
    对场景/背景的文字描述替换为 "the background in image N"（N 从 1 开始，与 reference_images 顺序一致）
    保留所有动作、姿态、情绪、景别、光影等描述
-5. 若无合适资源，reference_images 输出空数组，image_prompt 保持原文不变
-6. 只做微调补充，不大幅改写原有 image_prompt 的内容和结构
-7. 若有上一 panel 上下文：根据其信息，确保空间布局、人物位置、动作方向自然衔接
+6. 若无合适资源，reference_images 输出空数组，image_prompt 保持原文不变
+7. 只做微调补充，不大幅改写原有 image_prompt 的内容和结构
+8. 若有上一 panel 上下文：根据其信息，确保空间布局、人物位置、动作方向自然衔接
 
 reference_images 中每项必须包含资源目录里"路径:"后面的完整路径字符串（不得修改）和 role 字段。
 
@@ -290,8 +292,9 @@ interface SelectResult {
 async function selectResources(
   panel: any,
   catalog: ResourceCatalog,
-  text: string,
+  currentText: string,
   prevContext: any | null,
+  fullSceneText: string,
 ): Promise<SelectResult> {
   const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
   const parts = [
@@ -299,7 +302,8 @@ async function selectResources(
     `shot_type: ${panel.shot_type ?? ""}`,
     `image_prompt: ${panel.image_prompt ?? ""}`,
   ];
-  if (text) parts.push(`\n原文: ${text}`);
+  if (currentText) parts.push(`当前原文: ${currentText}`);
+  if (fullSceneText) parts.push(`\n== 完整场景上下文 ==\n${fullSceneText}`);
   if (prevContext) {
     parts.push("\n== 上一 panel 上下文 ==");
     parts.push(`shot_type: ${prevContext.shot_type ?? ""}`);
@@ -568,9 +572,10 @@ async function processGroup(
   prevPanelContext: any | null,
   videoEvents: Map<string, { resolve: () => void; promise: Promise<void> }>,
   prevGroupLastPanelKey: string | null,
+  fullSceneText: string,
 ): Promise<{ groupVideo: string | null; lastPanelContext: any | null }> {
-  const panels   = group.panels ?? [];
-  const fullText = group.text ?? "";
+  const panels      = group.panels ?? [];
+  const currentText = group.text ?? "";
   const vidPath  = path.join(outputDir, `g${String(groupIdx).padStart(2, "0")}.mp4`);
 
   console.log(`\n[group ${String(groupIdx).padStart(2, "0")}] ${panels.length} 个 panel，顺序处理...`);
@@ -594,7 +599,7 @@ async function processGroup(
       imgPaths.push(imgPath);
     } else {
       console.log(`  [${prefix}] 资源选择...`);
-      const { refPaths, imagePrompt } = await selectResources(panel, catalog, fullText, prevCtx);
+      const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, prevCtx, fullSceneText);
       console.log(`  [${prefix}] 参考图: ${refPaths.map((p) => path.basename(p))}`);
       await generateImage(imgSem, imagePrompt, refPaths, imgPath);
       imgPaths.push(imgPath);
@@ -965,8 +970,9 @@ export async function renderScene(
   await fs.mkdir(outputDir, { recursive: true });
 
   // 读取 JSONL
-  const rawContent = await fs.readFile(jsonlPath, "utf-8");
-  const groups     = parseJsonl(rawContent);
+  const rawContent    = await fs.readFile(jsonlPath, "utf-8");
+  const groups        = parseJsonl(rawContent);
+  const fullSceneText = groups.map((g: any) => g.text ?? "").filter(Boolean).join("\n");
   console.log(`\n场景: ${sceneName}，共 ${groups.length} 个 group`);
   console.log(`输出目录: ${outputDir}`);
 
@@ -991,7 +997,7 @@ export async function renderScene(
         : null;
       const { groupVideo, lastPanelContext } = await processGroup(
         imgSem, vidSem, outputDir, catalog,
-        i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey,
+        i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey, fullSceneText,
       );
       if (groupVideo) groupVideos.push(groupVideo);
       prevPanelCtx = lastPanelContext;
