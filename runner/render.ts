@@ -84,6 +84,17 @@ const VIDEO_RETRY_SLEEP      = 5000; // ms
 const VIDEO_MODEL_DURATIONS: Record<string, number[]> = {
   "google/veo-3.1-lite-generate-001": [4, 6, 8],
 };
+const VIDEO_FALLBACK_MODEL      = "alibaba/happyhorse-1.0";
+const MAX_REPHRASE_PRIMARY      = 5;  // 超过此次数切换备用模型
+const MAX_REPHRASE_FALLBACK     = 3;  // 备用模型再超过此次数抛 FatalRenderError
+
+/** 内容违规无法解决时抛出，会终止整个工作流 */
+export class FatalRenderError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = "FatalRenderError";
+  }
+}
 // LLM（资源选择）
 const LLM_API_KEY    = llmCfg.api_key as string;
 const LLM_BASE_URL   = (llmCfg.base_url  ?? "https://zenmux.ai/api/v1") as string;
@@ -476,27 +487,44 @@ async function generateVideo(
 ): Promise<void> {
   await vidSem.acquire();
   try {
-    const model   = VIDEO_MODELS[0];
-    const clamped = clampDuration(model, duration);
-    const imgBase64 = (await fs.readFile(imagePath)).toString("base64");
+    let currentModel  = VIDEO_MODELS[0];
+    let clamped       = clampDuration(currentModel, duration);
+    const imgBase64   = (await fs.readFile(imagePath)).toString("base64");
     if (clamped !== duration)
-      console.log(`    [视频] ${model} 不支持 ${duration}s，调整为 ${clamped}s`);
-    console.log(`    [视频] 提交: ${path.basename(outputPath)}（${clamped}s, ${model}）`);
+      console.log(`    [视频] ${currentModel} 不支持 ${duration}s，调整为 ${clamped}s`);
+    console.log(`    [视频] 提交: ${path.basename(outputPath)}（${clamped}s, ${currentModel}）`);
 
     // 内容违规改写状态（懒创建）
     let currentPrompt = prompt;
     let llmClient: Awaited<ReturnType<typeof getOpenAI>> | null = null;
     let rephraseHistory: { role: string; content: string }[] = [];
+    let rephraseCount = 0;   // 内容违规微调总次数（跨模型累计）
     let regularErrors = 0;
 
     while (true) {
       try {
-        await tryGenerateVideo(model, imgBase64, currentPrompt, outputPath, clamped);
+        await tryGenerateVideo(currentModel, imgBase64, currentPrompt, outputPath, clamped);
         return; // 成功
 
       } catch (e) {
         if (isContentPolicyError(e)) {
-          // 内容违规：LLM 微调 prompt，无限重试
+          rephraseCount++;
+
+          // 超过主模型限额 → 切备用模型（只切一次）
+          if (rephraseCount === MAX_REPHRASE_PRIMARY + 1) {
+            currentModel = VIDEO_FALLBACK_MODEL;
+            clamped      = clampDuration(currentModel, duration);
+            console.log(`    [视频] 主模型微调 ${MAX_REPHRASE_PRIMARY} 次仍违规，切换备用模型: ${currentModel}`);
+          }
+
+          // 超过总限额（主 + 备用）→ 抛 FatalRenderError
+          if (rephraseCount > MAX_REPHRASE_PRIMARY + MAX_REPHRASE_FALLBACK) {
+            throw new FatalRenderError(
+              `视频内容违规无法解决（共微调 ${rephraseCount - 1} 次）: ${path.basename(outputPath)}`,
+            );
+          }
+
+          // LLM 微调 prompt
           if (!llmClient) llmClient = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
 
           if (rephraseHistory.length === 0) {
@@ -520,8 +548,8 @@ async function generateVideo(
           const rephrased = resp.choices[0].message.content?.trim() ?? currentPrompt;
           rephraseHistory.push({ role: "assistant", content: rephrased });
 
-          const rephraseCount = rephraseHistory.filter((m) => m.role === "assistant").length;
-          console.log(`    [视频] 内容违规，第 ${rephraseCount} 次微调: ${rephrased.slice(0, 80)}...`);
+          const modelTag = currentModel === VIDEO_FALLBACK_MODEL ? `[备用] ` : "";
+          console.log(`    [视频] ${modelTag}内容违规，第 ${rephraseCount} 次微调: ${rephrased.slice(0, 80)}...`);
           currentPrompt = rephrased;
 
         } else {
@@ -686,6 +714,7 @@ async function processGroup(
       await generateVideo(vidSem, actualImg, videoPrompts[pi], panelVidPath, duration);
       return fsSync.existsSync(panelVidPath) ? panelVidPath : null;
     } catch (e) {
+      if (e instanceof FatalRenderError) throw e;
       console.log(`    [视频] ${prefix} 失败: ${e}`);
       return null;
     } finally {
