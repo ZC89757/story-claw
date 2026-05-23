@@ -92,7 +92,8 @@ const REAL_PERSON_KEYWORDS = [
 const LLM_API_KEY    = llmCfg.api_key as string;
 const LLM_BASE_URL   = (llmCfg.base_url  ?? "https://zenmux.ai/api/v1") as string;
 const LLM_MODEL      = (llmCfg.model     ?? "anthropic/claude-sonnet-4.6") as string;
-const LLM_TIMEOUT_MS = (llmCfg.timeout_ms ?? 300_000) as number;
+const LLM_TIMEOUT_MS  = (llmCfg.timeout_ms  ?? 300_000) as number;
+const LLM_MAX_TOKENS  = (llmCfg.max_tokens  ?? 128_000) as number;
 
 // TTS（MiMo）
 const MIMO_API_KEY    = ttsCfg.api_key as string;
@@ -308,6 +309,7 @@ async function selectResources(
   try {
     resp = await client.chat.completions.create({
       model: LLM_MODEL,
+      max_tokens: LLM_MAX_TOKENS,
       messages: [
         { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
         { role: "user",   content: parts.join("\n") },
@@ -741,6 +743,7 @@ async function ttsPhase1Annotate(fullText: string): Promise<any[]> {
   const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
   const resp = await client.chat.completions.create({
     model: LLM_MODEL,
+    max_tokens: LLM_MAX_TOKENS,
     messages: [
       { role: "system", content: TTS_ANNOTATE_SYSTEM },
       { role: "user",   content: fullText },
@@ -775,6 +778,7 @@ async function ttsPhase2AssignVoices(segments: any[], voiceMap: Record<string, s
 
   const resp = await client.chat.completions.create({
     model: LLM_MODEL,
+    max_tokens: LLM_MAX_TOKENS,
     messages: [
       { role: "system", content: TTS_ASSIGN_SYSTEM },
       { role: "user",   content: userContent },
@@ -833,6 +837,7 @@ async function ttsPhase3GenerateAll(segments: any[], voiceMap: Record<string, st
 
       const resp = await client.chat.completions.create({
         model: LLM_MODEL,
+        max_tokens: LLM_MAX_TOKENS,
         messages: [
           { role: "system", content: TTS_AGENT_SYSTEM },
           { role: "user",   content: `文本：${seg.text}\n声音：${voice}\n风格描述：${seg.style}` },
@@ -912,15 +917,20 @@ export interface RenderProgress {
   total: number;
 }
 
+export interface SceneRenderResult {
+  sceneName: string;
+  videoOnly: string;  // _video_only.mp4
+  ttsAudio:  string;  // _tts_{sceneName}.mp3
+}
+
 export async function renderScene(
   sel: NovelSelection,
   sceneName: string,
   onProgress?: (p: RenderProgress) => void,
-): Promise<string> {
+): Promise<SceneRenderResult> {
   const ep           = sel.episode;
   const jsonlPath    = novelPaths.storyboardJsonl(sel.novelName, ep, sceneName);
   const outputDir    = novelPaths.renderDir(sel.novelName, ep, sceneName);
-  const finalVideo   = novelPaths.sceneFinalVideo(sel.novelName, ep, sceneName);
   const voiceMapPath = novelPaths.voiceMap(sel.novelName);
   const workspaceDir = novelPaths.workspaceDir(sel.novelName);
 
@@ -985,11 +995,206 @@ export async function renderScene(
   const videoOnlyPath = videoResult.value;
   const ttsPath       = ttsResult.value;
 
-  // ── 合并：以 TTS 音频时长为准 ──
-  await mergeVideoAudio(videoOnlyPath, ttsPath, finalVideo);
-  console.log(`\n[完成] 场景最终视频: ${finalVideo}`);
+  console.log(`\n[场景完成] ${sceneName}  视频: ${path.basename(videoOnlyPath)}  音频: ${path.basename(ttsPath)}`);
 
-  return finalVideo;
+  return { sceneName, videoOnly: videoOnlyPath, ttsAudio: ttsPath };
+}
+
+// ── 全局音视频对齐合并 ────────────────────────────────────────────────────────
+
+const GLOBAL_VIDEO_SPEED_MIN = 0.5;
+const GLOBAL_VIDEO_SPEED_MAX = 2.0;
+const GLOBAL_AUDIO_SPEED_MIN = 0.7;
+const GLOBAL_AUDIO_SPEED_MAX = 1.6;
+const GLOBAL_AUDIO_WEIGHT    = 0.7;  // 音频承担 70% 的调整量
+
+/**
+ * 计算全局目标时长 T，使视频和音频相向调整后时长对齐。
+ *
+ * 加权几何均值：T = V^(1-w) × A^w   （w = GLOBAL_AUDIO_WEIGHT）
+ * 音频权重越大，T 越偏向 V，音频被迫调整越多。
+ *
+ * 妥协策略（无截断）：
+ *   1. 计算可行区间 [T_min, T_max]（同时满足视频和音频速度约束）
+ *   2. 若 T_ideal 在区间内 → 直接用
+ *      若 T_ideal 超出区间但区间存在 → 取最近边界
+ *      若区间不存在（两个约束冲突）→ 加权折中两个边界，音频权重更大
+ */
+function computeAlignTarget(totalVideo: number, totalAudio: number): {
+  T: number; videoSpeed: number; audioSpeed: number; note: string;
+} {
+  const V = totalVideo;
+  const A = totalAudio;
+  const w = GLOBAL_AUDIO_WEIGHT;
+
+  // 加权几何均值（T 偏向 V，音频调整更多）
+  const T_ideal = Math.pow(V, 1 - w) * Math.pow(A, w);
+
+  // 可行区间
+  const T_min = Math.max(V / GLOBAL_VIDEO_SPEED_MAX, A / GLOBAL_AUDIO_SPEED_MAX);
+  const T_max = Math.min(V / GLOBAL_VIDEO_SPEED_MIN, A / GLOBAL_AUDIO_SPEED_MIN);
+
+  let T: number;
+  let note: string;
+
+  if (T_min <= T_max) {
+    // 区间存在 → 夹到可行范围
+    T    = Math.min(Math.max(T_ideal, T_min), T_max);
+    note = T === T_ideal
+      ? "理想值可行"
+      : `理想值 ${T_ideal.toFixed(1)}s 超出范围，夹到 [${T_min.toFixed(1)}, ${T_max.toFixed(1)}]`;
+  } else {
+    // 区间不存在（差距过大）→ 加权折中两个边界
+    const T_a_edge = A / GLOBAL_AUDIO_SPEED_MAX;  // 音频贴着上限
+    const T_v_edge = V / GLOBAL_VIDEO_SPEED_MIN;   // 视频贴着下限
+    T    = w * T_a_edge + (1 - w) * T_v_edge;
+    note = `约束冲突，加权折中 T_a_edge=${T_a_edge.toFixed(1)}s T_v_edge=${T_v_edge.toFixed(1)}s → ${T.toFixed(1)}s`;
+  }
+
+  const videoSpeed = V / T;
+  const audioSpeed = A / T;
+
+  return { T, videoSpeed, audioSpeed, note };
+}
+
+/**
+ * 全局对齐：收集所有场景的视频和音频，统一调整速度后拼接为集视频。
+ *
+ * 步骤：
+ *   1. 量取每个场景的视频/音频时长
+ *   2. 用 computeAlignTarget 计算全局目标速度
+ *   3. 对每个场景：用 ffmpeg 调整视频 setpts 和音频 atempo，输出临时文件
+ *   4. ffmpeg concat 所有调整后的视频 → 合成视频
+ *   5. ffmpeg concat 所有调整后的音频 → 合成音频
+ *   6. ffmpeg mux 合成视频 + 合成音频 → 集最终 mp4
+ */
+export async function globalAlignAndMerge(
+  results: SceneRenderResult[],
+  orderedScenes: string[],
+  episodeVideoPath: string,
+  epDir: string,
+): Promise<void> {
+  if (results.length === 0) {
+    console.log("[全局对齐] 无场景，跳过");
+    return;
+  }
+
+  // 按 orderedScenes 排序，过滤掉缺失文件的场景
+  const ordered = orderedScenes
+    .map((name) => results.find((r) => r.sceneName === name))
+    .filter((r): r is SceneRenderResult =>
+      r !== undefined &&
+      fsSync.existsSync(r.videoOnly) &&
+      fsSync.existsSync(r.ttsAudio),
+    );
+
+  if (ordered.length === 0) {
+    console.log("[全局对齐] 无有效场景文件，跳过");
+    return;
+  }
+
+  // ── 量取时长 ──
+  console.log("\n[全局对齐] 量取各场景时长...");
+  const durations = await Promise.all(
+    ordered.map(async (r) => ({
+      sceneName: r.sceneName,
+      video: await getMediaDuration(r.videoOnly),
+      audio: await getMediaDuration(r.ttsAudio),
+    })),
+  );
+
+  const totalVideo = durations.reduce((s, d) => s + d.video, 0);
+  const totalAudio = durations.reduce((s, d) => s + d.audio, 0);
+
+  console.log(`[全局对齐] 视频总时长: ${totalVideo.toFixed(1)}s`);
+  console.log(`[全局对齐] 音频总时长: ${totalAudio.toFixed(1)}s`);
+  for (const d of durations) {
+    console.log(`  ${d.sceneName}: 视频 ${d.video.toFixed(1)}s  音频 ${d.audio.toFixed(1)}s`);
+  }
+
+  // ── 计算目标速度 ──
+  const { T, videoSpeed, audioSpeed, note } = computeAlignTarget(totalVideo, totalAudio);
+  console.log(`[全局对齐] 目标时长: ${T.toFixed(1)}s  视频速度: ×${videoSpeed.toFixed(3)}  音频速度: ×${audioSpeed.toFixed(3)}`);
+  console.log(`[全局对齐] ${note}`);
+
+  const tmpDir = path.join(epDir, "_align_tmp");
+  await fs.mkdir(tmpDir, { recursive: true });
+
+  // ── 调整每个场景的视频和音频 ──
+  const adjustedVideos: string[] = [];
+  const adjustedAudios: string[] = [];
+
+  await Promise.all(ordered.map(async (r, i) => {
+    const idx    = String(i).padStart(2, "0");
+    const adjVid = path.join(tmpDir, `v${idx}_${r.sceneName}.mp4`);
+    const adjAud = path.join(tmpDir, `a${idx}_${r.sceneName}.mp3`);
+
+    // 视频调速：setpts=(1/speed)*PTS
+    const ptsExpr = `${(1 / videoSpeed).toFixed(6)}*PTS`;
+    await execFileAsync("ffmpeg", [
+      "-y", "-i", r.videoOnly,
+      "-filter:v", `setpts=${ptsExpr}`,
+      "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+      "-an",
+      adjVid,
+    ]);
+
+    // 音频调速：atempo（范围 0.5~2.0，本方案约束在 0.7~1.6 内，单个滤镜够用）
+    await execFileAsync("ffmpeg", [
+      "-y", "-i", r.ttsAudio,
+      "-filter:a", `atempo=${audioSpeed.toFixed(6)}`,
+      "-c:a", "libmp3lame", "-q:a", "2",
+      adjAud,
+    ]);
+
+    adjustedVideos[i] = adjVid;
+    adjustedAudios[i] = adjAud;
+    console.log(`  [对齐] ${r.sceneName} 完成`);
+  }));
+
+  // ── concat 所有调整后的视频 ──
+  const mergedVideo = path.join(tmpDir, "_merged_video.mp4");
+  const mergedAudio = path.join(tmpDir, "_merged_audio.mp3");
+
+  const vidListPath = path.join(tmpDir, "_vid_list.txt");
+  const audListPath = path.join(tmpDir, "_aud_list.txt");
+
+  await fs.writeFile(vidListPath, adjustedVideos.map((p) => `file '${p.replace(/\\/g, "/")}'`).join("\n"), "utf-8");
+  await fs.writeFile(audListPath, adjustedAudios.map((p) => `file '${p.replace(/\\/g, "/")}'`).join("\n"), "utf-8");
+
+  console.log("[全局对齐] 拼接视频...");
+  await execFileAsync("ffmpeg", [
+    "-y", "-f", "concat", "-safe", "0",
+    "-i", vidListPath,
+    "-c:v", "copy",
+    mergedVideo,
+  ]);
+
+  console.log("[全局对齐] 拼接音频...");
+  await execFileAsync("ffmpeg", [
+    "-y", "-f", "concat", "-safe", "0",
+    "-i", audListPath,
+    "-c:a", "libmp3lame", "-q:a", "2",
+    mergedAudio,
+  ]);
+
+  // ── mux 合并 ──
+  console.log("[全局对齐] mux 合并视频+音频...");
+  await execFileAsync("ffmpeg", [
+    "-y",
+    "-i", mergedVideo,
+    "-i", mergedAudio,
+    "-map", "0:v", "-map", "1:a",
+    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+    "-shortest",
+    episodeVideoPath,
+  ]);
+
+  // 清理临时目录
+  await fs.rm(tmpDir, { recursive: true, force: true });
+
+  console.log(`[全局对齐] 完成 → ${path.basename(episodeVideoPath)}`);
+  console.log(`  视频总: ${totalVideo.toFixed(1)}s → 目标: ${T.toFixed(1)}s  视频×${videoSpeed.toFixed(3)} 音频×${audioSpeed.toFixed(3)}`);
 }
 
 // ── JSONL 解析（带容错）──────────────────────────────────────────────────────

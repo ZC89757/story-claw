@@ -516,7 +516,7 @@ export async function storyboard(
 
 // ── Render：分镜渲染 ──────────────────────────────────────────────
 export { renderScene } from "./render.js";
-export type { RenderProgress } from "./render.js";
+export type { RenderProgress, SceneRenderResult } from "./render.js";
 
 // ── 获取资源文件列表（供 custom 模式展示）─────────────────────────
 

@@ -3,16 +3,12 @@
  */
 
 import fs from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { visualPreset, archive, segment, storyboard, renderScene } from "./pipeline.js";
-import type { RenderProgress } from "./pipeline.js";
-import { initRenderLog } from "./render.js";
+import type { RenderProgress, SceneRenderResult } from "./pipeline.js";
+import { initRenderLog, globalAlignAndMerge } from "./render.js";
 import { novelPaths } from "../utils/paths.js";
-
-const execFileAsync = promisify(execFile);
 
 export async function runSolo(sel: NovelSelection) {
   const title = `${sel.novelName} 第${sel.episode}集`;
@@ -63,7 +59,7 @@ export async function runSolo(sel: NovelSelection) {
       );
     };
 
-    await Promise.all(
+    const sceneResults: SceneRenderResult[] = await Promise.all(
       jsonlFiles.map((sceneName) =>
         renderScene(sel, sceneName, (rp) => {
           renderProgress[sceneName] = rp;
@@ -73,30 +69,13 @@ export async function runSolo(sel: NovelSelection) {
     );
     p.done(4, title, `${jsonlFiles.length} 个场景`);
 
-    // ── 合并集视频（按 archiveResult.sceneNames 顺序拼接 final.mp4）──
-    if (jsonlFiles.length > 0 && archiveResult.sceneNames.length > 0) {
+    // ── 全局对齐合并（音视频相向调速后拼为集视频）──
+    if (sceneResults.length > 0) {
       const episodeVideoPath = novelPaths.episodeVideo(sel.novelName, sel.episode);
       const epDir = novelPaths.episodeDir(sel.novelName, sel.episode);
-      const concatListPath = `${epDir}/concat_list.txt`;
-
-      // 按 archiveResult.sceneNames 排序，只包含已渲染的场景
       const orderedScenes = archiveResult.sceneNames.filter((s) => jsonlFiles.includes(s));
-      const concatLines = orderedScenes
-        .map((s) => `file '${novelPaths.sceneFinalVideo(sel.novelName, sel.episode, s).replace(/\\/g, "/")}'`)
-        .join("\n");
 
-      await fs.writeFile(concatListPath, concatLines + "\n", "utf-8");
-
-      await execFileAsync("ffmpeg", [
-        "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", concatListPath,
-        "-c", "copy",
-        episodeVideoPath,
-      ]);
-
-      await fs.unlink(concatListPath).catch(() => {});
+      await globalAlignAndMerge(sceneResults, orderedScenes, episodeVideoPath, epDir);
     }
 
     // 更新改编进度
