@@ -84,10 +84,6 @@ const VIDEO_RETRY_SLEEP      = 5000; // ms
 const VIDEO_MODEL_DURATIONS: Record<string, number[]> = {
   "google/veo-3.1-lite-generate-001": [4, 6, 8],
 };
-const REAL_PERSON_KEYWORDS = [
-  "real person", "realPerson", "real_person", "human face", "face detection", "真人", "人脸",
-];
-
 // LLM（资源选择）
 const LLM_API_KEY    = llmCfg.api_key as string;
 const LLM_BASE_URL   = (llmCfg.base_url  ?? "https://zenmux.ai/api/v1") as string;
@@ -127,11 +123,6 @@ function clampDuration(model: string, duration: number): number {
   const supported = VIDEO_MODEL_DURATIONS[model];
   if (!supported) return duration;
   return supported.reduce((best, d) => Math.abs(d - duration) < Math.abs(best - duration) ? d : best);
-}
-
-function isRealPersonError(err: unknown): boolean {
-  const msg = String(err).toLowerCase();
-  return REAL_PERSON_KEYWORDS.some((k) => msg.includes(k.toLowerCase()));
 }
 
 function isContentPolicyError(err: unknown): boolean {
@@ -481,85 +472,66 @@ async function generateVideo(
 ): Promise<void> {
   await vidSem.acquire();
   try {
+    const model   = VIDEO_MODELS[0];
+    const clamped = clampDuration(model, duration);
     const imgBase64 = (await fs.readFile(imagePath)).toString("base64");
-    let mi = 0;
-    let lastErr: unknown;
+    if (clamped !== duration)
+      console.log(`    [视频] ${model} 不支持 ${duration}s，调整为 ${clamped}s`);
+    console.log(`    [视频] 提交: ${path.basename(outputPath)}（${clamped}s, ${model}）`);
 
-    // 内容违规改写状态（跨模型共享，懒创建）
-    let currentPrompt   = prompt;
+    // 内容违规改写状态（懒创建）
+    let currentPrompt = prompt;
     let llmClient: Awaited<ReturnType<typeof getOpenAI>> | null = null;
     let rephraseHistory: { role: string; content: string }[] = [];
+    let regularErrors = 0;
 
-    while (mi < VIDEO_MODELS.length) {
-      const model   = VIDEO_MODELS[mi];
-      const clamped = clampDuration(model, duration);
-      if (clamped !== duration)
-        console.log(`    [视频] ${model} 不支持 ${duration}s，调整为 ${clamped}s`);
-      console.log(`    [视频] 提交: ${path.basename(outputPath)}（${clamped}s, ${model}）`);
+    while (true) {
+      try {
+        await tryGenerateVideo(model, imgBase64, currentPrompt, outputPath, clamped);
+        return; // 成功
 
-      let fallthrough   = false;
-      let regularErrors = 0;
+      } catch (e) {
+        if (isContentPolicyError(e)) {
+          // 内容违规：LLM 微调 prompt，无限重试
+          if (!llmClient) llmClient = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
 
-      while (true) {
-        try {
-          await tryGenerateVideo(model, imgBase64, currentPrompt, outputPath, clamped);
-          return; // 成功
-        } catch (e) {
-          lastErr = e;
-
-          if (isRealPersonError(e)) {
-            console.log(`    [视频] 触发真人检查，切换到下一个模型`);
-            fallthrough = true;
-            break;
-
-          } else if (isContentPolicyError(e)) {
-            // 内容违规：懒创建 client，构建多轮对话，无限重试
-            if (!llmClient) llmClient = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
-
-            if (rephraseHistory.length === 0) {
-              rephraseHistory = [
-                { role: "system",    content: REPHRASE_SYSTEM },
-                { role: "user",      content: `原 prompt：\n${currentPrompt}\n\n拒绝原因：${String(e)}\n\n请微调：` },
-              ];
-            } else {
-              rephraseHistory.push({
-                role: "user",
-                content: `上次微调的 prompt 也被拒绝，原因：${String(e)}。请再换几个词试试：`,
-              });
-            }
-
-            const resp = await llmClient.chat.completions.create({
-              model: LLM_MODEL,
-              max_tokens: LLM_MAX_TOKENS,
-              temperature: 0.7,
-              messages: rephraseHistory as any,
-            });
-            const rephrased = resp.choices[0].message.content?.trim() ?? currentPrompt;
-            rephraseHistory.push({ role: "assistant", content: rephrased });
-
-            const rephraseCount = rephraseHistory.filter((m) => m.role === "assistant").length;
-            console.log(`    [视频] 内容违规，第 ${rephraseCount} 次微调 prompt: ${rephrased.slice(0, 80)}...`);
-            currentPrompt = rephrased;
-            // 继续 while(true) 用新 prompt 重试
-
+          if (rephraseHistory.length === 0) {
+            rephraseHistory = [
+              { role: "system", content: REPHRASE_SYSTEM },
+              { role: "user",   content: `原 prompt：\n${currentPrompt}\n\n拒绝原因：${String(e)}\n\n请微调：` },
+            ];
           } else {
-            // 普通错误：限次重试后切模型
-            regularErrors++;
-            if (regularErrors < VIDEO_MAX_RETRIES) {
-              console.log(`    [视频] 第 ${regularErrors} 次失败: ${e}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
-              await sleep(VIDEO_RETRY_SLEEP);
-            } else {
-              console.log(`    [视频] ${model} 全部失败，尝试下一个模型`);
-              fallthrough = true;
-              break;
-            }
+            rephraseHistory.push({
+              role: "user",
+              content: `上次微调的 prompt 也被拒绝，原因：${String(e)}。请再换几个词试试：`,
+            });
+          }
+
+          const resp = await llmClient.chat.completions.create({
+            model: LLM_MODEL,
+            max_tokens: LLM_MAX_TOKENS,
+            temperature: 0.7,
+            messages: rephraseHistory as any,
+          });
+          const rephrased = resp.choices[0].message.content?.trim() ?? currentPrompt;
+          rephraseHistory.push({ role: "assistant", content: rephrased });
+
+          const rephraseCount = rephraseHistory.filter((m) => m.role === "assistant").length;
+          console.log(`    [视频] 内容违规，第 ${rephraseCount} 次微调: ${rephrased.slice(0, 80)}...`);
+          currentPrompt = rephrased;
+
+        } else {
+          // 其他错误（网络、人脸拦截等）：限次重试后抛异常
+          regularErrors++;
+          if (regularErrors < VIDEO_MAX_RETRIES) {
+            console.log(`    [视频] 第 ${regularErrors} 次失败: ${e}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
+            await sleep(VIDEO_RETRY_SLEEP);
+          } else {
+            throw new Error(`视频生成失败（${VIDEO_MAX_RETRIES}次）: ${path.basename(outputPath)}: ${e}`);
           }
         }
       }
-
-      mi++; // fallthrough 到下一个模型（真人检查或普通错误超限）
     }
-    throw new Error(`所有模型均失败: ${path.basename(outputPath)}: ${lastErr}`);
   } finally {
     vidSem.release();
   }
