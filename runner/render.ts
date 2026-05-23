@@ -445,7 +445,7 @@ async function tryGenerateVideo(
     model,
     prompt,
     image: { imageBytes: imgBase64, mimeType: "image/png" },
-    config: { aspectRatio: "16:9", resolution: "1080p", durationSeconds: duration },
+    config: { aspectRatio: "16:9", resolution: "720p", durationSeconds: duration, generateAudio: false },
   });
 
   console.log(`    [视频] operation=${op.name}，轮询中...`);
