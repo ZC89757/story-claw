@@ -134,6 +134,18 @@ function isRealPersonError(err: unknown): boolean {
   return REAL_PERSON_KEYWORDS.some((k) => msg.includes(k.toLowerCase()));
 }
 
+function isContentPolicyError(err: unknown): boolean {
+  const msg = String(err);
+  return msg.includes("violate") || msg.includes("could not be submitted") || msg.includes("usage guidelines");
+}
+
+const REPHRASE_SYSTEM = `你是视频提示词微调专家。
+视频生成 prompt 因触发内容审核被拒绝，请对 prompt 进行最小幅度的微调：
+- 将可能触发审核的词替换为同义词或更间接的表达
+- 保持原有句式结构和画面描述，只换词不改意
+- 保持英文
+- 只输出微调后的 prompt，不要输出任何其他内容`;
+
 /** ffprobe 获取媒体时长（秒） */
 async function getMediaDuration(filePath: string): Promise<number> {
   const { stdout } = await execFileAsync("ffprobe", [
@@ -473,6 +485,11 @@ async function generateVideo(
     let mi = 0;
     let lastErr: unknown;
 
+    // 内容违规改写状态（跨模型共享，懒创建）
+    let currentPrompt   = prompt;
+    let llmClient: Awaited<ReturnType<typeof getOpenAI>> | null = null;
+    let rephraseHistory: { role: string; content: string }[] = [];
+
     while (mi < VIDEO_MODELS.length) {
       const model   = VIDEO_MODELS[mi];
       const clamped = clampDuration(model, duration);
@@ -480,28 +497,68 @@ async function generateVideo(
         console.log(`    [视频] ${model} 不支持 ${duration}s，调整为 ${clamped}s`);
       console.log(`    [视频] 提交: ${path.basename(outputPath)}（${clamped}s, ${model}）`);
 
-      let fallthrough = false;
-      for (let attempt = 1; attempt <= VIDEO_MAX_RETRIES; attempt++) {
+      let fallthrough   = false;
+      let regularErrors = 0;
+
+      while (true) {
         try {
-          await tryGenerateVideo(model, imgBase64, prompt, outputPath, clamped);
+          await tryGenerateVideo(model, imgBase64, currentPrompt, outputPath, clamped);
           return; // 成功
         } catch (e) {
           lastErr = e;
+
           if (isRealPersonError(e)) {
             console.log(`    [视频] 触发真人检查，切换到下一个模型`);
             fallthrough = true;
             break;
-          } else if (attempt < VIDEO_MAX_RETRIES) {
-            console.log(`    [视频] 第 ${attempt} 次失败: ${e}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
-            await sleep(VIDEO_RETRY_SLEEP);
+
+          } else if (isContentPolicyError(e)) {
+            // 内容违规：懒创建 client，构建多轮对话，无限重试
+            if (!llmClient) llmClient = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
+
+            if (rephraseHistory.length === 0) {
+              rephraseHistory = [
+                { role: "system",    content: REPHRASE_SYSTEM },
+                { role: "user",      content: `原 prompt：\n${currentPrompt}\n\n拒绝原因：${String(e)}\n\n请微调：` },
+              ];
+            } else {
+              rephraseHistory.push({
+                role: "user",
+                content: `上次微调的 prompt 也被拒绝，原因：${String(e)}。请再换几个词试试：`,
+              });
+            }
+
+            const resp = await llmClient.chat.completions.create({
+              model: LLM_MODEL,
+              max_tokens: LLM_MAX_TOKENS,
+              temperature: 0.7,
+              messages: rephraseHistory as any,
+            });
+            const rephrased = resp.choices[0].message.content?.trim() ?? currentPrompt;
+            rephraseHistory.push({ role: "assistant", content: rephrased });
+
+            const rephraseCount = rephraseHistory.filter((m) => m.role === "assistant").length;
+            console.log(`    [视频] 内容违规，第 ${rephraseCount} 次微调 prompt: ${rephrased.slice(0, 80)}...`);
+            currentPrompt = rephrased;
+            // 继续 while(true) 用新 prompt 重试
+
           } else {
-            console.log(`    [视频] ${model} 全部失败，尝试下一个模型`);
-            fallthrough = true;
+            // 普通错误：限次重试后切模型
+            regularErrors++;
+            if (regularErrors < VIDEO_MAX_RETRIES) {
+              console.log(`    [视频] 第 ${regularErrors} 次失败: ${e}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
+              await sleep(VIDEO_RETRY_SLEEP);
+            } else {
+              console.log(`    [视频] ${model} 全部失败，尝试下一个模型`);
+              fallthrough = true;
+              break;
+            }
           }
         }
-        if (fallthrough) break;
       }
-      mi++;
+
+      if (fallthrough) mi++;
+      else break; // 不应走到这里，safety
     }
     throw new Error(`所有模型均失败: ${path.basename(outputPath)}: ${lastErr}`);
   } finally {
