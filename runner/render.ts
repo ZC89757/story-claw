@@ -85,7 +85,7 @@ const VIDEO_MODEL_DURATIONS: Record<string, number[]> = {
   "google/veo-3.1-lite-generate-001": [4, 6, 8],
 };
 const VIDEO_FALLBACK_MODEL      = "alibaba/happyhorse-1.0";
-const MAX_REPHRASE_PRIMARY      = 5;  // 超过此次数切换备用模型
+const MAX_REPHRASE_PRIMARY      = 3;  // 超过此次数切换备用模型
 const MAX_REPHRASE_FALLBACK     = 3;  // 备用模型再超过此次数抛 FatalRenderError
 
 /** 内容违规无法解决时抛出，会终止整个工作流 */
