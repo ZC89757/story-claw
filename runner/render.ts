@@ -557,8 +557,7 @@ async function generateVideo(
         }
       }
 
-      if (fallthrough) mi++;
-      else break; // 不应走到这里，safety
+      mi++; // fallthrough 到下一个模型（真人检查或普通错误超限）
     }
     throw new Error(`所有模型均失败: ${path.basename(outputPath)}: ${lastErr}`);
   } finally {
