@@ -71,30 +71,24 @@ const IMAGE_CONCURRENCY = (imgCfg.concurrency ?? 4) as number;
 const IMAGE_MAX_RETRIES = 5;
 const IMAGE_RETRY_SLEEP = 3000; // ms
 
-// 视频生成
-const VIDEO_API_KEY  = vidCfg.api_key as string;
-const VIDEO_BASE_URL = (vidCfg.base_url ?? "https://zenmux.ai/api/vertex-ai") as string;
-const VIDEO_MODELS   = (vidCfg.models ?? [
-  "google/veo-3.1-lite-generate-001",
-]) as string[];
+// 视频生成（ComfyUI）
+const VIDEO_BASE_URL         = (vidCfg.base_url         ?? "http://127.0.0.1:8188") as string;
+const VIDEO_WORKFLOW_PATH    = vidCfg.workflow_path as string;
 const VIDEO_DEFAULT_DURATION = (vidCfg.default_duration ?? 4) as number;
-const VIDEO_CONCURRENCY      = (vidCfg.concurrency ?? 4) as number;
-const VIDEO_MAX_RETRIES      = 3;
-const VIDEO_RETRY_SLEEP      = 5000; // ms
-const VIDEO_MODEL_DURATIONS: Record<string, number[]> = {
-  "google/veo-3.1-lite-generate-001": [4, 6, 8],
-};
-const VIDEO_FALLBACK_MODEL      = "alibaba/happyhorse-1.0";
-const MAX_REPHRASE_PRIMARY      = 3;  // 超过此次数切换备用模型
-const MAX_REPHRASE_FALLBACK     = 3;  // 备用模型再超过此次数抛 FatalRenderError
+const VIDEO_CONCURRENCY      = (vidCfg.concurrency      ?? 2) as number;
+const VIDEO_MAX_RETRIES      = (vidCfg.max_retries      ?? 3) as number;
+const VIDEO_RETRY_SLEEP      = (vidCfg.retry_sleep_ms   ?? 8000) as number;
+const VIDEO_POLL_INTERVAL    = (vidCfg.poll_interval_ms ?? 5000) as number;
 
-/** 内容违规无法解决时抛出，会终止整个工作流 */
-export class FatalRenderError extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = "FatalRenderError";
+// workflow JSON 缓存（启动时加载一次）
+let _workflowTemplate: any = null;
+function getWorkflowTemplate(): any {
+  if (!_workflowTemplate) {
+    _workflowTemplate = JSON.parse(fsSync.readFileSync(VIDEO_WORKFLOW_PATH, "utf-8"));
   }
+  return _workflowTemplate;
 }
+
 // LLM（资源选择）
 const LLM_API_KEY    = llmCfg.api_key as string;
 const LLM_BASE_URL   = (llmCfg.base_url  ?? "https://zenmux.ai/api/v1") as string;
@@ -112,13 +106,6 @@ const TTS_CONCURRENCY = (ttsCfg.concurrency ?? 4) as number;
 
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
-
-
-async function getVideoGenAI() {
-  const { GoogleGenAI } = await import("@google/genai");
-  return new GoogleGenAI({ apiKey: VIDEO_API_KEY, vertexai: true, httpOptions: { baseUrl: VIDEO_BASE_URL, apiVersion: "v1" } });
-}
-
 async function getOpenAI(apiKey: string, baseUrl: string) {
   const { default: OpenAI } = await import("openai");
   return new OpenAI({ apiKey, baseURL: baseUrl, timeout: LLM_TIMEOUT_MS, maxRetries: 1 });
@@ -129,24 +116,6 @@ async function getOpenAI(apiKey: string, baseUrl: string) {
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
-
-function clampDuration(model: string, duration: number): number {
-  const supported = VIDEO_MODEL_DURATIONS[model];
-  if (!supported) return duration;
-  return supported.reduce((best, d) => Math.abs(d - duration) < Math.abs(best - duration) ? d : best);
-}
-
-function isContentPolicyError(err: unknown): boolean {
-  const msg = String(err);
-  return msg.includes("violate") || msg.includes("could not be submitted") || msg.includes("usage guidelines");
-}
-
-const REPHRASE_SYSTEM = `你是视频提示词微调专家。
-视频生成 prompt 因触发内容审核被拒绝，请对 prompt 进行最小幅度的微调：
-- 将可能触发审核的词替换为同义词或更间接的表达
-- 保持原有句式结构和画面描述，只换词不改意
-- 保持英文
-- 只输出微调后的 prompt，不要输出任何其他内容`;
 
 /** ffprobe 获取媒体时长（秒） */
 async function getMediaDuration(filePath: string): Promise<number> {
@@ -370,16 +339,23 @@ async function selectResources(
 
 // ── 图片生成 ──────────────────────────────────────────────────────────────────
 
+/** 按 aspectRatio 返回 OpenAI Images API size 字符串 */
+function imageSize(aspectRatio: string): string {
+  return aspectRatio === "16:9" ? "1792x1024" : "1024x1792";
+}
+
 async function generateImage(
   imgSem: Semaphore,
   prompt: string,
   refPaths: string[],
   outputPath: string,
+  aspectRatio: string,
 ): Promise<void> {
   await imgSem.acquire();
   try {
     console.log(`    [生图] 提交: ${path.basename(outputPath)}（参考图 ${refPaths.length} 张）`);
     let lastErr: unknown;
+    const size = imageSize(aspectRatio);
 
     for (let attempt = 1; attempt <= IMAGE_MAX_RETRIES; attempt++) {
       try {
@@ -389,6 +365,7 @@ async function generateImage(
           form.append("model", IMAGE_MODEL);
           form.append("prompt", prompt);
           form.append("n", "1");
+          form.append("size", size);
           for (const p of refPaths) {
             const blob = new Blob([await fs.readFile(p)], { type: "image/png" });
             form.append("image[]", blob, path.basename(p));
@@ -402,7 +379,7 @@ async function generateImage(
           resp = await fetch(`${IMAGE_BASE_URL}/images/generations`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${IMAGE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1 }),
+            body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1, size }),
           });
         }
 
@@ -431,51 +408,75 @@ async function generateImage(
   }
 }
 
-// ── 视频生成 ──────────────────────────────────────────────────────────────────
+// ── 视频生成（ComfyUI）────────────────────────────────────────────────────────
 
-async function tryGenerateVideo(
-  model: string,
+/** 按 aspectRatio 返回 [width, height] */
+function videoSize(aspectRatio: string): [number, number] {
+  return aspectRatio === "16:9" ? [1280, 720] : [720, 1280];
+}
+
+async function tryGenerateVideoComfyUI(
   imgBase64: string,
   prompt: string,
   outputPath: string,
   duration: number,
+  aspectRatio: string,
 ): Promise<void> {
-  const ai = await getVideoGenAI();
-  const op = await (ai.models as any).generateVideos({
-    model,
-    prompt,
-    image: { imageBytes: imgBase64, mimeType: "image/png" },
-    config: { aspectRatio: "16:9", resolution: "720p", durationSeconds: duration, generateAudio: false },
+  const [width, height] = videoSize(aspectRatio);
+
+  // 深拷贝 workflow，注入参数
+  const workflow = JSON.parse(JSON.stringify(getWorkflowTemplate()));
+  workflow["324"].inputs.base64_data          = imgBase64;
+  workflow["320:319"].inputs.value            = prompt;
+  workflow["320:301"].inputs.value            = duration;
+  workflow["320:312"].inputs.value            = width;
+  workflow["320:299"].inputs.value            = height;
+
+  // 提交任务
+  const submitResp = await fetch(`${VIDEO_BASE_URL}/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: workflow }),
   });
-
-  console.log(`    [视频] operation=${op.name}，轮询中...`);
-  let current = op;
-  while (!current.done) {
-    await sleep(15000);
-    current = await (ai.operations as any).getVideosOperation({ operation: current });
+  if (!submitResp.ok) {
+    throw new Error(`ComfyUI 提交失败: HTTP ${submitResp.status} ${(await submitResp.text()).slice(0, 200)}`);
   }
-  if (current.error) throw new Error(`API 错误: ${JSON.stringify(current.error)}`);
+  const { prompt_id } = await submitResp.json() as { prompt_id: string };
+  console.log(`    [视频] prompt_id=${prompt_id}，轮询中...`);
 
-  const videos = current.response?.generatedVideos;
-  if (!videos?.length) {
-    const rai = current.response?.raiMediaFilteredReasons;
-    throw new Error(`未返回视频，RAI=${JSON.stringify(rai)}`);
+  // 轮询 /history/{prompt_id}
+  while (true) {
+    await sleep(VIDEO_POLL_INTERVAL);
+    const histResp = await fetch(`${VIDEO_BASE_URL}/history/${prompt_id}`);
+    if (!histResp.ok) continue;
+    const hist = await histResp.json() as Record<string, any>;
+    const entry = hist[prompt_id];
+    if (!entry) continue;
+
+    const status = entry.status?.status_str ?? "";
+    if (status === "error") {
+      throw new Error(`ComfyUI 生成失败: ${JSON.stringify(entry.status)}`);
+    }
+    if (status !== "success" && !entry.status?.completed) continue;
+
+    // 从 SaveVideo 节点（75）的输出拿文件信息
+    const videoOutputs = entry.outputs?.["75"]?.videos;
+    if (!videoOutputs?.length) {
+      throw new Error(`ComfyUI 输出中未找到视频: ${JSON.stringify(entry.outputs)}`);
+    }
+    const { filename, subfolder, type } = videoOutputs[0];
+
+    // 下载视频
+    const viewUrl = `${VIDEO_BASE_URL}/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder ?? "")}&type=${encodeURIComponent(type ?? "output")}`;
+    const vidResp = await fetch(viewUrl);
+    if (!vidResp.ok) {
+      throw new Error(`ComfyUI 下载失败: HTTP ${vidResp.status}`);
+    }
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, Buffer.from(await vidResp.arrayBuffer()));
+    console.log(`    [视频] 已保存: ${path.basename(outputPath)}`);
+    return;
   }
-
-  let videoBytes: Buffer;
-  const v = videos[0].video;
-  if (v.videoBytes) {
-    videoBytes = Buffer.from(v.videoBytes, "base64");
-  } else if (v.uri) {
-    const r = await fetch(v.uri);
-    videoBytes = Buffer.from(await r.arrayBuffer());
-  } else {
-    throw new Error("无法提取视频数据");
-  }
-
-  await fs.mkdir(path.dirname(outputPath), { recursive: true });
-  await fs.writeFile(outputPath, videoBytes);
-  console.log(`    [视频] 已保存: ${path.basename(outputPath)}`);
 }
 
 async function generateVideo(
@@ -483,84 +484,24 @@ async function generateVideo(
   imagePath: string,
   prompt: string,
   outputPath: string,
+  aspectRatio: string,
   duration: number = VIDEO_DEFAULT_DURATION,
 ): Promise<void> {
   await vidSem.acquire();
   try {
-    let currentModel  = VIDEO_MODELS[0];
-    let clamped       = clampDuration(currentModel, duration);
-    const imgBase64   = (await fs.readFile(imagePath)).toString("base64");
-    if (clamped !== duration)
-      console.log(`    [视频] ${currentModel} 不支持 ${duration}s，调整为 ${clamped}s`);
-    console.log(`    [视频] 提交: ${path.basename(outputPath)}（${clamped}s, ${currentModel}）`);
+    const imgBase64 = (await fs.readFile(imagePath)).toString("base64");
+    console.log(`    [视频] 提交: ${path.basename(outputPath)}（${duration}s, ${aspectRatio}）`);
 
-    // 内容违规改写状态（懒创建）
-    let currentPrompt = prompt;
-    let llmClient: Awaited<ReturnType<typeof getOpenAI>> | null = null;
-    let rephraseHistory: { role: string; content: string }[] = [];
-    let rephraseCount = 0;   // 内容违规微调总次数（跨模型累计）
-    let regularErrors = 0;
-
-    while (true) {
+    for (let attempt = 1; attempt <= VIDEO_MAX_RETRIES; attempt++) {
       try {
-        await tryGenerateVideo(currentModel, imgBase64, currentPrompt, outputPath, clamped);
-        return; // 成功
-
+        await tryGenerateVideoComfyUI(imgBase64, prompt, outputPath, duration, aspectRatio);
+        return;
       } catch (e) {
-        if (isContentPolicyError(e)) {
-          rephraseCount++;
-
-          // 超过主模型限额 → 切备用模型（只切一次）
-          if (rephraseCount === MAX_REPHRASE_PRIMARY + 1) {
-            currentModel = VIDEO_FALLBACK_MODEL;
-            clamped      = clampDuration(currentModel, duration);
-            console.log(`    [视频] 主模型微调 ${MAX_REPHRASE_PRIMARY} 次仍违规，切换备用模型: ${currentModel}`);
-          }
-
-          // 超过总限额（主 + 备用）→ 抛 FatalRenderError
-          if (rephraseCount > MAX_REPHRASE_PRIMARY + MAX_REPHRASE_FALLBACK) {
-            throw new FatalRenderError(
-              `视频内容违规无法解决（共微调 ${rephraseCount - 1} 次）: ${path.basename(outputPath)}`,
-            );
-          }
-
-          // LLM 微调 prompt
-          if (!llmClient) llmClient = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
-
-          if (rephraseHistory.length === 0) {
-            rephraseHistory = [
-              { role: "system", content: REPHRASE_SYSTEM },
-              { role: "user",   content: `原 prompt：\n${currentPrompt}\n\n拒绝原因：${String(e)}\n\n请微调：` },
-            ];
-          } else {
-            rephraseHistory.push({
-              role: "user",
-              content: `上次微调的 prompt 也被拒绝，原因：${String(e)}。请再换几个词试试：`,
-            });
-          }
-
-          const resp = await llmClient.chat.completions.create({
-            model: LLM_MODEL,
-            max_tokens: LLM_MAX_TOKENS,
-            temperature: 0.7,
-            messages: rephraseHistory as any,
-          });
-          const rephrased = resp.choices[0].message.content?.trim() ?? currentPrompt;
-          rephraseHistory.push({ role: "assistant", content: rephrased });
-
-          const modelTag = currentModel === VIDEO_FALLBACK_MODEL ? `[备用] ` : "";
-          console.log(`    [视频] ${modelTag}内容违规，第 ${rephraseCount} 次微调: ${rephrased.slice(0, 80)}...`);
-          currentPrompt = rephrased;
-
+        if (attempt < VIDEO_MAX_RETRIES) {
+          console.log(`    [视频] 第 ${attempt} 次失败: ${e}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
+          await sleep(VIDEO_RETRY_SLEEP);
         } else {
-          // 其他错误（网络、人脸拦截等）：限次重试后抛异常
-          regularErrors++;
-          if (regularErrors < VIDEO_MAX_RETRIES) {
-            console.log(`    [视频] 第 ${regularErrors} 次失败: ${e}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
-            await sleep(VIDEO_RETRY_SLEEP);
-          } else {
-            throw new Error(`视频生成失败（${VIDEO_MAX_RETRIES}次）: ${path.basename(outputPath)}: ${e}`);
-          }
+          throw new Error(`视频生成失败（${VIDEO_MAX_RETRIES}次）: ${path.basename(outputPath)}: ${e}`);
         }
       }
     }
@@ -601,6 +542,7 @@ async function processGroup(
   videoEvents: Map<string, { resolve: () => void; promise: Promise<void> }>,
   prevGroupLastPanelKey: string | null,
   fullSceneText: string,
+  aspectRatio: string,
 ): Promise<{ groupVideo: string | null; lastPanelContext: any | null }> {
   const panels      = group.panels ?? [];
   const currentText = group.text ?? "";
@@ -629,7 +571,7 @@ async function processGroup(
       console.log(`  [${prefix}] 资源选择...`);
       const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, prevCtx, fullSceneText);
       console.log(`  [${prefix}] 参考图: ${refPaths.map((p) => path.basename(p))}`);
-      await generateImage(imgSem, imagePrompt, refPaths, imgPath);
+      await generateImage(imgSem, imagePrompt, refPaths, imgPath, aspectRatio);
       imgPaths.push(imgPath);
     }
 
@@ -711,10 +653,9 @@ async function processGroup(
       }
 
       const duration = parseInt(panel.duration ?? VIDEO_DEFAULT_DURATION, 10);
-      await generateVideo(vidSem, actualImg, videoPrompts[pi], panelVidPath, duration);
+      await generateVideo(vidSem, actualImg, videoPrompts[pi], panelVidPath, aspectRatio, duration);
       return fsSync.existsSync(panelVidPath) ? panelVidPath : null;
     } catch (e) {
-      if (e instanceof FatalRenderError) throw e;
       console.log(`    [视频] ${prefix} 失败: ${e}`);
       return null;
     } finally {
@@ -1026,7 +967,7 @@ export async function renderScene(
         : null;
       const { groupVideo, lastPanelContext } = await processGroup(
         imgSem, vidSem, outputDir, catalog,
-        i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey, fullSceneText,
+        i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey, fullSceneText, sel.aspectRatio,
       );
       if (groupVideo) groupVideos.push(groupVideo);
       prevPanelCtx = lastPanelContext;
