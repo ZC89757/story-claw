@@ -568,9 +568,8 @@ async function processGroup(
       console.log(`  [${prefix}] 图片已存在，跳过生图`);
       imgPaths.push(imgPath);
     } else {
-      console.log(`  [${prefix}] 资源选择...`);
       const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, prevCtx, fullSceneText);
-      console.log(`  [${prefix}] 参考图: ${refPaths.map((p) => path.basename(p))}`);
+      console.log(`  [${prefix}] 「${currentText}」→ 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
       await generateImage(imgSem, imagePrompt, refPaths, imgPath, aspectRatio);
       imgPaths.push(imgPath);
     }
