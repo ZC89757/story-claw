@@ -603,15 +603,14 @@ async function processGroup(
     const isCont  = panel.is_continuation === true;
 
     if (isCont) {
-      console.log(`[${prefix}] 「${currentText.slice(0, 30)}」→ is_continuation，跳过生图`);
+      console.log(`  [${prefix}] is_continuation=True，跳过生图`);
       imgPaths.push(null);
     } else if (fsSync.existsSync(imgPath)) {
-      console.log(`[${prefix}] 「${currentText.slice(0, 30)}」→ 图片已存在，跳过生图`);
+      console.log(`  [${prefix}] 图片已存在，跳过生图`);
       imgPaths.push(imgPath);
     } else {
       const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, prevCtx, fullSceneText);
-      const refNames = refPaths.map((p) => path.basename(p)).join(", ") || "无";
-      console.log(`[${prefix}] 「${currentText}」→ 参考图: ${refNames}`);
+      console.log(`  [${prefix}] 「${currentText}」→ 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
       await generateImage(imgSem, imagePrompt, refPaths, imgPath, aspectRatio);
       imgPaths.push(imgPath);
     }
