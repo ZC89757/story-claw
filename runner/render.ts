@@ -723,20 +723,6 @@ async function processGroup(
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────
 
-function extractCleanText(jsonlContent: string): string {
-  const lines: string[] = [];
-  for (const raw of jsonlContent.split("\n")) {
-    const trimmed = raw.trim();
-    if (!trimmed) continue;
-    try {
-      const group = JSON.parse(trimmed);
-      const text = (group.text ?? "").replace(/【[^】]*】/g, "").trim();
-      if (text) lines.push(text);
-    } catch { /* 跳过 */ }
-  }
-  return lines.join("\n");
-}
-
 const TTS_ANNOTATE_SYSTEM = `你是剧本分析助手。将收到一段小说原文，请拆成连续的语音片段并标注。
 
 规则：
@@ -925,7 +911,7 @@ async function ttsPhase4Concat(audioFiles: string[], outputPath: string): Promis
 }
 
 async function runTtsPipeline(
-  jsonlContent: string,
+  text: string,
   outputDir: string,
   voiceMapPath: string,
   sceneName: string,
@@ -939,10 +925,9 @@ async function runTtsPipeline(
     console.log(`[TTS] 载入 voice_map: ${JSON.stringify(voiceMap)}`);
   }
 
-  const fullText = extractCleanText(jsonlContent);
-  console.log(`[TTS] 提取文本 ${fullText.length} 字`);
+  console.log(`[TTS] 文本 ${text.length} 字`);
 
-  const segments = await ttsPhase1Annotate(fullText);
+  const segments = await ttsPhase1Annotate(text);
   voiceMap       = await ttsPhase2AssignVoices(segments, voiceMap);
   await fs.writeFile(voiceMapPath, JSON.stringify(voiceMap, null, 2), "utf-8");
   console.log(`[TTS] voice_map 已保存`);
@@ -983,6 +968,7 @@ export async function renderScene(
   const rawContent    = await fs.readFile(jsonlPath, "utf-8");
   const groups        = parseJsonl(rawContent);
   const fullSceneText = groups.map((g: any) => g.text ?? "").filter(Boolean).join("\n");
+  const cleanSceneText = groups.map((g: any) => (g.text ?? "").replace(/【[^】]*】/g, "").trim()).filter(Boolean).join("\n");
   console.log(`\n场景: ${sceneName}，共 ${groups.length} 个 group`);
   console.log(`输出目录: ${outputDir}`);
 
@@ -1022,7 +1008,7 @@ export async function renderScene(
     return videoOnly;
   })();
 
-  const ttsTask = runTtsPipeline(rawContent, outputDir, voiceMapPath, sceneName);
+  const ttsTask = runTtsPipeline(cleanSceneText, outputDir, voiceMapPath, sceneName);
 
   // ── 等待两个管线都完成 ──
   const [videoResult, ttsResult] = await Promise.allSettled([videoTask, ttsTask]);
