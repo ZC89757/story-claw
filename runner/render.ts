@@ -735,7 +735,12 @@ const TTS_ANNOTATE_SYSTEM = `你是剧本分析助手。将收到一段小说原
 [
   {"speaker": "旁白", "gender": "男", "text": "...", "style": "..."},
   {"speaker": "学姐", "gender": "女", "text": "...", "style": "..."}
-]`;
+]
+
+严格约束：
+- 数组顺序必须与原文顺序完全一致，不得打乱
+- 每个 text 字段必须与原文逐字相同，不得改写、省略或合并任何内容
+- 所有原文内容必须被覆盖，不得遗漏任何片段`;
 
 const TTS_ASSIGN_SYSTEM = `你是声音分配助手。
 
@@ -968,7 +973,7 @@ export async function renderScene(
   const rawContent    = await fs.readFile(jsonlPath, "utf-8");
   const groups        = parseJsonl(rawContent);
   const fullSceneText = groups.map((g: any) => g.text ?? "").filter(Boolean).join("\n");
-  const cleanSceneText = groups.map((g: any) => (g.text ?? "").replace(/【[^】]*】/g, "").trim()).filter(Boolean).join("\n");
+  const cleanSceneText = groups.map((g: any) => (g.text ?? "").replace(/【[^】]*】/g, "").trim()).filter(Boolean).join("");
   console.log(`\n场景: ${sceneName}，共 ${groups.length} 个 group`);
   console.log(`输出目录: ${outputDir}`);
 
