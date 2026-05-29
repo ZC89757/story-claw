@@ -12,7 +12,11 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { CONFIG_DIR } from "./run-python.js";
+
+const UTILS_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 // ── 配置读取 ──────────────────────────────────────────────────────────────
 interface ImageGenConfig {
@@ -127,5 +131,17 @@ export async function generateImage(
     }
   }
 
-  throw new Error(`连续 ${MAX_RETRIES} 次生图失败，prompt: ${prompt.slice(0, 80)}...`);
+  // ── 降级：调用 Gemini (Python helper) ────────────────────────────────────
+  console.log(`  gpt-image-2 失败，降级到 Gemini...`);
+  const helperPath = path.join(UTILS_DIR, "gemini-image-gen.py");
+  const args = [helperPath, outputPath, prompt, ...images];
+  const result = spawnSync("python", args, { encoding: "utf-8", timeout: 120_000 });
+
+  if (result.status === 0) {
+    console.log(`  [Gemini] 已保存: ${outputPath}`);
+    return outputPath;
+  }
+
+  const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 300);
+  throw new Error(`gpt-image-2 与 Gemini 均失败。Gemini 错误: ${errMsg}`);
 }

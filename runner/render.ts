@@ -15,11 +15,14 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { CONFIG_DIR } from "../utils/run-python.js";
 import { novelPaths } from "../utils/paths.js";
 import type { NovelSelection } from "../ui/select.js";
+
+const RENDER_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +71,7 @@ const IMAGE_API_KEY  = imgCfg.api_key as string;
 const IMAGE_BASE_URL = (imgCfg.base_url ?? "https://zenmux.ai/api/vertex-ai") as string;
 const IMAGE_MODEL    = (imgCfg.model   ?? "openai/gpt-image-2") as string;
 const IMAGE_CONCURRENCY = (imgCfg.concurrency ?? 4) as number;
-const IMAGE_MAX_RETRIES = 5;
+const IMAGE_MAX_RETRIES = 3;
 const IMAGE_RETRY_SLEEP = 3000; // ms
 
 // 视频生成（ComfyUI）
@@ -103,6 +106,7 @@ const MIMO_TTS_MODEL  = (ttsCfg.tts_model  ?? "mimo-v2.5-tts") as string;
 const MIMO_VOICES     = (ttsCfg.voices     ?? { "冰糖": "女", "茉莉": "女", "苏打": "男", "白桦": "男" }) as Record<string, string>;
 const MIMO_NARRATOR   = (ttsCfg.narrator_voice ?? "白桦") as string;
 const TTS_CONCURRENCY = (ttsCfg.concurrency ?? 4) as number;
+const SECS_PER_CHAR   = (ttsCfg.secs_per_char ?? 0.22) as number;
 
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
@@ -115,6 +119,20 @@ async function getOpenAI(apiKey: string, baseUrl: string) {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** 按字数估算 group 总时长（秒，最小 4s） */
+function estimateGroupDuration(text: string): number {
+  const charCount = text.replace(/【[^】]*】/g, "").replace(/[，。、！？…""''【】\s]/g, "").length;
+  return Math.max(4, Math.round(charCount * SECS_PER_CHAR));
+}
+
+/** 将 group 总时长按原 storyboard 比例分配给各 panel（每 panel 最小 4s） */
+function distributePanelDurations(groupDur: number, panels: any[]): number[] {
+  if (panels.length === 1) return [Math.max(4, groupDur)];
+  const origDurs = panels.map((p) => Math.max(4, parseInt(p.duration ?? 4, 10)));
+  const total    = origDurs.reduce((s, d) => s + d, 0);
+  return origDurs.map((d) => Math.max(4, Math.round((d / total) * groupDur)));
 }
 
 /** ffprobe 获取媒体时长（秒） */
@@ -384,7 +402,13 @@ async function generateImage(
         }
 
         if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+          const errText = (await resp.text()).slice(0, 200);
+          if (resp.status === 400) {
+            console.log(`    [生图] HTTP 400，直接降级到 Gemini: ${errText}`);
+            lastErr = new Error(`HTTP 400: ${errText}`);
+            break;
+          }
+          throw new Error(`HTTP ${resp.status}: ${errText}`);
         }
         const result: any = await resp.json();
         const b64 = result?.data?.[0]?.b64_json;
@@ -402,7 +426,19 @@ async function generateImage(
         }
       }
     }
-    throw new Error(`生图失败（${IMAGE_MAX_RETRIES}次）: ${path.basename(outputPath)}: ${lastErr}`);
+
+    // ── 降级：调用 Gemini Python helper ──────────────────────────────
+    console.log(`    [生图] gpt-image-2 失败，降级到 Gemini...`);
+    const helperPath = path.join(RENDER_DIR, "../utils/gemini-image-gen.py");
+    const args = [helperPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    const result = spawnSync("python", args, { encoding: "utf-8", timeout: 120_000 });
+    if (result.status === 0) {
+      console.log(`    [生图] [Gemini] 已保存: ${path.basename(outputPath)}`);
+      return;
+    }
+    const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 300);
+    throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${errMsg}`);
   } finally {
     imgSem.release();
   }
@@ -459,8 +495,8 @@ async function tryGenerateVideoComfyUI(
     }
     if (status !== "success" && !entry.status?.completed) continue;
 
-    // 从 SaveVideo 节点（75）的输出拿文件信息
-    const videoOutputs = entry.outputs?.["75"]?.videos;
+    // 从 SaveVideo 节点（75）的输出拿文件信息（ComfyUI 返回 key 为 images）
+    const videoOutputs = entry.outputs?.["75"]?.videos ?? entry.outputs?.["75"]?.images;
     if (!videoOutputs?.length) {
       throw new Error(`ComfyUI 输出中未找到视频: ${JSON.stringify(entry.outputs)}`);
     }
@@ -548,6 +584,11 @@ async function processGroup(
   const currentText = group.text ?? "";
   const vidPath  = path.join(outputDir, `g${String(groupIdx).padStart(2, "0")}.mp4`);
 
+  // 按字数估算本 group 总时长，并分配给各 panel
+  const groupDur      = estimateGroupDuration(currentText);
+  const panelDurations = distributePanelDurations(groupDur, panels);
+  console.log(`\n[group ${String(groupIdx).padStart(2, "0")}] 估算时长 ${groupDur}s，分配: [${panelDurations.join(", ")}]s`);
+
   console.log(`\n[group ${String(groupIdx).padStart(2, "0")}] ${panels.length} 个 panel，顺序处理...`);
 
   // ── 顺序处理每个 panel：资源选择 + 生图 ──
@@ -574,7 +615,7 @@ async function processGroup(
       imgPaths.push(imgPath);
     }
 
-    const videoPrompt = `${(panel.video_prompt ?? "").trimEnd()} No background music or ambient sound.`;
+    const videoPrompt = `${(panel.video_prompt ?? "").trimEnd()} No background music or ambient sound. No subtitles or text overlays.`;
     videoPrompts.push(videoPrompt);
     prevCtx = { shot_type: panel.shot_type, image_prompt: panel.image_prompt, video_prompt: videoPrompt };
   }
@@ -651,7 +692,7 @@ async function processGroup(
         return null;
       }
 
-      const duration = parseInt(panel.duration ?? VIDEO_DEFAULT_DURATION, 10);
+      const duration = panelDurations[pi] ?? VIDEO_DEFAULT_DURATION;
       await generateVideo(vidSem, actualImg, videoPrompts[pi], panelVidPath, aspectRatio, duration);
       return fsSync.existsSync(panelVidPath) ? panelVidPath : null;
     } catch (e) {

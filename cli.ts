@@ -4,6 +4,9 @@
  * 命令行交互界面，支持 /status、/solo、/custom、/help、/exit 命令。
  */
 
+// 并行场景处理时每个 tool call 都会向 AbortSignal 注册 listener，超过默认上限 10 会触发误报
+process.setMaxListeners(0);
+
 import readline from "node:readline";
 import { showWelcome, showHelp } from "./ui/welcome.js";
 import { showStatus } from "./ui/status.js";
