@@ -603,10 +603,10 @@ async function processGroup(
     const isCont  = panel.is_continuation === true;
 
     if (isCont) {
-      console.log(`  [${prefix}] is_continuation=True，跳过生图`);
+      console.log(`  [${prefix}] 「${currentText}」→ is_continuation，跳过生图`);
       imgPaths.push(null);
     } else if (fsSync.existsSync(imgPath)) {
-      console.log(`  [${prefix}] 图片已存在，跳过生图`);
+      console.log(`  [${prefix}] 「${currentText}」→ 图片已存在，跳过生图`);
       imgPaths.push(imgPath);
     } else {
       const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, prevCtx, fullSceneText);
