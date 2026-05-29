@@ -572,6 +572,7 @@ async function processGroup(
   vidSem: Semaphore,
   outputDir: string,
   catalog: ResourceCatalog,
+  sceneName: string,
   groupIdx: number,
   group: any,
   prevPanelContext: any | null,
@@ -587,9 +588,9 @@ async function processGroup(
   // 按字数估算本 group 总时长，并分配给各 panel
   const groupDur      = estimateGroupDuration(currentText);
   const panelDurations = distributePanelDurations(groupDur, panels);
-  console.log(`\n[group ${String(groupIdx).padStart(2, "0")}] 估算时长 ${groupDur}s，分配: [${panelDurations.join(", ")}]s`);
+  console.log(`\n[${sceneName}][group ${String(groupIdx).padStart(2, "0")}] 估算时长 ${groupDur}s，分配: [${panelDurations.join(", ")}]s`);
 
-  console.log(`\n[group ${String(groupIdx).padStart(2, "0")}] ${panels.length} 个 panel，顺序处理...`);
+  console.log(`\n[${sceneName}][group ${String(groupIdx).padStart(2, "0")}] ${panels.length} 个 panel，顺序处理...`);
 
   // ── 顺序处理每个 panel：资源选择 + 生图 ──
   const imgPaths: Array<string | null> = [];
@@ -603,14 +604,15 @@ async function processGroup(
     const isCont  = panel.is_continuation === true;
 
     if (isCont) {
-      console.log(`  [${prefix}] 「${currentText}」→ is_continuation，跳过生图`);
+      console.log(`  [${sceneName}][${prefix}] 「${currentText}」→ is_continuation，跳过生图`);
       imgPaths.push(null);
     } else if (fsSync.existsSync(imgPath)) {
-      console.log(`  [${prefix}] 「${currentText}」→ 图片已存在，跳过生图`);
+      console.log(`  [${sceneName}][${prefix}] 「${currentText}」→ 图片已存在，跳过生图`);
       imgPaths.push(imgPath);
     } else {
       const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, prevCtx, fullSceneText);
-      console.log(`  [${prefix}] 「${currentText}」→ 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
+      console.log(`  [${sceneName}][${prefix}] 「${currentText}」→ 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
+      console.log(`  [${sceneName}][${prefix}] image_prompt: ${imagePrompt}`);
       await generateImage(imgSem, imagePrompt, refPaths, imgPath, aspectRatio);
       imgPaths.push(imgPath);
     }
@@ -998,7 +1000,7 @@ export async function renderScene(
         : null;
       const { groupVideo, lastPanelContext } = await processGroup(
         imgSem, vidSem, outputDir, catalog,
-        i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey, fullSceneText, sel.aspectRatio,
+        sceneName, i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey, fullSceneText, sel.aspectRatio,
       );
       if (groupVideo) groupVideos.push(groupVideo);
       prevPanelCtx = lastPanelContext;
