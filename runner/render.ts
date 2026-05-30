@@ -7,7 +7,7 @@
  * 流程：
  *   1. 解析 JSONL → groups
  *   2. 视频管线 + TTS 管线 并行启动
- *      视频：顺序处理 groups（组内 panels 并行生视频）→ _video_only.mp4
+ *      视频：所有 panels 并行（生图→生视频），continuation 通过 videoEvents 等待前驱 → _video_only.mp4
  *      TTS ：Phase1 标注 → Phase2 分配音色 → Phase3 并行合成 → Phase4 拼接 → _tts.mp3
  *   3. 合并：以 TTS 音频时长为准，缩放视频速度 → final.mp4
  */
@@ -124,12 +124,10 @@ function estimateGroupDuration(text: string): number {
   return Math.max(4, Math.round(charCount * SECS_PER_CHAR));
 }
 
-/** 将 group 总时长按原 storyboard 比例分配给各 panel（每 panel 最小 4s） */
+/** 将 group 总时长均分给各 panel（每 panel 最小 4s） */
 function distributePanelDurations(groupDur: number, panels: any[]): number[] {
-  if (panels.length === 1) return [Math.max(4, groupDur)];
-  const origDurs = panels.map((p) => Math.max(4, parseInt(p.duration ?? 4, 10)));
-  const total    = origDurs.reduce((s, d) => s + d, 0);
-  return origDurs.map((d) => Math.max(4, Math.round((d / total) * groupDur)));
+  const dur = Math.max(4, Math.round(groupDur / panels.length));
+  return panels.map(() => dur);
 }
 
 /** ffprobe 获取媒体时长（秒） */
@@ -553,163 +551,6 @@ class Semaphore {
   }
 }
 
-// ── 处理单个 group ────────────────────────────────────────────────────────────
-
-async function processGroup(
-  imgSem: Semaphore,
-  vidSem: Semaphore,
-  outputDir: string,
-  catalog: ResourceCatalog,
-  sceneName: string,
-  groupIdx: number,
-  group: any,
-  prevPanelContext: any | null,
-  videoEvents: Map<string, { resolve: () => void; promise: Promise<void> }>,
-  prevGroupLastPanelKey: string | null,
-  fullSceneText: string,
-  aspectRatio: string,
-): Promise<{ groupVideo: string | null; lastPanelContext: any | null }> {
-  const panels      = group.panels ?? [];
-  const currentText = group.text ?? "";
-  const vidPath  = path.join(outputDir, `g${String(groupIdx).padStart(2, "0")}.mp4`);
-
-  // 按字数估算本 group 总时长，并分配给各 panel
-  const groupDur      = estimateGroupDuration(currentText);
-  const panelDurations = distributePanelDurations(groupDur, panels);
-  console.log(`\n[${sceneName}][group ${String(groupIdx).padStart(2, "0")}] 估算时长 ${groupDur}s，分配: [${panelDurations.join(", ")}]s`);
-
-  console.log(`\n[${sceneName}][group ${String(groupIdx).padStart(2, "0")}] ${panels.length} 个 panel，顺序处理...`);
-
-  // ── 顺序处理每个 panel：资源选择 + 生图 ──
-  const imgPaths: Array<string | null> = [];
-  const videoPrompts: string[] = [];
-  let prevCtx = prevPanelContext;
-
-  for (let pi = 0; pi < panels.length; pi++) {
-    const panel  = panels[pi];
-    const prefix = `g${String(groupIdx).padStart(2, "0")}_p${String(pi).padStart(2, "0")}`;
-    const imgPath = path.join(outputDir, `${prefix}.png`);
-    const isCont  = panel.is_continuation === true;
-
-    if (isCont) {
-      console.log(`  [${sceneName}][${prefix}] 「${currentText}」→ is_continuation，跳过生图`);
-      imgPaths.push(null);
-    } else if (fsSync.existsSync(imgPath)) {
-      console.log(`  [${sceneName}][${prefix}] 「${currentText}」→ 图片已存在，跳过生图`);
-      imgPaths.push(imgPath);
-    } else {
-      const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, prevCtx, fullSceneText);
-      console.log(`  [${sceneName}][${prefix}] 「${currentText}」→ 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
-      console.log(`  [${sceneName}][${prefix}] image_prompt: ${imagePrompt}`);
-      await generateImage(imgSem, imagePrompt, refPaths, imgPath, aspectRatio);
-      imgPaths.push(imgPath);
-    }
-
-    const videoPrompt = `${(panel.video_prompt ?? "").trimEnd()} No background music or ambient sound. No subtitles or text overlays.`;
-    videoPrompts.push(videoPrompt);
-    prevCtx = { shot_type: panel.shot_type, image_prompt: panel.image_prompt, video_prompt: videoPrompt };
-  }
-
-  const lastPanelContext = prevCtx;
-
-  // ── 检查 group 视频是否已存在 ──
-  if (fsSync.existsSync(vidPath)) {
-    console.log(`\n[group ${String(groupIdx).padStart(2, "0")}] 视频已存在，跳过`);
-    for (let pi = 0; pi < panels.length; pi++) {
-      const key = `${groupIdx},${pi}`;
-      videoEvents.get(key)?.resolve();
-    }
-    return { groupVideo: vidPath, lastPanelContext };
-  }
-
-  // ── 为本 group 所有 panel 预创建 event ──
-  for (let pi = 0; pi < panels.length; pi++) {
-    const key = `${groupIdx},${pi}`;
-    if (!videoEvents.has(key)) {
-      let resolve!: () => void;
-      const promise = new Promise<void>((r) => { resolve = r; });
-      videoEvents.set(key, { resolve, promise });
-    }
-  }
-
-  console.log(`  [group ${String(groupIdx).padStart(2, "0")}] 并行生成 ${panels.length} 个 panel 视频...`);
-
-  // ── 并行生成 panel 视频 ──
-  const panelVidTasks = panels.map(async (panel: any, pi: number): Promise<string | null> => {
-    const prefix       = `g${String(groupIdx).padStart(2, "0")}_p${String(pi).padStart(2, "0")}`;
-    const panelVidPath = path.join(outputDir, `${prefix}.mp4`);
-    const key          = `${groupIdx},${pi}`;
-
-    try {
-      if (fsSync.existsSync(panelVidPath)) {
-        console.log(`    [视频] ${prefix}.mp4 已存在，跳过`);
-        return panelVidPath;
-      }
-
-      const isCont = panel.is_continuation === true;
-      let actualImg = imgPaths[pi];
-
-      if (isCont) {
-        // 等待前驱视频完成
-        let prevKey: string | null = null;
-        if (pi > 0) {
-          prevKey = `${groupIdx},${pi - 1}`;
-        } else if (groupIdx > 0) {
-          prevKey = prevGroupLastPanelKey;
-        }
-
-        if (prevKey && videoEvents.has(prevKey)) {
-          console.log(`    [${prefix}] continuation: 等待 ${prevKey.replace(",", "_p").replace(/^(\d+)/, "g$1")} 视频完成...`);
-          await videoEvents.get(prevKey)!.promise;
-          const [pg, pp] = prevKey.split(",").map(Number);
-          const prevVid   = path.join(outputDir, `g${String(pg).padStart(2, "0")}_p${String(pp).padStart(2, "0")}.mp4`);
-          const lastFrame = path.join(outputDir, `g${String(pg).padStart(2, "0")}_p${String(pp).padStart(2, "0")}_lastframe.png`);
-          if (fsSync.existsSync(prevVid) && (fsSync.existsSync(lastFrame) || await extractLastFrame(prevVid, lastFrame))) {
-            actualImg = lastFrame;
-            console.log(`    [${prefix}] continuation: 使用 ${path.basename(lastFrame)} 作为参考图`);
-          } else {
-            console.log(`    [${prefix}] continuation: 提帧失败，跳过`);
-            return null;
-          }
-        } else {
-          console.log(`    [${prefix}] continuation: 无前驱，跳过`);
-          return null;
-        }
-      }
-
-      if (!actualImg || !fsSync.existsSync(actualImg)) {
-        console.log(`    [${prefix}] 无参考图，跳过`);
-        return null;
-      }
-
-      const duration = panelDurations[pi] ?? VIDEO_DEFAULT_DURATION;
-      await generateVideo(vidSem, actualImg, videoPrompts[pi], panelVidPath, aspectRatio, duration);
-      return fsSync.existsSync(panelVidPath) ? panelVidPath : null;
-    } catch (e) {
-      console.log(`    [视频] ${prefix} 失败: ${e}`);
-      return null;
-    } finally {
-      videoEvents.get(key)?.resolve();
-    }
-  });
-
-  const results = await Promise.all(panelVidTasks);
-  const validPanelVids = results.filter((r): r is string => r !== null && fsSync.existsSync(r));
-
-  if (validPanelVids.length === 0) {
-    console.log(`  [group ${String(groupIdx).padStart(2, "0")}] 所有 panel 视频均失败，跳过`);
-    return { groupVideo: null, lastPanelContext };
-  }
-
-  // 拼接 panel 视频 → group 视频
-  if (validPanelVids.length === 1) {
-    await fs.copyFile(validPanelVids[0], vidPath);
-  } else {
-    await concatVideos(validPanelVids, vidPath);
-  }
-  console.log(`  拼接完成: ${path.basename(vidPath)}`);
-  return { groupVideo: vidPath, lastPanelContext };
-}
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────
 
@@ -979,23 +820,160 @@ export async function renderScene(
 
   // ── 视频管线 + TTS 管线并行启动 ──
   const videoTask = (async (): Promise<string> => {
-    const groupVideos: string[] = [];
-    let prevPanelCtx: any | null = null;
-
-    for (let i = 0; i < groups.length; i++) {
-      const prevGroupLastPanelKey = i > 0
-        ? `${i - 1},${(groups[i - 1].panels ?? []).length - 1}`
-        : null;
-      const { groupVideo, lastPanelContext } = await processGroup(
-        imgSem, vidSem, outputDir, catalog,
-        sceneName, i, groups[i], prevPanelCtx, videoEvents, prevGroupLastPanelKey, fullSceneText, sel.aspectRatio,
-      );
-      if (groupVideo) groupVideos.push(groupVideo);
-      prevPanelCtx = lastPanelContext;
-      onProgress?.({ scene: sceneName, done: i + 1, total: groups.length });
+    // ── 预注册所有 panel 的 videoEvent ──
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (let pi = 0; pi < (groups[gi].panels ?? []).length; pi++) {
+        const key = `${gi},${pi}`;
+        let resolve!: () => void;
+        const promise = new Promise<void>((r) => { resolve = r; });
+        videoEvents.set(key, { resolve, promise });
+      }
     }
 
-    const validVideos = groupVideos.filter((p) => fsSync.existsSync(p) && !p.includes("_FAILED"));
+    // ── 预计算每个 panel 的 videoPrompt（来自 JSON，无需等待生图）──
+    const videoPromptMap = new Map<string, string>();
+    for (let gi = 0; gi < groups.length; gi++) {
+      for (const [pi, panel] of (groups[gi].panels ?? []).entries()) {
+        videoPromptMap.set(
+          `${gi},${pi}`,
+          `${(panel.video_prompt ?? "").trimEnd()} No background music or ambient sound. No subtitles or text overlays.`,
+        );
+      }
+    }
+
+    // ── 根据 JSONL 数据预计算 prevCtx（所有字段均来自 JSON，无需等待生图）──
+    function getPrevCtx(gi: number, pi: number): any | null {
+      if (pi > 0) {
+        const prev = (groups[gi].panels ?? [])[pi - 1];
+        return { shot_type: prev.shot_type, image_prompt: prev.image_prompt, video_prompt: videoPromptMap.get(`${gi},${pi - 1}`) };
+      }
+      if (gi > 0) {
+        const prevPanels = groups[gi - 1].panels ?? [];
+        if (prevPanels.length > 0) {
+          const prev = prevPanels[prevPanels.length - 1];
+          return { shot_type: prev.shot_type, image_prompt: prev.image_prompt, video_prompt: videoPromptMap.get(`${gi - 1},${prevPanels.length - 1}`) };
+        }
+      }
+      return null;
+    }
+
+    // ── 所有 panel 并行：生图 → 生视频，continuation 通过 videoEvents 等待前驱 ──
+    console.log(`\n[${sceneName}] 并行处理所有 panels...`);
+    await Promise.all(
+      groups.flatMap((group: any, gi: number) => {
+        const panels      = group.panels ?? [];
+        const currentText = group.text ?? "";
+        const groupDur    = estimateGroupDuration(currentText);
+        const panelDurations = distributePanelDurations(groupDur, panels);
+
+        return panels.map(async (panel: any, pi: number) => {
+          const prefix       = `g${String(gi).padStart(2, "0")}_p${String(pi).padStart(2, "0")}`;
+          const imgPath      = path.join(outputDir, `${prefix}.png`);
+          const panelVidPath = path.join(outputDir, `${prefix}.mp4`);
+          const key          = `${gi},${pi}`;
+          const duration     = panelDurations[pi] ?? VIDEO_DEFAULT_DURATION;
+          const videoPrompt  = videoPromptMap.get(key)!;
+
+          try {
+            // ── 生图阶段 ──
+            let actualImg: string | null = null;
+
+            if (panel.is_continuation === true) {
+              console.log(`  [${sceneName}][${prefix}] is_continuation，跳过生图`);
+            } else if (fsSync.existsSync(imgPath)) {
+              console.log(`  [${sceneName}][${prefix}] 图片已存在，跳过生图`);
+              actualImg = imgPath;
+            } else {
+              const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, getPrevCtx(gi, pi), fullSceneText);
+              console.log(`  [${sceneName}][${prefix}] 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
+              console.log(`  [${sceneName}][${prefix}] image_prompt: ${imagePrompt}`);
+              await generateImage(imgSem, imagePrompt, refPaths, imgPath, sel.aspectRatio);
+              actualImg = imgPath;
+            }
+
+            // ── 生视频阶段 ──
+            if (fsSync.existsSync(panelVidPath)) {
+              console.log(`    [视频] ${prefix}.mp4 已存在，跳过`);
+              return;
+            }
+
+            if (panel.is_continuation === true) {
+              let prevKey: string | null = null;
+              if (pi > 0) {
+                prevKey = `${gi},${pi - 1}`;
+              } else if (gi > 0) {
+                const prevPanels = groups[gi - 1].panels ?? [];
+                prevKey = `${gi - 1},${prevPanels.length - 1}`;
+              }
+
+              if (prevKey && videoEvents.has(prevKey)) {
+                console.log(`    [${prefix}] continuation: 等待 ${prevKey.replace(",", "_p").replace(/^(\d+)/, "g$1")} 视频完成...`);
+                await videoEvents.get(prevKey)!.promise;
+                const [pg, pp] = prevKey.split(",").map(Number);
+                const prevVid   = path.join(outputDir, `g${String(pg).padStart(2, "0")}_p${String(pp).padStart(2, "0")}.mp4`);
+                const lastFrame = path.join(outputDir, `g${String(pg).padStart(2, "0")}_p${String(pp).padStart(2, "0")}_lastframe.png`);
+                if (fsSync.existsSync(prevVid) && (fsSync.existsSync(lastFrame) || await extractLastFrame(prevVid, lastFrame))) {
+                  actualImg = lastFrame;
+                  console.log(`    [${prefix}] continuation: 使用 ${path.basename(lastFrame)}`);
+                } else {
+                  console.log(`    [${prefix}] continuation: 提帧失败，跳过`);
+                  return;
+                }
+              } else {
+                console.log(`    [${prefix}] continuation: 无前驱，跳过`);
+                return;
+              }
+            }
+
+            if (!actualImg || !fsSync.existsSync(actualImg)) {
+              console.log(`    [${prefix}] 无参考图，跳过`);
+              return;
+            }
+
+            await generateVideo(vidSem, actualImg, videoPrompt, panelVidPath, sel.aspectRatio, duration);
+          } catch (e) {
+            console.log(`    [${prefix}] 失败: ${e}`);
+          } finally {
+            videoEvents.get(key)?.resolve();
+          }
+        });
+      }),
+    );
+
+    // ── 按 group 顺序拼接 panel 视频 → group 视频 ──
+    const groupVideos: string[] = [];
+    for (let gi = 0; gi < groups.length; gi++) {
+      const panels       = groups[gi].panels ?? [];
+      const groupVidPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}.mp4`);
+
+      if (fsSync.existsSync(groupVidPath)) {
+        console.log(`\n[group ${String(gi).padStart(2, "0")}] 视频已存在，跳过`);
+        groupVideos.push(groupVidPath);
+        onProgress?.({ scene: sceneName, done: gi + 1, total: groups.length });
+        continue;
+      }
+
+      const panelVids = panels
+        .map((_: any, pi: number) => path.join(outputDir, `g${String(gi).padStart(2, "0")}_p${String(pi).padStart(2, "0")}.mp4`))
+        .filter((p: string) => fsSync.existsSync(p));
+
+      if (panelVids.length === 0) {
+        console.log(`\n[group ${String(gi).padStart(2, "0")}] 所有 panel 视频均失败，跳过`);
+        onProgress?.({ scene: sceneName, done: gi + 1, total: groups.length });
+        continue;
+      }
+
+      if (panelVids.length === 1) {
+        await fs.copyFile(panelVids[0], groupVidPath);
+      } else {
+        await concatVideos(panelVids, groupVidPath);
+      }
+      console.log(`  拼接完成: ${path.basename(groupVidPath)}`);
+      groupVideos.push(groupVidPath);
+      onProgress?.({ scene: sceneName, done: gi + 1, total: groups.length });
+    }
+
+    const validVideos = groupVideos.filter((p) => fsSync.existsSync(p));
     console.log(`\n所有 ${validVideos.length} 个 group 视频生成完毕`);
 
     const videoOnly = path.join(outputDir, "_video_only.mp4");
