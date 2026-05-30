@@ -437,7 +437,7 @@ async function generateImage(
       console.log(`    [生图] [Gemini] 已保存: ${path.basename(outputPath)}`);
       return;
     }
-    const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 300);
+    const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 1000);
     throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${errMsg}`);
   } finally {
     imgSem.release();
