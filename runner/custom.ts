@@ -75,7 +75,7 @@ export async function runCustom(sel: NovelSelection, rl: readline.Interface) {
     await fs.writeFile(novelPaths.progress(sel.novelName), JSON.stringify(prog, null, 4), "utf-8");
 
     console.log(`\n  ${"=".repeat(50)}`);
-    console.log(`  完成！产物目录: ${epDir}`);
+    console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
     console.log();
   } catch (err) {
     console.error(`\n  x 流水线出错: ${err}\n`);
