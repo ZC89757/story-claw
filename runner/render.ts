@@ -15,7 +15,7 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { CONFIG_DIR } from "../utils/run-python.js";
@@ -354,6 +354,39 @@ async function selectResources(
 
 // ── 图片生成 ──────────────────────────────────────────────────────────────────
 
+const IMAGE_TIMEOUT_MS = 600_000;
+
+function runPython(args: string[]): Promise<{ ok: boolean; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("python", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok, stderr });
+    };
+
+    const timer = setTimeout(() => {
+      child.kill();
+      stderr += "\n[timeout] process killed after " + IMAGE_TIMEOUT_MS / 1000 + "s";
+      finish(false);
+    }, IMAGE_TIMEOUT_MS);
+
+    child.on("close", (code: number | null) => {
+      clearTimeout(timer);
+      finish(code === 0);
+    });
+    child.on("error", (err: Error) => {
+      clearTimeout(timer);
+      stderr += "\n" + err.message;
+      finish(false);
+    });
+  });
+}
+
 async function generateImage(
   imgSem: Semaphore,
   prompt: string,
@@ -371,12 +404,12 @@ async function generateImage(
     // ── 主路径：gpt-image-gen.py（带重试）──────────────────────────────
     for (let attempt = 1; attempt <= IMAGE_MAX_RETRIES; attempt++) {
       const args = [gptHelperPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
-      const result = spawnSync("python", args, { encoding: "utf-8", timeout: 600_000 });
-      if (result.status === 0) {
+      const { ok, stderr } = await runPython(args);
+      if (ok) {
         console.log(`    [生图] [gpt-image-2] 已保存: ${path.basename(outputPath)}`);
         return;
       }
-      const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 300);
+      const errMsg = stderr.slice(0, 1500);
       console.log(`    [生图] [${attempt}/${IMAGE_MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
       if (attempt < IMAGE_MAX_RETRIES) {
         console.log(`    [生图] ${IMAGE_RETRY_SLEEP / 1000}s 后重试...`);
@@ -388,13 +421,12 @@ async function generateImage(
     console.log(`    [生图] gpt-image-2 失败，降级到 Gemini...`);
     const geminiPath = path.join(RENDER_DIR, "../utils/gemini-image-gen.py");
     const geminiArgs = [geminiPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
-    const geminiResult = spawnSync("python", geminiArgs, { encoding: "utf-8", timeout: 600_000 });
-    if (geminiResult.status === 0) {
+    const { ok: geminiOk, stderr: geminiErr } = await runPython(geminiArgs);
+    if (geminiOk) {
       console.log(`    [生图] [Gemini] 已保存: ${path.basename(outputPath)}`);
       return;
     }
-    const errMsg = (geminiResult.stderr || geminiResult.error?.message || "unknown error").slice(0, 1000);
-    throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${errMsg}`);
+    throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${geminiErr.slice(0, 1500)}`);
   } finally {
     imgSem.release();
   }

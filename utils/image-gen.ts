@@ -10,13 +10,46 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const UTILS_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 3000;
+const TIMEOUT_MS = 600_000;
+
+/** 异步执行 python 脚本，返回 { ok, stderr } */
+function runPython(args: string[]): Promise<{ ok: boolean; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("python", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok, stderr });
+    };
+
+    const timer = setTimeout(() => {
+      child.kill();
+      stderr += "\n[timeout] process killed after " + TIMEOUT_MS / 1000 + "s";
+      finish(false);
+    }, TIMEOUT_MS);
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      finish(code === 0);
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      stderr += "\n" + err.message;
+      finish(false);
+    });
+  });
+}
 
 /**
  * 统一图像生成接口。
@@ -49,29 +82,23 @@ export async function generateImage(
 
   const helperPath = path.join(UTILS_DIR, "gpt-image-gen.py");
 
-  // 构建 python 调用参数
   const buildArgs = () => {
     const args = [helperPath, outputPath, prompt];
-    if (aspectRatio) {
-      args.push("--aspect", aspectRatio);
-    }
+    if (aspectRatio) args.push("--aspect", aspectRatio);
     args.push(...images);
     return args;
   };
 
   // ── 主路径：gpt-image-gen.py（带重试）────────────────────────────────────
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const result = spawnSync("python", buildArgs(), {
-      encoding: "utf-8",
-      timeout: 600_000,
-    });
+    const { ok, stderr } = await runPython(buildArgs());
 
-    if (result.status === 0) {
+    if (ok) {
       console.log(`  [gpt-image-2] 已保存: ${outputPath}`);
       return outputPath;
     }
 
-    const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 300);
+    const errMsg = stderr.slice(0, 1500);
     console.log(`  [${attempt}/${MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
 
     if (attempt < MAX_RETRIES) {
@@ -84,21 +111,15 @@ export async function generateImage(
   console.log(`  gpt-image-2 失败，降级到 Gemini...`);
   const geminiPath = path.join(UTILS_DIR, "gemini-image-gen.py");
   const geminiArgs = [geminiPath, outputPath, prompt];
-  if (aspectRatio) {
-    geminiArgs.push("--aspect", aspectRatio);
-  }
+  if (aspectRatio) geminiArgs.push("--aspect", aspectRatio);
   geminiArgs.push(...images);
 
-  const geminiResult = spawnSync("python", geminiArgs, {
-    encoding: "utf-8",
-    timeout: 600_000,
-  });
+  const { ok: geminiOk, stderr: geminiErr } = await runPython(geminiArgs);
 
-  if (geminiResult.status === 0) {
+  if (geminiOk) {
     console.log(`  [Gemini] 已保存: ${outputPath}`);
     return outputPath;
   }
 
-  const geminiErr = (geminiResult.stderr || geminiResult.error?.message || "unknown error").slice(0, 300);
-  throw new Error(`gpt-image-2 与 Gemini 均失败。Gemini 错误: ${geminiErr}`);
+  throw new Error(`gpt-image-2 与 Gemini 均失败。Gemini 错误: ${geminiErr.slice(0, 1500)}`);
 }
