@@ -36,6 +36,7 @@ const ETHNICITY_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "非裔", value: "非洲裔面孔，黑人" },
   { label: "拉丁裔", value: "拉丁美洲裔面孔" },
   { label: "南亚裔", value: "南亚裔面孔" },
+  { label: "按故事推测（自动）", value: "" },
 ];
 
 /** 交互选择分镜画幅比例 */

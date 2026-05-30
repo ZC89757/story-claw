@@ -147,7 +147,7 @@ function buildCompositePrompt(frame: Frame, clothingMap: Map<string, string>, et
     ``,
     `要求：`,
     `- 真人写实摄影风格`,
-    `- 所有人物为${ethnicity}`,
+    ...(ethnicity ? [`- 所有人物为${ethnicity}`] : []),
   ].join("\n");
 }
 
@@ -205,7 +205,7 @@ export async function generateCompositeFrames(
   novelName: string,
   episodeNum: number,
   runSubAgent: SubAgentFactory,
-  ethnicity = "东亚面孔，亚裔",
+  ethnicity = "",
 ): Promise<CompositeFrameResult> {
   const ctx = buildContext(sceneData, sceneId, novelName, episodeNum);
   const results: string[] = [];
