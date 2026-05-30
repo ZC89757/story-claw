@@ -71,7 +71,10 @@ export const generateCharacterTool: ToolDefinition = {
         };
       } catch { /* 不存在，继续生成 */ }
 
-      const ethnicityPart = ethnicity ? `人物特征：${ethnicity}，${prompt}。` : `人物特征：${prompt}。`;
+      const cleanBasePrompt = prompt.replace(/[。！？…]+$/, "").trimEnd();
+      const ethnicityPart = ethnicity
+        ? `人物特征：${ethnicity}，${cleanBasePrompt}。`
+        : `人物特征：${cleanBasePrompt}。`;
       const fullPrompt =
         `真人写实摄影风格，白色纯净背景。` +
         `必须像真实照片，禁止卡通、漫画、动漫、手绘风格。` +
@@ -113,10 +116,11 @@ export const generateCharacterTool: ToolDefinition = {
         };
       } catch { /* 不存在，继续生成 */ }
 
+      const cleanPrompt = prompt.replace(/[。！？…]+$/, "").trimEnd();
       const fullPrompt =
         `基于参考图中的角色，保持其面部特征、体型、发型完全一致。` +
         (ethnicity ? `人物特征：${ethnicity}。` : ``) +
-        `本阶段造型：${prompt}。` +
+        `本阶段造型：${cleanPrompt}。` +
         `画面包含：正面全身、侧面全身、背面全身、正面脸部特写，四视角排列。` +
         `真人写实摄影风格，白色纯净背景，高清，自然光影。`;
 
