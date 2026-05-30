@@ -59,16 +59,17 @@ Stored in `~/.story-claw/` (not in the repo):
 1. LLM sub-agent（ARCHIVE_SYSTEM）分析画面预设文本，输出 `archive-tasks` JSON 块
 2. `pipeline.ts:archive()` 用正则解析 JSON，**代码直接**调用 `generateCharacterTool.execute()` / `generateSceneTool.execute()`（不是 LLM 调工具）
 3. 工具内部拼接完整 prompt，调 `utils/image-gen.ts:generateImage(prompt, outputPath, images, "16:9")`
-4. `image-gen.ts` 用 `spawnSync` 调 `gpt-image-gen.py`，失败重试 3 次
+4. `image-gen.ts` 用 async `spawn` 调 `gpt-image-gen.py`，失败重试 3 次，超时 600s
 5. 3 次全败 → `image-gen.ts` 改调 `gemini-image-gen.py`（只试一次）
 
 **路径二：渲染合成**（每个 panel 的分镜静态图）
 1. 分镜制作阶段 LLM sub-agent 已将每个 panel 的 `image_prompt` 写入 `storyboards/*.jsonl`
-2. `render.ts:renderScene()` 读取 JSONL，逐 group 调 `processGroup()`
-3. 每个 panel 先调 `selectResources()`：代码**主动发一次普通 chat.completions**（非 agent/工具调用），LLM 返回 JSON（选好的参考图路径 + 改写后的 prompt，人物/背景文字描述 → `the person/background in image N`）
-4. 代码调 `render.ts:generateImage(imgSem, imagePrompt, refPaths, outputPath, aspectRatio)`
-5. `spawnSync` 调 `gpt-image-gen.py`，失败重试 3 次
-6. 3 次全败 → 代码改调 `gemini-image-gen.py`（只试一次）
+2. `render.ts:renderScene()` 读取 JSONL，将所有场景所有 panel **展平为单个 Promise.all 并行执行**（无 group 概念）
+3. 每个 panel 独立流程：`selectResources()` → `generateImage()` → `generateVideo()`
+   - `selectResources()`：代码主动发 chat.completions，LLM 返回参考图路径 + 改写后的 prompt
+   - `is_continuation=true` 的 panel 跳过生图，等待 `videoEvents` 前驱事件后提取尾帧作为参考
+4. 代码调 `render.ts:generateImage(imgSem, ...)`，async `spawn` 调 `gpt-image-gen.py`，失败重试 3 次
+5. 3 次全败 → 代码改调 `gemini-image-gen.py`（只试一次）
 
 **两条路径的共同点**：LLM 只负责生成数据，**生图始终由 Node.js 代码主动调 Python 脚本**，LLM 不直接触发生图。降级逻辑在 Node.js 侧，Python 脚本本身没有降级。
 
@@ -112,13 +113,15 @@ workspace/
 Chapter files: `第{N}章 {title}.txt`，放在用户指定的小说文件夹中。
 
 ### Render Pipeline Detail (`runner/render.ts`)
-每个 group 的处理流程（`processGroup`）：
-1. **资源选择**（`selectResources`）：LLM 根据 `shot_type` 和场景上下文选参考图，改写 `image_prompt`（人物/背景描述 → `the person/background in image N`）
-2. **生图**（`generateImage`）：信号量并发（默认 4），调用 `gpt-image-gen.py`，3次失败降级 `gemini-image-gen.py`
-3. **生视频**（`generateVideo`）：信号量并发（默认 2），调用 ComfyUI LTX-2.3 i2v workflow
-4. **TTS 管线**（`runTtsPipeline`）：Phase1 标注 → Phase2 分配声音 → Phase3 并行合成 → Phase4 拼接
-5. **音视频合并**（`mergeVideoAudio`）：ffmpeg setpts 对齐时长
-6. **全局对齐**（`globalAlignAndMerge`）：多场景相向调速后拼为集视频
+`renderScene()` 的执行流程：
+1. **所有 panel 并行**（`Promise.all`）：每个 panel 独立执行生图 → 生视频
+   - `is_continuation=false`：`selectResources()` + `generateImage()`（imgSem，默认并发 4）
+   - `is_continuation=true`：跳过生图，等待 `videoEvents` 前驱事件，提取尾帧后生视频
+   - 生视频：`generateVideo()`（vidSem，默认并发 6），调用 ComfyUI LTX-2.3 i2v workflow
+2. **group 拼接**（顺序）：所有 panel 完成后，按 group 顺序将 panel 视频拼为 group 视频
+3. **TTS 管线**（与视频管线并行）：Phase1 标注 → Phase2 分配声音 → Phase3 并行合成 → Phase4 拼接
+4. **音视频合并**（`mergeVideoAudio`）：ffmpeg setpts 对齐时长
+5. **全局对齐**（`globalAlignAndMerge`）：多场景相向调速后拼为集视频
 
 ### Agent Data
 - `agent-data/`: pi-coding-agent 框架自动创建的 session 状态
