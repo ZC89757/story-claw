@@ -32,7 +32,7 @@
     "image_gen_config.example.json"
   ],
   "scripts": {
-    "start": "node --import tsx cli.ts"
+    "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.52.8",

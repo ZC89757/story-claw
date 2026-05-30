@@ -79,7 +79,7 @@ export const generateCharacterTool: ToolDefinition = {
         `画面包含：正面全身、侧面全身、背面全身、正面脸部特写，四视角排列。` +
         `高清，自然光影。`;
 
-      await generateImage(fullPrompt, protoPath);
+      await generateImage(fullPrompt, protoPath, [], "16:9");
 
       // 写入角色 JSON
       const data = await loadJson();
@@ -119,7 +119,7 @@ export const generateCharacterTool: ToolDefinition = {
         `画面包含：正面全身、侧面全身、背面全身、正面脸部特写，四视角排列。` +
         `真人写实摄影风格，白色纯净背景，高清，自然光影。`;
 
-      await generateImage(fullPrompt, stagePath, [protoPath]);
+      await generateImage(fullPrompt, stagePath, [protoPath], "16:9");
 
       // 追加造型阶段到 JSON
       const data = await loadJson();

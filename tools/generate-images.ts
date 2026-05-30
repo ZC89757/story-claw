@@ -256,7 +256,7 @@ export async function generateCompositeFrames(
       console.log(`  [尝试 ${attempt}]`);
 
       const allImages = [scenePath, ...charPaths];
-      await generateImage(currentPrompt, outputPath, allImages);
+      await generateImage(currentPrompt, outputPath, allImages, "9:16");
 
       const validationRaw = await runSubAgent(
         [],
@@ -373,7 +373,7 @@ export async function generatePanelImages(
 
       // effects 无底图，跳过校验
       if (!inputImagePath) {
-        await generateImage(originalPanelPrompt, panelPath, panelImages);
+        await generateImage(originalPanelPrompt, panelPath, panelImages, aspectRatio);
         results.push(`帧 ${num} 分镜 p${panelNum} 完成 → panel_${prefix}${numStr}_p${panelNum}.png`);
         continue;
       }
@@ -382,7 +382,7 @@ export async function generatePanelImages(
       let curPanelPrompt = originalPanelPrompt;
 
       for (let pa = 1; pa <= MAX_RETRIES; pa++) {
-        await generateImage(curPanelPrompt, panelPath, panelImages);
+        await generateImage(curPanelPrompt, panelPath, panelImages, aspectRatio);
 
         const pvRaw = await runSubAgent(
           [],

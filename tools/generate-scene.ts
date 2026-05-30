@@ -88,7 +88,7 @@ export const generateSceneTool: ToolDefinition = {
     } catch { /* 不存在，继续生成 */ }
 
     const prompt = buildScenePrompt(locationName, basePrompt);
-    await generateImage(prompt, outputPath);
+    await generateImage(prompt, outputPath, [], "16:9");
 
     return {
       content: [{ type: "text" as const, text:

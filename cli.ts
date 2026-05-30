@@ -5,6 +5,7 @@
  */
 
 // 并行场景处理时每个 tool call 都会向 AbortSignal 注册 listener，超过默认上限 10 会触发误报
+// 已在 package.json start 脚本中通过 --disable-warning=MaxListenersExceededWarning 静默
 process.setMaxListeners(0);
 
 import readline from "node:readline";

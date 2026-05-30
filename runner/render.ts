@@ -66,10 +66,7 @@ const vidCfg = loadConfig("video_config.json");
 const llmCfg = loadConfig("config.json");
 const ttsCfg = loadConfig("tts_config.json");
 
-// 图片生成（Google Imagen via vertex-ai proxy）
-const IMAGE_API_KEY  = imgCfg.api_key as string;
-const IMAGE_BASE_URL = (imgCfg.base_url ?? "https://zenmux.ai/api/vertex-ai") as string;
-const IMAGE_MODEL    = (imgCfg.model   ?? "openai/gpt-image-2") as string;
+// 图片生成（gpt-image-gen.py via Vertex AI SDK）
 const IMAGE_CONCURRENCY = (imgCfg.concurrency ?? 4) as number;
 const IMAGE_MAX_RETRIES = 3;
 const IMAGE_RETRY_SLEEP = 3000; // ms
@@ -357,11 +354,6 @@ async function selectResources(
 
 // ── 图片生成 ──────────────────────────────────────────────────────────────────
 
-/** 按 aspectRatio 返回 OpenAI Images API size 字符串 */
-function imageSize(aspectRatio: string): string {
-  return aspectRatio === "16:9" ? "1792x1024" : "1024x1792";
-}
-
 async function generateImage(
   imgSem: Semaphore,
   prompt: string,
@@ -371,73 +363,37 @@ async function generateImage(
 ): Promise<void> {
   await imgSem.acquire();
   try {
-    console.log(`    [生图] 提交: ${path.basename(outputPath)}（参考图 ${refPaths.length} 张）`);
-    let lastErr: unknown;
-    const size = imageSize(aspectRatio);
+    console.log(`    [生图] 提交: ${path.basename(outputPath)}（参考图 ${refPaths.length} 张，宽高比 ${aspectRatio}）`);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
+    const gptHelperPath = path.join(RENDER_DIR, "../utils/gpt-image-gen.py");
+
+    // ── 主路径：gpt-image-gen.py（带重试）──────────────────────────────
     for (let attempt = 1; attempt <= IMAGE_MAX_RETRIES; attempt++) {
-      try {
-        let resp: Response;
-        if (refPaths.length > 0) {
-          const form = new FormData();
-          form.append("model", IMAGE_MODEL);
-          form.append("prompt", prompt);
-          form.append("n", "1");
-          form.append("size", size);
-          for (const p of refPaths) {
-            const blob = new Blob([await fs.readFile(p)], { type: "image/png" });
-            form.append("image[]", blob, path.basename(p));
-          }
-          resp = await fetch(`${IMAGE_BASE_URL}/images/edits`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${IMAGE_API_KEY}` },
-            body: form,
-          });
-        } else {
-          resp = await fetch(`${IMAGE_BASE_URL}/images/generations`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${IMAGE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1, size }),
-          });
-        }
-
-        if (!resp.ok) {
-          const errText = (await resp.text()).slice(0, 200);
-          if (resp.status === 400) {
-            console.log(`    [生图] HTTP 400，直接降级到 Gemini: ${errText}`);
-            lastErr = new Error(`HTTP 400: ${errText}`);
-            break;
-          }
-          throw new Error(`HTTP ${resp.status}: ${errText}`);
-        }
-        const result: any = await resp.json();
-        const b64 = result?.data?.[0]?.b64_json;
-        if (!b64) throw new Error(`未收到图片数据: ${JSON.stringify(result).slice(0, 200)}`);
-
-        await fs.mkdir(path.dirname(outputPath), { recursive: true });
-        await fs.writeFile(outputPath, Buffer.from(b64, "base64"));
-        console.log(`    [生图] 已保存: ${path.basename(outputPath)}`);
+      const args = [gptHelperPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
+      const result = spawnSync("python", args, { encoding: "utf-8", timeout: 600_000 });
+      if (result.status === 0) {
+        console.log(`    [生图] [gpt-image-2] 已保存: ${path.basename(outputPath)}`);
         return;
-      } catch (e) {
-        lastErr = e;
-        if (attempt < IMAGE_MAX_RETRIES) {
-          console.log(`    [生图] 第 ${attempt} 次失败: ${e}，${IMAGE_RETRY_SLEEP / 1000}s 后重试...`);
-          await sleep(IMAGE_RETRY_SLEEP);
-        }
+      }
+      const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 300);
+      console.log(`    [生图] [${attempt}/${IMAGE_MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
+      if (attempt < IMAGE_MAX_RETRIES) {
+        console.log(`    [生图] ${IMAGE_RETRY_SLEEP / 1000}s 后重试...`);
+        await sleep(IMAGE_RETRY_SLEEP);
       }
     }
 
     // ── 降级：调用 Gemini Python helper ──────────────────────────────
     console.log(`    [生图] gpt-image-2 失败，降级到 Gemini...`);
-    const helperPath = path.join(RENDER_DIR, "../utils/gemini-image-gen.py");
-    const args = [helperPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    const result = spawnSync("python", args, { encoding: "utf-8", timeout: 120_000 });
-    if (result.status === 0) {
+    const geminiPath = path.join(RENDER_DIR, "../utils/gemini-image-gen.py");
+    const geminiArgs = [geminiPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
+    const geminiResult = spawnSync("python", geminiArgs, { encoding: "utf-8", timeout: 600_000 });
+    if (geminiResult.status === 0) {
       console.log(`    [生图] [Gemini] 已保存: ${path.basename(outputPath)}`);
       return;
     }
-    const errMsg = (result.stderr || result.error?.message || "unknown error").slice(0, 1000);
+    const errMsg = (geminiResult.stderr || geminiResult.error?.message || "unknown error").slice(0, 1000);
     throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${errMsg}`);
   } finally {
     imgSem.release();
