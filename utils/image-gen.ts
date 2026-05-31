@@ -98,7 +98,7 @@ export async function generateImage(
       return outputPath;
     }
 
-    const errMsg = stderr.slice(0, 1500);
+    const errMsg = stderr.slice(-1500);
     console.log(`  [${attempt}/${MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
 
     if (attempt < MAX_RETRIES) {
@@ -121,5 +121,5 @@ export async function generateImage(
     return outputPath;
   }
 
-  throw new Error(`gpt-image-2 与 Gemini 均失败。Gemini 错误: ${geminiErr.slice(0, 1500)}`);
+  throw new Error(`gpt-image-2 与 Gemini 均失败。Gemini 错误: ${geminiErr.slice(-1500)}`);
 }

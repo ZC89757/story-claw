@@ -407,7 +407,7 @@ async function generateImage(
         console.log(`    [生图] [gpt-image-2] 已保存: ${path.basename(outputPath)}`);
         return;
       }
-      const errMsg = stderr.slice(0, 1500);
+      const errMsg = stderr.slice(-1500);
       console.log(`    [生图] [${attempt}/${IMAGE_MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
       if (attempt < IMAGE_MAX_RETRIES) {
         console.log(`    [生图] ${IMAGE_RETRY_SLEEP / 1000}s 后重试...`);
@@ -424,7 +424,7 @@ async function generateImage(
       console.log(`    [生图] [Gemini] 已保存: ${path.basename(outputPath)}`);
       return;
     }
-    throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${geminiErr.slice(0, 1500)}`);
+    throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${geminiErr.slice(-1500)}`);
   } finally {
     imgSem.release();
   }
