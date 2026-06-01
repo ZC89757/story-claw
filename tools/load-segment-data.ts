@@ -17,14 +17,14 @@ export async function loadSegmentData(
   const presetText = await fs.readFile(visualPresetPath, "utf-8");
 
   const sceneFilesDesc = sceneNames
-    .map((name) => `  - ${novelPaths.sceneScript(novelName, episodeNum, name)}`)
+    .map((name) => `  - ${name}.md`)
     .join("\n");
 
   return (
     `== 章节原文（含画面预设标注）==\n${presetText}\n\n` +
     `== 场景列表 ==\n${sceneNames.join("、")}\n\n` +
-    `== 输出路径 ==\n` +
-    `每个场景保存为一个文件，共 ${sceneNames.length} 个：\n` +
+    `== 输出文件 ==\n` +
+    `工作目录已设为剧本目录，write 工具的 path 只写文件名（不带目录），共 ${sceneNames.length} 个：\n` +
     `${sceneFilesDesc}\n\n` +
     OUTPUT_SCHEMAS["segment_script"]
   );

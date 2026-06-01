@@ -147,20 +147,21 @@ export async function createSession(
   customTools: ToolDefinition[],
   systemPrompt: string,
   builtinTools = [writeTool, readTool],
+  cwd: string = DATA_DIR,
 ): Promise<AgentSession> {
   const { authStorage, modelRegistry, model, settingsManager } = await getSharedResources();
   const sessionManager = SessionManager.open(sessionFile);
 
   const resourceLoader = new DefaultResourceLoader({
     systemPrompt,
-    cwd: DATA_DIR,
+    cwd,
     agentsFilesOverride: () => ({ agentsFiles: [] }),
     appendSystemPromptOverride: () => [],
   });
   await resourceLoader.reload();
 
   const { session } = await createAgentSession({
-    cwd: DATA_DIR,
+    cwd,
     agentDir: DATA_DIR,
     authStorage,
     modelRegistry,
@@ -198,6 +199,7 @@ export async function runSubAgent(
   taskPrompt: string,
   logPrefix = "[Sub]",
   builtinTools = [writeTool, readTool],
+  cwd: string = DATA_DIR,
 ): Promise<string> {
   const tempFile = path.join(
     DATA_DIR,
@@ -209,7 +211,7 @@ export async function runSubAgent(
   const logPath = path.join(AGENT_LOGS_DIR, `${safePrefix}_${Date.now()}.log`);
   const logStream = createWriteStream(logPath, { encoding: "utf-8" });
 
-  const session = await createSession(tempFile, customTools, systemPrompt, builtinTools);
+  const session = await createSession(tempFile, customTools, systemPrompt, builtinTools, cwd);
 
   let lastText = "";
   let currentText = "";
