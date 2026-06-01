@@ -18,7 +18,7 @@ export const generateCharacterTool: ToolDefinition = {
   description:
     "生成角色参考图。" +
     "不传 stage：文生图，生成原型图（该时代便服下的基础体貌），每角色只需生成一次。" +
-    "传入 stage：图生图，以原型图为参考生成造型图，prompt 只需描述本阶段服装/道具/特殊状态。",
+    "传入 stage：图生图，以原型图为参考生成造型图，prompt 只描述本阶段服装/随身道具的变化。",
   parameters: Type.Object({
     novel_name: Type.String({ description: "小说名称" }),
     name:       Type.String({ description: "角色名，用于文件命名" }),
@@ -26,7 +26,7 @@ export const generateCharacterTool: ToolDefinition = {
       description:
         "生图提示词。" +
         "无 stage 时：描述角色基础体貌，包括年龄、身形、面部特征、发型等。" +
-        "有 stage 时：只描述本阶段造型变化，如服装、随身道具、特殊身体状态，无需重复描述体貌。",
+        "有 stage 时：只描述本阶段服装与随身道具的变化，无需重复体貌。禁止写具体年龄、情绪神情、动作、场景地点、光线氛围。",
     }),
     ethnicity:  Type.String({ description: "人种描述，如「东亚面孔，亚裔」" }),
     stage:      Type.Optional(Type.String({
