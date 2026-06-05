@@ -206,39 +206,59 @@ async function buildResourceCatalog(workspaceDir: string): Promise<ResourceCatal
   const pathMap = new Map<string, string>();
 
   lines.push("== 可用角色资源 ==");
-  for (const file of (await fs.readdir(charsDir).catch(() => [])).filter((f) => f.endsWith(".json"))) {
+  const charFiles = await fs.readdir(charsDir).catch(() => []);
+  const charPngs  = charFiles.filter((f) => f.endsWith(".png"));
+  for (const file of charFiles.filter((f) => f.endsWith(".json"))) {
     try {
       const data = JSON.parse(await fs.readFile(path.join(charsDir, file), "utf-8"));
       const name = data.name ?? path.basename(file, ".json");
-      const protoPng = path.join(charsDir, `${name}_原型.png`);
-      if (fsSync.existsSync(protoPng)) {
-        lines.push(`路径: ${protoPng}`);
-        lines.push(`  描述: ${name} 原型 — ${data.base_prompt ?? ""}`);
-        pathMap.set(protoPng, protoPng);
-      }
-      for (const st of (data.stages ?? [])) {
-        const stagePng = path.join(charsDir, `${name}_${st.stage}.png`);
-        if (fsSync.existsSync(stagePng)) {
-          lines.push(`路径: ${stagePng}`);
-          lines.push(`  描述: ${name} 造型/${st.stage} — ${st.prompt ?? ""}`);
-          pathMap.set(stagePng, stagePng);
+      // JSON 中登记的造型描述：stage 名 → prompt
+      const stagePrompts = new Map<string, string>(
+        (data.stages ?? []).map((st: any) => [st.stage, st.prompt ?? ""]),
+      );
+      // 扫描磁盘上该角色所有 {name}_*.png，JSON 未登记的（手动放入的参考图）也纳入候选
+      const prefix = `${name}_`;
+      for (const png of charPngs.filter((f) => f.startsWith(prefix)).sort()) {
+        const suffix = png.slice(prefix.length, -4); // 去掉 {name}_ 前缀与 .png
+        const abs = path.join(charsDir, png);
+        let desc: string;
+        if (suffix === "原型") {
+          desc = `${name} 原型 — ${data.base_prompt ?? ""}`;
+        } else if (stagePrompts.has(suffix)) {
+          desc = `${name} 造型/${suffix} — ${stagePrompts.get(suffix)}`;
+        } else {
+          desc = `${name} 参考图/${suffix}（用户提供的真实参考图）`;
         }
+        lines.push(`路径: ${abs}`);
+        lines.push(`  描述: ${desc}`);
+        pathMap.set(abs, abs);
       }
     } catch { /* 跳过解析失败 */ }
   }
 
   lines.push("");
   lines.push("== 可用场景资源 ==");
-  for (const file of (await fs.readdir(scenesDir).catch(() => [])).filter((f) => f.endsWith(".json"))) {
+  const sceneFiles = await fs.readdir(scenesDir).catch(() => []);
+  const scenePngs  = sceneFiles.filter((f) => f.endsWith(".png"));
+  for (const file of sceneFiles.filter((f) => f.endsWith(".json"))) {
     try {
       const data = JSON.parse(await fs.readFile(path.join(scenesDir, file), "utf-8"));
       const loc = data.location ?? path.basename(file, ".json");
-      const basePng = path.join(scenesDir, `${loc}.png`);
-      if (fsSync.existsSync(basePng)) {
-        const softDesc = Object.entries(data.soft_scenes ?? {}).map(([k, v]) => `${k}: ${v}`).join("  ");
-        lines.push(`路径: ${basePng}`);
-        lines.push(`  描述: ${loc} — ${data.base_prompt ?? ""}  ${softDesc}`);
-        pathMap.set(basePng, basePng);
+      const softDesc = Object.entries(data.soft_scenes ?? {}).map(([k, v]) => `${k}: ${v}`).join("  ");
+      // 底图 {loc}.png + 用户手动放入的变体 {loc}_*.png 都纳入候选
+      const matches = scenePngs.filter((f) => f === `${loc}.png` || f.startsWith(`${loc}_`)).sort();
+      for (const png of matches) {
+        const abs = path.join(scenesDir, png);
+        let desc: string;
+        if (png === `${loc}.png`) {
+          desc = `${loc} — ${data.base_prompt ?? ""}  ${softDesc}`;
+        } else {
+          const suffix = png.slice(loc.length + 1, -4); // 去掉 {loc}_ 前缀与 .png
+          desc = `${loc} 参考图/${suffix}（用户提供的真实参考图）`;
+        }
+        lines.push(`路径: ${abs}`);
+        lines.push(`  描述: ${desc}`);
+        pathMap.set(abs, abs);
       }
     } catch { /* 跳过 */ }
   }
@@ -251,20 +271,20 @@ async function buildResourceCatalog(workspaceDir: string): Promise<ResourceCatal
 const RESOURCE_SELECTOR_SYSTEM = `你是分镜资源选择专员。根据 panel 信息和可用资源，选出最合适的参考图列表，并微调生图提示词。
 
 规则：
-1. 从资源目录中选出与 panel 相关的角色图和场景图
-2. 景别决定选图策略：
+1. image_prompt 中的 [角色名·阶段] 是分镜阶段给的人物身份提示：
+   - 角色名是确定的：直接在资源目录里找到该角色，选它的图作参考
+   - 阶段是提示（不必精确）：从该角色现有的图（原型 / 各造型 / 用户参考图）里，挑最贴合这个阶段提示的一张；拿不准时结合「完整场景上下文」判断。造型图/用户参考图优先于原型图
+2. 改写 image_prompt：
+   - 把每个 [角色名·阶段] 整体（连同方括号）替换为 "the person in image N"
+   - 把场景/背景的文字描述替换为 "the background in image N"
+   - N 从 1 开始，与 reference_images 顺序一致；其余动作、姿态、情绪、景别、光影描述全部保留，不大幅改写
+3. 景别决定选图策略：
    - 特写 / 近景：优先选角色图（面部细节重要），场景图可省略
    - 中景：角色图 + 场景图
    - 全景 / 远景：场景图为主，角色图可选
-3. 「完整场景上下文」字段提供了本场景的全部原文，用于判断人物当前处于剧情的哪个阶段（如入学、受伤、变装等），
-   「当前原文」字段是本 panel 对应的那句话。根据完整上下文选择与当前剧情阶段匹配的角色造型图
-4. 角色造型图优先于原型图（如有与当前剧情匹配的造型阶段）
-5. 改写 image_prompt：将原提示词中对人物外貌的文字描述替换为 "the person in image N"，
-   对场景/背景的文字描述替换为 "the background in image N"（N 从 1 开始，与 reference_images 顺序一致）
-   保留所有动作、姿态、情绪、景别、光影等描述
-6. 若无合适资源，reference_images 输出空数组，image_prompt 保持原文不变
-7. 只做微调补充，不大幅改写原有 image_prompt 的内容和结构
-8. 若有上一 panel 上下文：根据其信息，确保空间布局、人物位置、动作方向自然衔接
+4. 若某 [角色名·阶段] 在资源目录里找不到对应角色，则把该标签替换为不带方括号的简短描述（如"the boy"），不要把方括号留在提示词里
+5. 若整个 panel 无合适资源，reference_images 输出空数组，但仍须把 image_prompt 里的所有 [..] 方括号去掉
+6. 若有上一 panel 上下文：根据其信息，确保空间布局、人物位置、动作方向自然衔接
 
 reference_images 中每项必须包含资源目录里"路径:"后面的完整路径字符串（不得修改）和 role 字段。
 
@@ -885,11 +905,16 @@ export async function renderScene(
               actualImg = imgPath;
             } else {
               const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, getPrevCtx(gi, pi), fullSceneText);
+              // 兜底：选择器若漏剥离 [角色名·阶段] 身份标签，避免中文身份词污染生图
+              const cleanPrompt = imagePrompt.replace(/\[[^\]]*\]/g, refPaths.length ? "the person in image 1" : "the person");
               console.log(`  [${sceneName}][${prefix}] 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
-              console.log(`  [${sceneName}][${prefix}] image_prompt: ${imagePrompt}`);
-              await generateImage(imgSem, imagePrompt, refPaths, imgPath, sel.aspectRatio);
+              console.log(`  [${sceneName}][${prefix}] image_prompt: ${cleanPrompt}`);
+              await generateImage(imgSem, cleanPrompt, refPaths, imgPath, sel.aspectRatio);
               actualImg = imgPath;
             }
+
+            // images-only：生完静态图即止，跳过生视频（continuation panel 也在此返回）
+            if (sel.imagesOnly) return;
 
             // ── 生视频阶段 ──
             if (fsSync.existsSync(panelVidPath)) {
@@ -940,6 +965,11 @@ export async function renderScene(
       }),
     );
 
+    if (sel.imagesOnly) {
+      console.log(`\n[${sceneName}] images-only：所有分镜图已生成，跳过视频拼接/TTS/合并`);
+      return "";
+    }
+
     // ── 按 group 顺序拼接 panel 视频 → group 视频 ──
     const groupVideos: string[] = [];
     for (let gi = 0; gi < groups.length; gi++) {
@@ -981,7 +1011,9 @@ export async function renderScene(
     return videoOnly;
   })();
 
-  const ttsTask = runTtsPipeline(cleanSceneText, outputDir, voiceMapPath, sceneName);
+  const ttsTask = sel.imagesOnly
+    ? Promise.resolve("")
+    : runTtsPipeline(cleanSceneText, outputDir, voiceMapPath, sceneName);
 
   // ── 等待两个管线都完成 ──
   const [videoResult, ttsResult] = await Promise.allSettled([videoTask, ttsTask]);

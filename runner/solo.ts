@@ -9,35 +9,71 @@ import { visualPreset, archive, segment, storyboard, renderScene } from "./pipel
 import type { RenderProgress, SceneRenderResult } from "./pipeline.js";
 import { initRenderLog, globalAlignAndMerge } from "./render.js";
 import { novelPaths } from "../utils/paths.js";
+import { readProgress, getEpisodeRecord, markStage, finalizeEpisode } from "../utils/progress.js";
 
 export async function runSolo(sel: NovelSelection) {
   const title = `${sel.novelName} 第${sel.episode}集`;
+  const ep = sel.episode;
   const p = createProgress();
 
   try {
+    // 读取本集已记录的阶段进度，用于跳过已完成阶段（续跑）
+    const epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
+
     // 画面预设
     p.start(0, title);
-    const presetPath = await visualPreset(sel);
-    p.done(0, title, "画面预设.txt");
+    let presetPath = novelPaths.visualPreset(sel.novelName, ep);
+    if (epRec.stages.visualPreset === "done") {
+      p.done(0, title, "已完成，跳过");
+    } else {
+      presetPath = await visualPreset(sel);
+      await markStage(sel.novelName, ep, "visualPreset", "done", { chapter: sel.nextChapter });
+      p.done(0, title, "画面预设.txt");
+    }
 
     // 资源建档
     p.start(1, title);
-    const archiveResult = await archive(sel, presetPath);
-    p.done(1, title, `场景${archiveResult.sceneNames.length}个`);
+    let archiveResult: { sceneNames: string[] };
+    if (epRec.stages.archive === "done") {
+      archiveResult = { sceneNames: epRec.sceneNames ?? [] };
+      p.done(1, title, `已完成，跳过（场景${archiveResult.sceneNames.length}个）`);
+    } else {
+      archiveResult = await archive(sel, presetPath);
+      await markStage(sel.novelName, ep, "archive", "done", { sceneNames: archiveResult.sceneNames });
+      p.done(1, title, `场景${archiveResult.sceneNames.length}个`);
+    }
 
     // 剧本分场
     p.start(2, title);
-    const scriptsDir = await segment(sel, archiveResult, presetPath);
-    p.done(2, title, "scripts/");
+    let scriptsDir = novelPaths.scriptsDir(sel.novelName, ep);
+    if (epRec.stages.segment === "done") {
+      p.done(2, title, "已完成，跳过");
+    } else {
+      scriptsDir = await segment(sel, archiveResult, presetPath);
+      await markStage(sel.novelName, ep, "segment", "done");
+      p.done(2, title, "scripts/");
+    }
 
     // 分镜制作
     p.start(3, title);
-    await storyboard(sel, scriptsDir, (prog) => {
-      p.updateSubLines(3, title, [
-        `分镜  ${progressBar(prog.done, prog.total)}`,
-      ]);
-    });
-    p.done(3, title);
+    if (epRec.stages.storyboard === "done") {
+      p.done(3, title, "已完成，跳过");
+    } else {
+      await storyboard(sel, scriptsDir, (prog) => {
+        p.updateSubLines(3, title, [
+          `分镜  ${progressBar(prog.done, prog.total)}`,
+        ]);
+      });
+      await markStage(sel.novelName, ep, "storyboard", "done");
+      p.done(3, title);
+    }
+
+    // 整集已完整渲染过，无需再跑
+    if (epRec.stages.render === "done") {
+      p.done(4, title, "已完成，跳过");
+      console.log(`\n  本集已完整渲染完成，无需重跑。`);
+      return;
+    }
 
     // 渲染（每个场景的 JSONL → 视频+TTS → final.mp4，各场景并行）
     p.start(4, title);
@@ -69,6 +105,16 @@ export async function runSolo(sel: NovelSelection) {
     );
     p.done(4, title, `${jsonlFiles.length} 个场景`);
 
+    // images-only 模式：只出分镜图，记 render=images_only，不推进进度（等 ComfyUI 就绪后重跑补视频）
+    if (sel.imagesOnly) {
+      await markStage(sel.novelName, ep, "render", "images_only");
+      console.log(`\n  ${"=".repeat(50)}`);
+      console.log(`  只生图完成！分镜图目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
+      console.log(`  开启 ComfyUI 后，对同一集再跑一次 /solo 即可补生视频。`);
+      console.log();
+      return;
+    }
+
     // ── 全局对齐合并（音视频相向调速后拼为集视频）──
     if (sceneResults.length > 0) {
       const episodeVideoPath = novelPaths.episodeVideo(sel.novelName, sel.episode);
@@ -78,10 +124,8 @@ export async function runSolo(sel: NovelSelection) {
       await globalAlignAndMerge(sceneResults, orderedScenes, episodeVideoPath, epDir);
     }
 
-    // 更新改编进度
-    const prog = JSON.parse(await fs.readFile(novelPaths.progress(sel.novelName), "utf-8"));
-    prog.next_chapter += 1;
-    await fs.writeFile(novelPaths.progress(sel.novelName), JSON.stringify(prog, null, 4), "utf-8");
+    // 整集完成：render=done，追加 adapted、next_chapter +1
+    await finalizeEpisode(sel.novelName, ep);
 
     console.log(`\n  ${"=".repeat(50)}`);
     console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);

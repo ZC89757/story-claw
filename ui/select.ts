@@ -14,6 +14,7 @@ export interface NovelSelection {
   nextChapter: number;
   ethnicity: string;
   aspectRatio: string;
+  imagesOnly: boolean;  // 只生分镜图，跳过生视频/TTS/合并（ComfyUI 未就绪时先出图）
 }
 
 interface Progress {
@@ -21,6 +22,7 @@ interface Progress {
   source_path?: string;
   adapted: Array<{ episode: number }>;
   next_chapter: number;
+  episodes?: Record<string, { stages?: Record<string, string> }>;
 }
 
 /** 从 readline 读取一行输入 */
@@ -47,6 +49,16 @@ async function selectAspectRatio(rl: readline.Interface): Promise<string> {
   console.log();
   const choice = await ask(rl, "  请选择（回车 = 竖屏 9:16）: ");
   return choice === "2" ? "16:9" : "9:16";
+}
+
+/** 交互选择是否只生分镜图（跳过生视频） */
+async function selectImagesOnly(rl: readline.Interface): Promise<boolean> {
+  console.log("\n  渲染模式：");
+  console.log("  [1] 完整渲染（生图 + 生视频 + TTS + 合并，默认）");
+  console.log("  [2] 只生分镜图（跳过生视频，ComfyUI 未就绪时先出图，之后重跑补视频）");
+  console.log();
+  const choice = await ask(rl, "  请选择（回车 = 完整渲染）: ");
+  return choice === "2";
 }
 
 /** 交互选择人物人种风格 */
@@ -149,6 +161,17 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
     const ethnicity = await selectEthnicity(rl);
     const aspectRatio = await selectAspectRatio(rl);
 
+    // 若本集上次只生成了图片（render=images_only），优先询问是否补视频
+    let imagesOnly: boolean;
+    const renderStatus = novel.episodes?.[String(episode)]?.stages?.render;
+    if (renderStatus === "images_only") {
+      console.log(`\n  检测到第${episode}集已生成分镜图（未生成视频）。`);
+      const ans = await ask(rl, "  是否补生成视频？(需已开启 ComfyUI)(Y/n): ");
+      imagesOnly = ans.toLowerCase() === "n";
+    } else {
+      imagesOnly = await selectImagesOnly(rl);
+    }
+
     return {
       novelName: novel.novel_name,
       sourcePath: novel.source_path ?? "",
@@ -156,6 +179,7 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
       nextChapter,
       ethnicity,
       aspectRatio,
+      imagesOnly,
     };
   }
 
@@ -209,6 +233,7 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
 
     const ethnicity = await selectEthnicity(rl);
     const aspectRatio = await selectAspectRatio(rl);
+    const imagesOnly = await selectImagesOnly(rl);
 
     return {
       novelName,
@@ -217,6 +242,7 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
       nextChapter: 1,
       ethnicity,
       aspectRatio,
+      imagesOnly,
     };
   }
 
