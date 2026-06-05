@@ -1,7 +1,7 @@
 /**
  * Story Claw — CLI 入口
  *
- * 命令行交互界面，支持 /status、/solo、/custom、/help、/exit 命令。
+ * 命令行交互界面，支持 /status、/solo、/help、/exit 命令。
  */
 
 // 并行场景处理时每个 tool call 都会向 AbortSignal 注册 listener，超过默认上限 10 会触发误报
@@ -13,7 +13,6 @@ import { showWelcome, showHelp } from "./ui/welcome.js";
 import { showStatus } from "./ui/status.js";
 import { selectNovel } from "./ui/select.js";
 import { runSolo } from "./runner/solo.js";
-import { runCustom } from "./runner/custom.js";
 import { ensureSetup } from "./utils/setup.js";
 
 async function main() {
@@ -50,12 +49,6 @@ async function main() {
         case "/solo": {
           const sel = await selectNovel(rl);
           if (sel) await runSolo(sel);
-          break;
-        }
-
-        case "/custom": {
-          const sel = await selectNovel(rl);
-          if (sel) await runCustom(sel, rl);
           break;
         }
 

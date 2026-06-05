@@ -21,7 +21,6 @@ export function showWelcome() {
   console.log(LOGO);
   console.log("  /status    查看改编进度");
   console.log("  /solo      全自动模式");
-  console.log("  /custom    自定义模式（资源可替换）");
   console.log("  /help      帮助信息");
   console.log("  /exit      退出");
   console.log();
@@ -34,7 +33,6 @@ export function showHelp() {
   命令：
     /status    查看所有小说的改编进度
     /solo      全自动模式：选择小说后自动完成 剧本→解析→资源→分镜→合成
-    /custom    自定义模式：资源生成后暂停，可替换角色/场景图片，再继续生成分镜
     /help      显示此帮助
     /exit      退出程序
 

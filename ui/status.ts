@@ -33,7 +33,7 @@ export async function showStatus() {
   try {
     entries = await fs.readdir(workspace);
   } catch {
-    console.log("\n  暂无改编记录。使用 /solo 或 /custom 开始改编。\n");
+    console.log("\n  暂无改编记录。使用 /solo 开始改编。\n");
     return;
   }
 
@@ -49,7 +49,7 @@ export async function showStatus() {
   }
 
   if (novels.length === 0) {
-    console.log("\n  暂无改编记录。使用 /solo 或 /custom 开始改编。\n");
+    console.log("\n  暂无改编记录。使用 /solo 开始改编。\n");
     return;
   }
 
