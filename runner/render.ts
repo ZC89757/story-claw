@@ -836,9 +836,23 @@ async function runGroupTtsPipeline(
       segs = [{ text: text.replace(/【[^】]*】/g, "").trim(), voice: DOUBAO_NARRATOR, style: "平稳叙述" }];
     }
 
+    // 过滤无可朗读内容的片段（纯标点/空白）：豆包对空内容返回无音频会导致 ttsExecApi 抛错
+    const speakable = (t: string) => /[\p{L}\p{N}]/u.test(t);
+    const synthSegs = segs.filter((s) => speakable(String(s.text ?? "")));
+
+    if (!synthSegs.length) {
+      // 整组无可朗读内容（极少见）：写一段极短静音占位，保证后续拼接/时长不崩
+      console.warn(`[groupTTS g${String(gi).padStart(2, "0")}] 无可朗读内容，写入静音占位`);
+      await execFileAsync("ffmpeg", [
+        "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+        "-t", "0.3", "-c:a", "libmp3lame", "-q:a", "9", ga,
+      ]);
+      return getMediaDuration(ga);
+    }
+
     // 2. 并行合成各子片段
     const usedVoices: string[] = [];
-    const segPaths = await Promise.all(segs.map(async (s, j): Promise<string> => {
+    const segPaths = await Promise.all(synthSegs.map(async (s, j): Promise<string> => {
       const p = path.join(tmpDir, `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}.mp3`);
       const voice = validVoices.has(s.voice) ? s.voice : DOUBAO_NARRATOR;
       usedVoices[j] = voice;
@@ -852,7 +866,7 @@ async function runGroupTtsPipeline(
     }));
 
     // 音色分配明细（便于核对每段说话人是否正确）
-    const assignment = segs.map((s, j) => ({
+    const assignment = synthSegs.map((s, j) => ({
       说话人: speakerOf(usedVoices[j]),
       LLM返回: s.voice,
       在池中: validVoices.has(s.voice),
