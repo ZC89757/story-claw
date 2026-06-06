@@ -187,6 +187,13 @@ type AgentEvent = {
   args?: unknown;
   result?: unknown;
   isError?: boolean;
+  // auto_retry_start / auto_retry_end 事件字段
+  attempt?: number;
+  maxAttempts?: number;
+  delayMs?: number;
+  errorMessage?: string;
+  success?: boolean;
+  finalError?: string;
 };
 
 // ─── Sub-agent 运行器 ──────────────────────────────────────────
@@ -233,6 +240,12 @@ export async function runSubAgent(
         lastText = currentText;
         currentText = "";
       }
+    }
+    if (evt.type === "auto_retry_start") {
+      console.error(`${logPrefix} [重试] 第 ${evt.attempt}/${evt.maxAttempts} 次，${((evt.delayMs ?? 0) / 1000)}s 后重发（原因: ${evt.errorMessage}）`);
+    }
+    if (evt.type === "auto_retry_end") {
+      console.error(`${logPrefix} [重试] ${evt.success ? `第 ${evt.attempt} 次后成功恢复` : `重试耗尽，最终失败: ${evt.finalError}`}`);
     }
     if (evt.type === "tool_execution_start" && evt.toolName) {
       console.log(`\n${logPrefix} [Tool] ${evt.toolName}`);
