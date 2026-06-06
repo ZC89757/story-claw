@@ -89,6 +89,23 @@ function getWorkflowTemplate(): any {
   return _workflowTemplate;
 }
 
+// LTX latent 时间维压缩因子：帧数必须为 LTX_FRAME_STEP·k + 1（模型架构属性，非可调参数）
+const LTX_FRAME_STEP = 8;
+
+// fps 的唯一真值来源：workflow 节点 320:300（同时驱动输出帧率与音频帧率）。
+// 改帧率只需改这个节点，代码自动适配——切勿在别处硬编码 fps。
+function getVideoFps(): number {
+  return (getWorkflowTemplate()["320:300"].inputs.value as number) ?? 25;
+}
+
+// 目标时长（秒）→ LTX 合法帧数（最近的 LTX_FRAME_STEP·k+1，k≥1）。
+// 输出时长 = 帧数 / fps，栅格步进 = LTX_FRAME_STEP / fps（25fps 时 0.32s）。
+function durationToFrames(durSec: number, fps: number): number {
+  const ideal = durSec * fps;
+  const k = Math.max(1, Math.round((ideal - 1) / LTX_FRAME_STEP));
+  return k * LTX_FRAME_STEP + 1;
+}
+
 // LLM（资源选择）
 const LLM_API_KEY    = llmCfg.api_key as string;
 const LLM_BASE_URL   = (llmCfg.base_url  ?? "https://zenmux.ai/api/v1") as string;
@@ -132,9 +149,13 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** 将 group 总时长均分给各 panel（每 panel 最小 4s） */
+/**
+ * 将 group 总时长均分给各 panel，返回分数秒（不取整、不设地板）。
+ * 实际视频时长在 tryGenerateVideoComfyUI 里按 fps 吸附到 LTX 帧栅格，
+ * 误差 ≤ 半个步进（25fps 时 ±0.16s），不再有 4s 地板撑长短组。
+ */
 function distributePanelDurations(groupDur: number, panels: any[]): number[] {
-  const dur = Math.max(4, Math.round(groupDur / panels.length));
+  const dur = groupDur / panels.length;
   return panels.map(() => dur);
 }
 
@@ -478,9 +499,15 @@ async function tryGenerateVideoComfyUI(
   const workflow = JSON.parse(JSON.stringify(getWorkflowTemplate()));
   workflow["324"].inputs.base64_data          = imgBase64;
   workflow["320:319"].inputs.value            = prompt;
-  workflow["320:301"].inputs.value            = duration;
   workflow["320:312"].inputs.value            = width;
   workflow["320:299"].inputs.value            = height;
+
+  // 时长控制：把秒按 fps 吸附到 LTX 合法帧数，直接写入 latent 长度的两个消费节点，
+  // 绕过 workflow 内 a*fps+1（320:323）的整数秒瓶颈，使视频时长精确贴合音频。
+  const fps    = getVideoFps();
+  const frames = durationToFrames(duration, fps);
+  workflow["320:295"].inputs.length         = frames;  // EmptyLTXVLatentVideo（视频）
+  workflow["320:305"].inputs.frames_number  = frames;  // LTXVEmptyLatentAudio（音频，须与视频同帧数）
 
   // 提交任务
   const submitResp = await fetch(`${VIDEO_BASE_URL}/prompt`, {
@@ -540,7 +567,9 @@ async function generateVideo(
   await vidSem.acquire();
   try {
     const imgBase64 = (await fs.readFile(imagePath)).toString("base64");
-    console.log(`    [视频] 提交: ${path.basename(outputPath)}（${duration}s, ${aspectRatio}）`);
+    const _fps = getVideoFps();
+    const _frames = durationToFrames(duration, _fps);
+    console.log(`    [视频] 提交: ${path.basename(outputPath)}（目标 ${duration.toFixed(2)}s → ${_frames}帧/${(_frames / _fps).toFixed(2)}s, ${aspectRatio}）`);
 
     for (let attempt = 1; attempt <= VIDEO_MAX_RETRIES; attempt++) {
       try {

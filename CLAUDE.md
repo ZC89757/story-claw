@@ -121,14 +121,21 @@ Chapter files: `第{N}章 {title}.txt`，放在用户指定的小说文件夹中
 ### Render Pipeline Detail (`runner/render.ts`)
 `renderScene()` 的执行流程（音频驱动视频时长）：
 1. **逐 group 配音**（`runGroupTtsPipeline`，先于视频）：每个 group 由 LLM 按说话人把原文切成有序 `[{text,voice,style}]`（旁白/角色查 `voice_map`，未命中→`narrator_voice`），并行合成子片段（`ttsExecApi`，TTS 信号量限流），拼成 `g{XX}_tts.mp3` 并用 `ffprobe` 量出真实时长 `d_g`；全部组音频按序拼成 `_tts_{sceneName}.mp3`。返回每组 `d_g` 数组。
-2. **所有 panel 并行**（`Promise.all`）：每个 panel 时长 = 所属 group 的 `d_g` 按 panel 均分（`distributePanelDurations`，取代旧的 `secs_per_char` 估算）
+2. **所有 panel 并行**（`Promise.all`）：每个 panel 目标时长 = 所属 group 的 `d_g` 按 panel **分数秒**均分（`distributePanelDurations`，不取整、无地板，取代旧的 `secs_per_char` 估算）
    - `is_continuation=false`：`selectResources()` + `generateImage()`（imgSem，默认并发 4）
    - `is_continuation=true`：跳过生图，等待 `videoEvents` 前驱事件，提取尾帧后生视频
-   - 生视频：`generateVideo()`（vidSem，默认并发 6），**duration 传入 `d_g` 派生值**，调用 ComfyUI LTX i2v workflow
+   - 生视频：`generateVideo()`（vidSem，默认并发 6），**duration 传入 `d_g` 派生的分数秒**，调用 ComfyUI LTX i2v workflow（时长→帧数换算见「视频时长控制」）
 3. **group 拼接**（顺序）：按 group 顺序将 panel 视频拼为 group 视频，再拼成 `_video_only.mp4`
-4. **全局对齐**（`globalAlignAndMerge`，在 `solo.ts` 调用）：收集各场景的 `_video_only.mp4` + `_tts_{scene}.mp3`，相向调速后拼为集视频。因逐组时长已对齐，调速比趋近 ×1。
+4. **全局对齐**（`globalAlignAndMerge`，在 `solo.ts` 调用）：收集各场景的 `_video_only.mp4` + `_tts_{scene}.mp3`，相向调速后拼为集视频。因逐组时长已精确贴合（每组误差 ≤ 半个帧栅格），调速比趋近 ×1.00，听感不受影响。
 
 > 注意：`imagesOnly` 模式（用户在 `/solo` 选「只生分镜图」）会跳过 TTS、生视频、拼接与合并，只产出 panel 静态图，且不推进进度，便于 ComfyUI 未就绪时先出图、之后重跑补视频。
+
+### 视频时长控制（`tryGenerateVideoComfyUI` / `durationToFrames`）
+LTX 帧数必须为 `8k+1`（latent 时间维 8× 压缩，模型架构属性，常量 `LTX_FRAME_STEP=8`），故输出时长按 **`LTX_FRAME_STEP/fps` 的栅格**量化（25fps 时 0.32s/步），**无法精确到 0.1s**。
+- **fps 单一真值**：从 workflow 节点 `320:300` 读取（`getVideoFps`），它同时驱动输出帧率与帧数换算。**改帧率只改这一个节点，代码自动适配，切勿在别处硬编码 fps。**
+- **秒→帧**：`durationToFrames(durSec, fps)` 取最近的 `8k+1` 帧数（`k≥1`），误差 ≤ 半个栅格（25fps 时 ±0.16s）。
+- **注入方式**：直接把帧数写入 latent 长度的两个消费节点 `320:295.length`（视频）与 `320:305.frames_number`（音频，须同帧数），**绕过** workflow 内 `320:323` 的 `a*fps+1` 整数秒瓶颈（注入后 `320:301`/`320:323` 成孤立节点，不影响执行）。
+- **设计取舍**：误差从旧版「短组被 4s 地板撑长、单向累积」变为「每组随机 ±0.16s、整段近乎抵消」，使统一调速（步骤 4）趋近 ×1.00、听感无损。若要清零残差只能给视频侧逐组 setpts 微调（≤±4%，画面无感），通常不需要。
 
 ### 音色分配（`assignVoices`，archive 阶段）
 - 在 `archive()` 解析出 `archive-tasks` 后、生图前调用，**一次性为本章新角色分配音色**（无并发竞态）。
