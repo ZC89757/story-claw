@@ -139,23 +139,37 @@ export async function ensureSetup(): Promise<boolean> {
       console.log(`  已保存: ${VIDEO_CONFIG_FILE}\n`);
     }
 
-    // ── tts_config.json（MiMo TTS 配置）──
+    // ── tts_config.json（豆包 / 火山引擎 语音合成大模型 V3）──
     if (!hasTts) {
       console.log("  ── TTS 配置 (tts_config.json) ──");
-      console.log("  使用小米 MiMo TTS API\n");
+      console.log("  使用豆包语音（火山引擎 语音合成大模型 V3）\n");
 
-      const apiKey = await ask(rl, "  api_key: ");
+      const apiKey = await ask(rl, "  api_key (火山引擎控制台 X-Api-Key): ");
       if (!apiKey) { console.log("  api_key 不能为空，中止。"); return false; }
 
-      const baseUrl = await ask(rl, "  base_url (直接回车使用默认 https://token-plan-cn.xiaomimimo.com/v1): ");
+      const resourceId = await ask(rl, "  resource_id (直接回车使用默认 seed-tts-1.0): ");
 
       const config = {
         api_key: apiKey,
-        base_url: baseUrl || "https://token-plan-cn.xiaomimimo.com/v1",
-        chat_model: "mimo-v2.5-pro",
-        tts_model: "mimo-v2.5-tts",
-        voices: { "冰糖": "女", "茉莉": "女", "苏打": "男", "白桦": "男" },
-        narrator_voice: "白桦",
+        base_url: "https://openspeech.bytedance.com/api/v3/tts/unidirectional",
+        resource_id: resourceId || "seed-tts-1.0",
+        voices: {
+          "zh_male_jieshuonansheng_mars_bigtts": "男",
+          "zh_male_qingcang_mars_bigtts": "男",
+          "zh_male_silang_mars_bigtts": "男",
+          "ICL_zh_male_badaozongcai_v1_tob": "男",
+          "ICL_zh_male_lengmonanyou_tob": "男",
+          "ICL_zh_male_wenrounanyou_tob": "男",
+          "ICL_zh_male_shaonianjiangjun_tob": "男",
+          "zh_female_gaolengyujie_moon_bigtts": "女",
+          "zh_female_wuzetian_mars_bigtts": "女",
+          "zh_female_gufengshaoyu_mars_bigtts": "女",
+          "zh_female_wenroushunv_mars_bigtts": "女",
+          "ICL_zh_female_bingjiaojiejie_tob": "女",
+          "zh_female_yangmi_mars_bigtts": "女",
+          "ICL_zh_female_wenrounvshen_239eff5e8ffa_tob": "女",
+        },
+        narrator_voice: "zh_male_changtianyi_mars_bigtts",
         concurrency: 4,
       };
       await fs.writeFile(TTS_CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", "utf-8");

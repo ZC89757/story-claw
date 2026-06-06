@@ -96,13 +96,28 @@ const LLM_MODEL      = (llmCfg.model     ?? "anthropic/claude-sonnet-4.6") as st
 const LLM_TIMEOUT_MS  = (llmCfg.timeout_ms  ?? 300_000) as number;
 const LLM_MAX_TOKENS  = (llmCfg.max_tokens  ?? 128_000) as number;
 
-// TTS（MiMo）
-const MIMO_API_KEY    = ttsCfg.api_key as string;
-const MIMO_BASE_URL   = (ttsCfg.base_url   ?? "https://token-plan-cn.xiaomimimo.com/v1") as string;
-const MIMO_TTS_MODEL  = (ttsCfg.tts_model  ?? "mimo-v2.5-tts") as string;
-const MIMO_VOICES     = (ttsCfg.voices     ?? { "冰糖": "女", "茉莉": "女", "苏打": "男", "白桦": "男" }) as Record<string, string>;
-const MIMO_NARRATOR   = (ttsCfg.narrator_voice ?? "白桦") as string;
-const TTS_CONCURRENCY = (ttsCfg.concurrency ?? 4) as number;
+// TTS（豆包 / 火山引擎 语音合成大模型 V3，HTTP Chunked 单向流式）
+const DOUBAO_API_KEY     = ttsCfg.api_key as string;
+const DOUBAO_BASE_URL    = (ttsCfg.base_url    ?? "https://openspeech.bytedance.com/api/v3/tts/unidirectional") as string;
+const DOUBAO_RESOURCE_ID = (ttsCfg.resource_id ?? "seed-tts-1.0") as string;
+const DOUBAO_VOICES      = (ttsCfg.voices ?? {
+  "zh_male_jieshuonansheng_mars_bigtts": "男",
+  "zh_male_qingcang_mars_bigtts": "男",
+  "zh_male_silang_mars_bigtts": "男",
+  "ICL_zh_male_badaozongcai_v1_tob": "男",
+  "ICL_zh_male_lengmonanyou_tob": "男",
+  "ICL_zh_male_wenrounanyou_tob": "男",
+  "ICL_zh_male_shaonianjiangjun_tob": "男",
+  "zh_female_gaolengyujie_moon_bigtts": "女",
+  "zh_female_wuzetian_mars_bigtts": "女",
+  "zh_female_gufengshaoyu_mars_bigtts": "女",
+  "zh_female_wenroushunv_mars_bigtts": "女",
+  "ICL_zh_female_bingjiaojiejie_tob": "女",
+  "zh_female_yangmi_mars_bigtts": "女",
+  "ICL_zh_female_wenrounvshen_239eff5e8ffa_tob": "女",
+}) as Record<string, string>;
+const DOUBAO_NARRATOR    = (ttsCfg.narrator_voice ?? "zh_male_changtianyi_mars_bigtts") as string;
+const TTS_CONCURRENCY    = (ttsCfg.concurrency ?? 4) as number;
 
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
@@ -567,27 +582,51 @@ class Semaphore {
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────
 
-async function ttsExecApi(text: string, voice: string, stylePrompt: string, outputPath: string): Promise<void> {
+async function ttsExecApi(text: string, voice: string, _stylePrompt: string, outputPath: string): Promise<void> {
+  // 豆包 V3 HTTP Chunked 单向流式：一次性输入文本，响应体为多行 JSON，每行 data 为 base64 音频分片。
+  // 注：seed-tts-1.0 接口无自由文本风格控制（仅多情感音色支持 emotion 枚举），故 stylePrompt 不下发。
   const payload = {
-    model: MIMO_TTS_MODEL,
-    messages: [
-      { role: "user",      content: stylePrompt },
-      { role: "assistant", content: text },
-    ],
-    audio:  { format: "mp3", voice },
-    stream: false,
+    user: { uid: "story-claw" },
+    req_params: {
+      text,
+      speaker: voice,
+      audio_params: { format: "mp3", sample_rate: 24000 },
+      additions: JSON.stringify({ disable_markdown_filter: true }),
+    },
   };
 
-  const resp = await fetch(`${MIMO_BASE_URL}/chat/completions`, {
+  const resp = await fetch(DOUBAO_BASE_URL, {
     method: "POST",
-    headers: { "api-key": MIMO_API_KEY, "Content-Type": "application/json" },
+    headers: {
+      "X-Api-Key": DOUBAO_API_KEY,
+      "X-Api-Resource-Id": DOUBAO_RESOURCE_ID,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 
-  const data = await resp.json() as any;
-  if (data.error) throw new Error(`TTS API 错误: ${JSON.stringify(data.error)}`);
-  const audioB64: string = data.choices[0].message.audio.data;
-  await fs.writeFile(outputPath, Buffer.from(audioB64, "base64"));
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`TTS API HTTP ${resp.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const body = await resp.text();
+  const chunks: Buffer[] = [];
+  for (const line of body.split("\n")) {
+    const s = line.trim();
+    if (!s) continue;
+    let d: any;
+    try { d = JSON.parse(s); } catch { continue; }
+    if (d.code === 0 && d.data) {
+      chunks.push(Buffer.from(d.data as string, "base64"));
+    } else if (d.code === 20000000) {
+      break;  // 合成结束
+    } else if (typeof d.code === "number" && d.code > 0) {
+      throw new Error(`TTS API 错误: ${JSON.stringify(d)}`);
+    }
+  }
+  if (!chunks.length) throw new Error(`TTS API 未返回音频: ${body.slice(0, 200)}`);
+  await fs.writeFile(outputPath, Buffer.concat(chunks));
 }
 
 async function ttsPhase4Concat(audioFiles: string[], outputPath: string): Promise<void> {
@@ -649,7 +688,7 @@ export async function assignVoices(
   try {
     const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
     const userContent = [
-      `可用音色池（名称→性别）：\n${JSON.stringify(MIMO_VOICES)}`,
+      `可用音色池（名称→性别）：\n${JSON.stringify(DOUBAO_VOICES)}`,
       `current_map（已占用，勿改动，其值即已占用音色）：\n${JSON.stringify(voiceMap)}`,
       `本章新角色（name + 外貌 desc，据此判性别）：\n${JSON.stringify(
         pending.map((c) => ({ name: c.name, gender: c.gender ?? "", desc: c.base_prompt ?? "" })),
@@ -675,15 +714,15 @@ export async function assignVoices(
 
   // 校验 + 规则兜底（无效/缺失的按性别从池中挑未占用的）
   const poolByGender: Record<string, string[]> = {};
-  for (const [v, g] of Object.entries(MIMO_VOICES)) (poolByGender[g] ??= []).push(v);
+  for (const [v, g] of Object.entries(DOUBAO_VOICES)) (poolByGender[g] ??= []).push(v);
   const used = new Set(Object.values(voiceMap));
 
   for (const c of pending) {
     let v = newAssign[c.name];
-    if (!v || !(v in MIMO_VOICES)) {
+    if (!v || !(v in DOUBAO_VOICES)) {
       const g = c.gender || guessGender(c.base_prompt ?? "");
-      const pool = poolByGender[g] ?? Object.keys(MIMO_VOICES);
-      v = pool.find((x) => !used.has(x)) ?? pool[0] ?? Object.keys(MIMO_VOICES)[0];
+      const pool = poolByGender[g] ?? Object.keys(DOUBAO_VOICES);
+      v = pool.find((x) => !used.has(x)) ?? pool[0] ?? Object.keys(DOUBAO_VOICES)[0];
     }
     voiceMap[c.name] = v;
     used.add(v);
@@ -726,7 +765,7 @@ async function runGroupTtsPipeline(
   const tmpDir = path.join(outputDir, "tts_segments");
   await fs.mkdir(tmpDir, { recursive: true });
 
-  const validVoices = new Set<string>([...Object.values(MIMO_VOICES), MIMO_NARRATOR]);
+  const validVoices = new Set<string>([...Object.values(DOUBAO_VOICES), DOUBAO_NARRATOR]);
   const llmSem = new Semaphore(TTS_CONCURRENCY);
   const ttsSem = new Semaphore(TTS_CONCURRENCY);
   const groupAudio = (gi: number) => path.join(outputDir, `g${String(gi).padStart(2, "0")}_tts.mp3`);
@@ -748,7 +787,7 @@ async function runGroupTtsPipeline(
         temperature: 0.3,
         messages: [
           { role: "system", content: GROUP_TTS_SYSTEM },
-          { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${MIMO_NARRATOR}\n\n句子：${text}` },
+          { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${DOUBAO_NARRATOR}\n\n句子：${text}` },
         ],
       });
       let raw = resp.choices[0].message.content?.trim() ?? "[]";
@@ -761,13 +800,13 @@ async function runGroupTtsPipeline(
       llmSem.release();
     }
     if (!Array.isArray(segs) || !segs.length) {
-      segs = [{ text: text.replace(/【[^】]*】/g, "").trim(), voice: MIMO_NARRATOR, style: "平稳叙述" }];
+      segs = [{ text: text.replace(/【[^】]*】/g, "").trim(), voice: DOUBAO_NARRATOR, style: "平稳叙述" }];
     }
 
     // 2. 并行合成各子片段
     const segPaths = await Promise.all(segs.map(async (s, j): Promise<string> => {
       const p = path.join(tmpDir, `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}.mp3`);
-      const voice = validVoices.has(s.voice) ? s.voice : MIMO_NARRATOR;
+      const voice = validVoices.has(s.voice) ? s.voice : DOUBAO_NARRATOR;
       await ttsSem.acquire();
       try {
         await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p);
