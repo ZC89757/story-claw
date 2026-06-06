@@ -794,7 +794,11 @@ async function runGroupTtsPipeline(
   const tmpDir = path.join(outputDir, "tts_segments");
   await fs.mkdir(tmpDir, { recursive: true });
 
-  const validVoices = new Set<string>([...Object.values(DOUBAO_VOICES), DOUBAO_NARRATOR]);
+  const validVoices = new Set<string>([...Object.keys(DOUBAO_VOICES), DOUBAO_NARRATOR]);
+  // 音色名 → 可读说话人（旁白 / 角色名），仅用于日志
+  const speakerOf = (v: string): string =>
+    v === DOUBAO_NARRATOR ? "旁白"
+      : (Object.entries(voiceMap).find(([, vv]) => vv === v)?.[0] ?? v);
   const llmSem = new Semaphore(TTS_CONCURRENCY);
   const ttsSem = new Semaphore(TTS_CONCURRENCY);
   const groupAudio = (gi: number) => path.join(outputDir, `g${String(gi).padStart(2, "0")}_tts.mp3`);
@@ -833,9 +837,11 @@ async function runGroupTtsPipeline(
     }
 
     // 2. 并行合成各子片段
+    const usedVoices: string[] = [];
     const segPaths = await Promise.all(segs.map(async (s, j): Promise<string> => {
       const p = path.join(tmpDir, `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}.mp3`);
       const voice = validVoices.has(s.voice) ? s.voice : DOUBAO_NARRATOR;
+      usedVoices[j] = voice;
       await ttsSem.acquire();
       try {
         await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p);
@@ -844,6 +850,17 @@ async function runGroupTtsPipeline(
       }
       return p;
     }));
+
+    // 音色分配明细（便于核对每段说话人是否正确）
+    const assignment = segs.map((s, j) => ({
+      说话人: speakerOf(usedVoices[j]),
+      LLM返回: s.voice,
+      在池中: validVoices.has(s.voice),
+      实际音色: usedVoices[j],
+      回退旁白: !validVoices.has(s.voice),
+      text: String(s.text ?? "").slice(0, 24),
+    }));
+    console.log(`[groupTTS g${String(gi).padStart(2, "0")}] 池大小=${validVoices.size} 音色分配: ${JSON.stringify(assignment, null, 0)}`);
 
     // 3. 子片段按序拼成组音频
     await ttsPhase4Concat(segPaths, ga);
