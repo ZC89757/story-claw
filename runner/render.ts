@@ -103,7 +103,6 @@ const MIMO_TTS_MODEL  = (ttsCfg.tts_model  ?? "mimo-v2.5-tts") as string;
 const MIMO_VOICES     = (ttsCfg.voices     ?? { "冰糖": "女", "茉莉": "女", "苏打": "男", "白桦": "男" }) as Record<string, string>;
 const MIMO_NARRATOR   = (ttsCfg.narrator_voice ?? "白桦") as string;
 const TTS_CONCURRENCY = (ttsCfg.concurrency ?? 4) as number;
-const SECS_PER_CHAR   = (ttsCfg.secs_per_char ?? 0.22) as number;
 
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
@@ -116,12 +115,6 @@ async function getOpenAI(apiKey: string, baseUrl: string) {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-/** 按字数估算 group 总时长（秒，最小 4s） */
-function estimateGroupDuration(text: string): number {
-  const charCount = text.replace(/【[^】]*】/g, "").replace(/[，。、！？…""''【】\s]/g, "").length;
-  return Math.max(4, Math.round(charCount * SECS_PER_CHAR));
 }
 
 /** 将 group 总时长均分给各 panel（每 panel 最小 4s） */
@@ -574,114 +567,6 @@ class Semaphore {
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────
 
-const TTS_ANNOTATE_SYSTEM = `你是剧本分析助手。将收到一段小说原文，请拆成连续的语音片段并标注。
-
-规则：
-- 旁白（第一/三人称叙述、心理描写、过渡）→ speaker="旁白", gender="男"
-- 识别说话人：根据"XXX说：""XXX道：""XXX问："等模式或上下文推断
-- 说话人引导语（如"学姐说："）归入紧前的旁白片段，不单独成片段
-- style：描述该片段朗读时的情绪、语气、语速、节奏，中文，15～40字
-
-输出严格 JSON 数组，不要任何其他文字：
-[
-  {"speaker": "旁白", "gender": "男", "text": "...", "style": "..."},
-  {"speaker": "学姐", "gender": "女", "text": "...", "style": "..."}
-]
-
-严格约束：
-- 数组顺序必须与原文顺序完全一致，不得打乱
-- 每个 text 字段必须与原文逐字相同，不得改写、省略或合并任何内容
-- 所有原文内容必须被覆盖，不得遗漏任何片段`;
-
-const TTS_ASSIGN_SYSTEM = `你是声音分配助手。
-
-规则：
-- 已有 voice_map 中的角色：直接沿用，不可更改
-- 新角色：从同性别声音中选一个，优先选还没被其他角色使用的；若都用过则复用
-
-输出完整的 voice_map JSON 对象（含原有映射 + 新增），不要任何其他文字：
-{"学姐": "冰糖", ...}`;
-
-const TTS_AGENT_SYSTEM = `你是 TTS 合成助手。你会收到一个文本片段、已分配的声音和风格描述。
-请调用 generate_tts 工具合成语音。
-style_prompt 参数：根据风格描述，写一句简洁的朗读指令（中文，20字以内）。`;
-
-const TTS_TOOL_DEF = {
-  type: "function" as const,
-  function: {
-    name: "generate_tts",
-    description: "调用 MiMo TTS API 合成语音",
-    parameters: {
-      type: "object",
-      properties: {
-        text:         { type: "string", description: "要合成的文本" },
-        voice:        { type: "string", description: "声音名称" },
-        style_prompt: { type: "string", description: "风格提示词（中文，20字以内）" },
-      },
-      required: ["text", "voice", "style_prompt"],
-    },
-  },
-};
-
-async function ttsPhase1Annotate(fullText: string): Promise<any[]> {
-  console.log("[TTS Phase 1] LLM 标注文本片段...");
-  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
-  const resp = await client.chat.completions.create({
-    model: LLM_MODEL,
-    max_tokens: LLM_MAX_TOKENS,
-    messages: [
-      { role: "system", content: TTS_ANNOTATE_SYSTEM },
-      { role: "user",   content: fullText },
-    ],
-    temperature: 0.3,
-  });
-  let raw = resp.choices[0].message.content?.trim() ?? "[]";
-  const m = raw.match(/\[[\s\S]*\]/);
-  if (m) raw = m[0];
-  const segments = JSON.parse(raw);
-  console.log(`[TTS Phase 1] 共 ${segments.length} 个片段`);
-  return segments;
-}
-
-async function ttsPhase2AssignVoices(segments: any[], voiceMap: Record<string, string>): Promise<Record<string, string>> {
-  console.log("[TTS Phase 2] LLM 分配声音...");
-  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
-
-  // 过滤掉旁白（由 config 固定，不交给 LLM 选择）
-  const chars: Record<string, string> = {};
-  for (const seg of segments) {
-    if (seg.speaker !== "旁白" && !(seg.speaker in chars)) {
-      chars[seg.speaker] = seg.gender;
-    }
-  }
-
-  const userContent = [
-    `当前 voice_map：\n${JSON.stringify(voiceMap, null, 2)}`,
-    `可用声音（名称→性别）：\n${JSON.stringify(MIMO_VOICES)}`,
-    `本次出现的角色（名称→性别，不含旁白）：\n${JSON.stringify(chars)}`,
-  ].join("\n\n");
-
-  const resp = await client.chat.completions.create({
-    model: LLM_MODEL,
-    max_tokens: LLM_MAX_TOKENS,
-    messages: [
-      { role: "system", content: TTS_ASSIGN_SYSTEM },
-      { role: "user",   content: userContent },
-    ],
-    temperature: 0,
-  });
-  let raw = resp.choices[0].message.content?.trim() ?? "{}";
-  const m = raw.match(/\{[\s\S]*\}/);
-  if (m) raw = m[0];
-  const newMap = JSON.parse(raw);
-
-  // 注入旁白（config 固定，不由 LLM 分配）
-  newMap["旁白"] = MIMO_NARRATOR;
-
-  console.log(`[TTS Phase 2] voice_map: ${JSON.stringify(newMap)}`);
-  return newMap;
-}
-
 async function ttsExecApi(text: string, voice: string, stylePrompt: string, outputPath: string): Promise<void> {
   const payload = {
     model: MIMO_TTS_MODEL,
@@ -705,49 +590,6 @@ async function ttsExecApi(text: string, voice: string, stylePrompt: string, outp
   await fs.writeFile(outputPath, Buffer.from(audioB64, "base64"));
 }
 
-async function ttsPhase3GenerateAll(segments: any[], voiceMap: Record<string, string>, tmpDir: string): Promise<string[]> {
-  console.log(`[TTS Phase 3] 并发生成 ${segments.length} 个片段...`);
-  await fs.mkdir(tmpDir, { recursive: true });
-
-  const ttsSem = new Semaphore(TTS_CONCURRENCY);
-  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
-
-  const tasks = segments.map(async (seg: any, i: number): Promise<string> => {
-    const voice      = voiceMap[seg.speaker] ?? MIMO_NARRATOR;
-    const outputPath = path.join(tmpDir, `seg_${String(i).padStart(3, "0")}.mp3`);
-
-    await ttsSem.acquire();
-    try {
-      console.log(`  [TTS seg ${String(i).padStart(2, "0")}] [${seg.speaker}→${voice}] ${seg.text.slice(0, 35)}...`);
-
-      const resp = await client.chat.completions.create({
-        model: LLM_MODEL,
-        max_tokens: LLM_MAX_TOKENS,
-        messages: [
-          { role: "system", content: TTS_AGENT_SYSTEM },
-          { role: "user",   content: `文本：${seg.text}\n声音：${voice}\n风格描述：${seg.style}` },
-        ],
-        tools: [TTS_TOOL_DEF],
-        tool_choice: "required",
-      } as any);
-
-      const msg = resp.choices[0].message;
-      if (!msg.tool_calls?.length) throw new Error(`TTS seg ${i}: LLM 未调用工具`);
-      const args = JSON.parse(msg.tool_calls[0].function.arguments);
-      args.voice = voice; // 强制使用预分配声音
-
-      await ttsExecApi(args.text, args.voice, args.style_prompt, outputPath);
-      const size = Math.round(fsSync.statSync(outputPath).size / 1024);
-      console.log(`  [TTS seg ${String(i).padStart(2, "0")}] 完成 → ${path.basename(outputPath)} (${size}KB)`);
-      return outputPath;
-    } finally {
-      ttsSem.release();
-    }
-  });
-
-  return Promise.all(tasks);
-}
-
 async function ttsPhase4Concat(audioFiles: string[], outputPath: string): Promise<void> {
   console.log(`[TTS Phase 4] 拼接 ${audioFiles.length} 个片段...`);
   const sorted   = [...audioFiles].sort();
@@ -766,31 +608,187 @@ async function ttsPhase4Concat(audioFiles: string[], outputPath: string): Promis
   console.log(`[TTS Phase 4] 完成 → ${path.basename(outputPath)}`);
 }
 
-async function runTtsPipeline(
-  text: string,
-  outputDir: string,
-  voiceMapPath: string,
-  sceneName: string,
-): Promise<string> {
-  const ttsOut = path.join(outputDir, `_tts_${sceneName}.mp3`);
-  const tmpDir = path.join(outputDir, "tts_segments");
+// ── 阶段一:音色分配（archive 调用，按角色一次性分配，写入 voice_map）────────────
 
+const ASSIGN_VOICE_SYSTEM = `你是配音音色分配助手。为本章新角色分配 TTS 音色。
+
+规则：
+- 只为"本章新角色"分配，current_map 里已有的角色不要输出
+- 根据角色外貌描述判断性别，从"可用音色池"里选同性别的音色
+- 尽量避开已被占用的音色（current_map 的值），不够再复用
+- 旁白不在此处理，不要输出旁白
+
+只输出 JSON 对象（新角色名 → 音色名），不要任何其他文字：
+{"角色名":"音色名"}`;
+
+/** 粗略从外貌描述猜性别（仅 LLM 失败时的兜底用） */
+function guessGender(desc: string): string {
+  return /女|女性|女子|少女|姑娘|妇人|母亲|姐|妹|娘/.test(desc) ? "女" : "男";
+}
+
+/**
+ * 为本章新角色批量分配音色，合并进 voice_map.json。
+ * LLM 只输出新增分配；代码负责合并；旁白不入表（TTS 直接用 narrator_voice）。
+ */
+export async function assignVoices(
+  novelName: string,
+  newCharacters: Array<{ name: string; base_prompt?: string; gender?: string }>,
+): Promise<void> {
+  if (!newCharacters?.length) return;
+
+  const voiceMapPath = novelPaths.voiceMap(novelName);
   let voiceMap: Record<string, string> = {};
   if (fsSync.existsSync(voiceMapPath)) {
     voiceMap = JSON.parse(await fs.readFile(voiceMapPath, "utf-8"));
-    console.log(`[TTS] 载入 voice_map: ${JSON.stringify(voiceMap)}`);
   }
 
-  console.log(`[TTS] 文本 ${text.length} 字`);
+  const pending = newCharacters.filter((c) => c.name && !(c.name in voiceMap));
+  if (!pending.length) return;
 
-  const segments = await ttsPhase1Annotate(text);
-  voiceMap       = await ttsPhase2AssignVoices(segments, voiceMap);
+  let newAssign: Record<string, string> = {};
+  try {
+    const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
+    const userContent = [
+      `可用音色池（名称→性别）：\n${JSON.stringify(MIMO_VOICES)}`,
+      `current_map（已占用，勿改动，其值即已占用音色）：\n${JSON.stringify(voiceMap)}`,
+      `本章新角色（name + 外貌 desc，据此判性别）：\n${JSON.stringify(
+        pending.map((c) => ({ name: c.name, gender: c.gender ?? "", desc: c.base_prompt ?? "" })),
+      )}`,
+    ].join("\n\n");
+    const resp = await client.chat.completions.create({
+      model: LLM_MODEL,
+      max_tokens: LLM_MAX_TOKENS,
+      temperature: 0,
+      messages: [
+        { role: "system", content: ASSIGN_VOICE_SYSTEM },
+        { role: "user", content: userContent },
+      ],
+    });
+    let raw = resp.choices[0].message.content?.trim() ?? "{}";
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) raw = m[0];
+    newAssign = JSON.parse(raw);
+  } catch (e) {
+    console.error(`[音色分配] LLM 失败，改用规则兜底: ${e}`);
+    newAssign = {};
+  }
+
+  // 校验 + 规则兜底（无效/缺失的按性别从池中挑未占用的）
+  const poolByGender: Record<string, string[]> = {};
+  for (const [v, g] of Object.entries(MIMO_VOICES)) (poolByGender[g] ??= []).push(v);
+  const used = new Set(Object.values(voiceMap));
+
+  for (const c of pending) {
+    let v = newAssign[c.name];
+    if (!v || !(v in MIMO_VOICES)) {
+      const g = c.gender || guessGender(c.base_prompt ?? "");
+      const pool = poolByGender[g] ?? Object.keys(MIMO_VOICES);
+      v = pool.find((x) => !used.has(x)) ?? pool[0] ?? Object.keys(MIMO_VOICES)[0];
+    }
+    voiceMap[c.name] = v;
+    used.add(v);
+  }
+
   await fs.writeFile(voiceMapPath, JSON.stringify(voiceMap, null, 2), "utf-8");
-  console.log(`[TTS] voice_map 已保存`);
+  console.log(`[音色分配] 新增 ${JSON.stringify(Object.fromEntries(pending.map((c) => [c.name, voiceMap[c.name]])))}`);
+}
 
-  const audioFiles = await ttsPhase3GenerateAll(segments, voiceMap, tmpDir);
-  await ttsPhase4Concat(audioFiles, ttsOut);
-  return ttsOut;
+// ── 阶段二:逐 group 配音（按说话人切分多音色 → 并行合成 → 拼成组音频）──────────
+
+const GROUP_TTS_SYSTEM = `你是配音切分助手。给定剧本中的一句话（可能含【】画面预设标注）和角色音色映射，把它按"说话人"从左到右切成有序片段，给每段配音色。
+
+会提供给你：
+- voice_map：角色名 → 音色名
+- narrator_voice：旁白音色名
+
+规则：
+- 叙述、说话引导语（如"他说："、"XX道："）→ 用 narrator_voice
+- 引号内台词 / 角色说出的话 → 用该角色的音色（在 voice_map 里查；简称/别名也要匹配到对应角色；查不到 → narrator_voice）
+- 内心独白 → 用该角色的音色
+- 从左到右、按原文顺序切；同一连续片段用同一音色，直到说话人切换
+- text 必须是原文逐字（去掉【】标注部分），覆盖所有可读文字，不遗漏、不改写
+- style：该片段朗读风格（情绪/语气/语速，中文，简短），可参考【情绪】字段
+- voice 字段只能填 voice_map 的某个值，或 narrator_voice
+
+只输出 JSON 数组，不要任何其他文字：
+[{"text":"...","voice":"音色名","style":"..."}]`;
+
+/**
+ * 阶段二：逐 group 配音。每个 group 由 LLM 按说话人切分 → 并行合成子片段 → 拼成组音频。
+ * 返回每个 group 的真实音频时长（秒），并把全部组音频按序拼成场景音频 _tts_{scene}.mp3。
+ */
+async function runGroupTtsPipeline(
+  groups: any[],
+  voiceMap: Record<string, string>,
+  outputDir: string,
+  sceneName: string,
+): Promise<number[]> {
+  const tmpDir = path.join(outputDir, "tts_segments");
+  await fs.mkdir(tmpDir, { recursive: true });
+
+  const validVoices = new Set<string>([...Object.values(MIMO_VOICES), MIMO_NARRATOR]);
+  const llmSem = new Semaphore(TTS_CONCURRENCY);
+  const ttsSem = new Semaphore(TTS_CONCURRENCY);
+  const groupAudio = (gi: number) => path.join(outputDir, `g${String(gi).padStart(2, "0")}_tts.mp3`);
+
+  const durations = await Promise.all(groups.map(async (group: any, gi: number): Promise<number> => {
+    const ga = groupAudio(gi);
+    if (fsSync.existsSync(ga)) return getMediaDuration(ga);  // 续跑：已存在直接量时长
+
+    const text = String(group.text ?? "").trim();
+
+    // 1. LLM 按说话人切分
+    let segs: Array<{ text: string; voice: string; style?: string }> = [];
+    await llmSem.acquire();
+    try {
+      const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
+      const resp = await client.chat.completions.create({
+        model: LLM_MODEL,
+        max_tokens: LLM_MAX_TOKENS,
+        temperature: 0.3,
+        messages: [
+          { role: "system", content: GROUP_TTS_SYSTEM },
+          { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${MIMO_NARRATOR}\n\n句子：${text}` },
+        ],
+      });
+      let raw = resp.choices[0].message.content?.trim() ?? "[]";
+      const m = raw.match(/\[[\s\S]*\]/);
+      if (m) raw = m[0];
+      segs = JSON.parse(raw);
+    } catch (e) {
+      console.error(`[groupTTS g${String(gi).padStart(2, "0")}] 切分失败，整句用旁白: ${e}`);
+    } finally {
+      llmSem.release();
+    }
+    if (!Array.isArray(segs) || !segs.length) {
+      segs = [{ text: text.replace(/【[^】]*】/g, "").trim(), voice: MIMO_NARRATOR, style: "平稳叙述" }];
+    }
+
+    // 2. 并行合成各子片段
+    const segPaths = await Promise.all(segs.map(async (s, j): Promise<string> => {
+      const p = path.join(tmpDir, `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}.mp3`);
+      const voice = validVoices.has(s.voice) ? s.voice : MIMO_NARRATOR;
+      await ttsSem.acquire();
+      try {
+        await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p);
+      } finally {
+        ttsSem.release();
+      }
+      return p;
+    }));
+
+    // 3. 子片段按序拼成组音频
+    await ttsPhase4Concat(segPaths, ga);
+    const d = await getMediaDuration(ga);
+    console.log(`[groupTTS g${String(gi).padStart(2, "0")}] ${segs.length}段 → ${d.toFixed(1)}s`);
+    return d;
+  }));
+
+  // 全部组音频按序拼成场景音频
+  const sceneAudio = path.join(outputDir, `_tts_${sceneName}.mp3`);
+  await ttsPhase4Concat(groups.map((_: any, gi: number) => groupAudio(gi)), sceneAudio);
+  console.log(`[groupTTS] 场景音频 → ${path.basename(sceneAudio)}`);
+  return durations;
 }
 
 // ── 主渲染函数（供 pipeline 调用）────────────────────────────────────────────
@@ -824,7 +822,6 @@ export async function renderScene(
   const rawContent    = await fs.readFile(jsonlPath, "utf-8");
   const groups        = parseJsonl(rawContent);
   const fullSceneText = groups.map((g: any) => g.text ?? "").filter(Boolean).join("\n");
-  const cleanSceneText = groups.map((g: any) => (g.text ?? "").replace(/【[^】]*】/g, "").trim()).filter(Boolean).join("");
   console.log(`\n场景: ${sceneName}，共 ${groups.length} 个 group`);
   console.log(`输出目录: ${outputDir}`);
 
@@ -838,7 +835,19 @@ export async function renderScene(
   const vidSem     = new Semaphore(VIDEO_CONCURRENCY);
   const videoEvents = new Map<string, { resolve: () => void; promise: Promise<void> }>();
 
-  // ── 视频管线 + TTS 管线并行启动 ──
+  // ── 阶段二:先逐 group 配音，拿到每组真实时长 d_g 驱动视频（imagesOnly 跳过）──
+  let groupDurations: number[] = groups.map(() => VIDEO_DEFAULT_DURATION);
+  let sceneAudio = "";
+  if (!sel.imagesOnly) {
+    let voiceMap: Record<string, string> = {};
+    if (fsSync.existsSync(voiceMapPath)) {
+      voiceMap = JSON.parse(await fs.readFile(voiceMapPath, "utf-8"));
+    }
+    groupDurations = await runGroupTtsPipeline(groups, voiceMap, outputDir, sceneName);
+    sceneAudio = path.join(outputDir, `_tts_${sceneName}.mp3`);
+  }
+
+  // ── 视频管线（时长由 d_g 驱动）──
   const videoTask = (async (): Promise<string> => {
     // ── 预注册所有 panel 的 videoEvent ──
     for (let gi = 0; gi < groups.length; gi++) {
@@ -883,7 +892,7 @@ export async function renderScene(
       groups.flatMap((group: any, gi: number) => {
         const panels      = group.panels ?? [];
         const currentText = group.text ?? "";
-        const groupDur    = estimateGroupDuration(currentText);
+        const groupDur    = groupDurations[gi] ?? VIDEO_DEFAULT_DURATION;  // 真实 TTS 时长驱动
         const panelDurations = distributePanelDurations(groupDur, panels);
 
         return panels.map(async (panel: any, pi: number) => {
@@ -1011,28 +1020,12 @@ export async function renderScene(
     return videoOnly;
   })();
 
-  const ttsTask = sel.imagesOnly
-    ? Promise.resolve("")
-    : runTtsPipeline(cleanSceneText, outputDir, voiceMapPath, sceneName);
+  // ── 等待视频管线（TTS 已在前面完成）──
+  const videoOnlyPath = await videoTask;
 
-  // ── 等待两个管线都完成 ──
-  const [videoResult, ttsResult] = await Promise.allSettled([videoTask, ttsTask]);
+  console.log(`\n[场景完成] ${sceneName}  视频: ${path.basename(videoOnlyPath) || "(无)"}  音频: ${path.basename(sceneAudio) || "(无)"}`);
 
-  if (videoResult.status === "rejected") {
-    console.error(`[${sceneName}] 视频管线失败: ${videoResult.reason}`);
-    throw videoResult.reason;
-  }
-  if (ttsResult.status === "rejected") {
-    console.error(`[${sceneName}] TTS 管线失败: ${ttsResult.reason}`);
-    throw ttsResult.reason;
-  }
-
-  const videoOnlyPath = videoResult.value;
-  const ttsPath       = ttsResult.value;
-
-  console.log(`\n[场景完成] ${sceneName}  视频: ${path.basename(videoOnlyPath)}  音频: ${path.basename(ttsPath)}`);
-
-  return { sceneName, videoOnly: videoOnlyPath, ttsAudio: ttsPath };
+  return { sceneName, videoOnly: videoOnlyPath, ttsAudio: sceneAudio };
 }
 
 // ── 全局音视频对齐合并 ────────────────────────────────────────────────────────
