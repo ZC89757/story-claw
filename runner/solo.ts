@@ -140,6 +140,10 @@ export async function runSolo(sel: NovelSelection) {
     console.log(`\n  ${"=".repeat(50)}`);
     console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
     console.log();
+
+    // ── 视频生成完成，自动关闭 GPU 实例 ──
+    const { execSync } = await import("node:child_process");
+    execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
   } catch (err) {
     console.error(`\n  x 流水线出错: ${err}\n`);
   }
