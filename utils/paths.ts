@@ -121,6 +121,10 @@ export const novelPaths = {
   visualPreset: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "画面预设.txt"),
 
+  /** 清理后的原文：workspace/{名}/ep{XX}/原文_clean.txt */
+  cleanedText: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "原文_clean.txt"),
+
   /** 分镜 JSONL 目录：workspace/{名}/ep{XX}/storyboards/ */
   storyboardsDir: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "storyboards"),

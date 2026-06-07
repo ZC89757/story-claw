@@ -19,7 +19,7 @@
 import fs from "node:fs/promises";
 import { novelPaths } from "./paths.js";
 
-export type StageName = "visualPreset" | "archive" | "segment" | "storyboard" | "render";
+export type StageName = "clean" | "visualPreset" | "archive" | "segment" | "storyboard" | "render";
 export type StageStatus = "done" | "images_only";
 
 export interface EpisodeRecord {

@@ -12,7 +12,7 @@ export interface StageInfo {
   subLines?: string[];
 }
 
-const STAGE_LABELS = ["画面预设", "资源建档", "剧本分场", "分镜制作", "渲染合成"];
+const STAGE_LABELS = ["原文清理", "画面预设", "资源建档", "剧本分场", "分镜制作", "渲染合成"];
 
 /** 生成进度条文本 */
 export function progressBar(done: number, total: number, width = 16): string {

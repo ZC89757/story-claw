@@ -9,6 +9,7 @@
  */
 
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { runSubAgent } from "../agent.js";
@@ -264,10 +265,49 @@ is_continuation 规则：
 
 完成后直接结束，不要询问用户任何问题。`;
 
-// ── VisualPreset：画面预设 ────────────────────────────────────
+// ── CleanText：原文清理 ────────────────────────────────────
 
-export async function visualPreset(sel: NovelSelection): Promise<string> {
-  const progressContent = await fs.readFile(novelPaths.progress(sel.novelName), "utf-8").catch(() => JSON.stringify({ next_chapter: 1 }));
+const CLEAN_TEXT_SYSTEM = `你是原文预处理专员。任务：在进入分镜流程前，对小说章节原文做"结构清理"，输出干净、便于后续逐句分镜的正文。
+
+== 核心原则 ==
+除下述「展示型文字重构」明确允许的合并与改写外，逐字保留原文，不得扩写、精简、增删剧情，不得改变任何词句、事实、人物或对话原意。你只清理结构，不做内容改编。
+**保守优先**：若原文不含需处理的内容、且排版正常，就基本原样输出（至多剥离样板）。不要为了"完成任务"而做激进或不必要的改动——宁可少改，不可错改。
+
+== 处理规则 ==
+
+1. 剥离非正文样板
+删除与剧情无关的内容：作者署名、链接、来源、著作权/版权声明、风险提示、广告、无关的页眉页脚等。只保留小说正文。
+
+2. 大段「展示型文字」重构为有人念/读的连续台词
+- 适用对象：诗、词、信件、手机/屏幕显示的消息、告示、文件等——本质是一个连续信息块、但因逐行排版会被后续逐行切散的展示型文字。
+- 处理方式：
+  a. 把该块合并为一段连续文本（去掉行间空行/换行，使其成为单一自然段）。
+  b. 重构为"某人念出来"的引述台词形式：前面补一句简短朗读引导（如"X轻声念道："、"X看着屏幕读到："、"X的声音仿佛在耳边响起："），内容包进引号「」。说话人由你根据上下文自行判断（谁写的、谁在看、在场谁会读出来，或用画外音），合理即可，不必拘泥。
+  c. 合并后，引述内部原有的句终标点（。！？）改为逗号，整段末尾保留一个句终标点，确保它对后续"按句终标点切句"是一个连续整体。
+- 目的：让这段成为一个连续单元（后续即一个镜头组），画面呈现为"有人在念/读"，而非一行行静止的纸面特写。
+
+3. 短展示文字保留为画面，不重构
+单字标题（如"悟"）、招牌、短字条、单句题字等，保留原样作为纯画面镜头处理，不要硬塞给谁念。
+
+4. 正常叙事与对白原样保留
+正常的叙述描写、人物对白、内心独白——不要改动、不要合并、不要拆分。一段连续的台词/独白本就是一个单元，保持原样。
+
+5. 排版规范
+- 每个自然段落占一行，段落之间用一个空行分隔。
+- 不要把不相关的句子合并成一段，也不要把一个自然段拆成多段。
+- 被重构的展示型文字块必须是单一自然段（内部不得再有空行）。
+
+== 步骤 ==
+1. 通读全文，识别样板、展示型文字块、正常正文。
+2. 按上述规则生成清理后的正文。
+3. 用内置 write 工具将结果写入 task 指定的输出路径。
+4. 在最终回复末行写明：清理后原文路径: <输出路径>
+
+完成后直接结束，不要询问用户任何问题。`;
+
+/** 按 改编进度.json 的 source_path + next_chapter 定位并读取本集对应的原始章节正文 */
+async function loadRawChapter(novelName: string): Promise<string> {
+  const progressContent = await fs.readFile(novelPaths.progress(novelName), "utf-8").catch(() => JSON.stringify({ next_chapter: 1 }));
   const progress = JSON.parse(progressContent);
   const nextChapter: number = progress.next_chapter ?? 1;
   const novelFolder: string = progress.source_path;
@@ -276,8 +316,41 @@ export async function visualPreset(sel: NovelSelection): Promise<string> {
     (f) => new RegExp(`^第${nextChapter}章`).test(f),
   );
   if (!filename) throw new Error(`找不到第${nextChapter}章文件`);
+  return fs.readFile(path.join(novelFolder, filename), "utf-8");
+}
 
-  const chapterText = await fs.readFile(path.join(novelFolder, filename), "utf-8");
+export async function cleanText(sel: NovelSelection): Promise<string> {
+  const chapterText = await loadRawChapter(sel.novelName);
+  const outputPath = novelPaths.cleanedText(sel.novelName, sel.episode);
+
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+
+  await runSubAgent(
+    [],
+    CLEAN_TEXT_SYSTEM,
+    [
+      `输出路径：${outputPath}`,
+      ``,
+      `== 章节原文 ==`,
+      chapterText,
+    ].join("\n"),
+    "[原文清理]",
+    [writeTool],  // 只需要写文件，禁用 read
+  );
+
+  await fs.access(outputPath);
+  return outputPath;
+}
+
+// ── VisualPreset：画面预设 ────────────────────────────────────
+
+export async function visualPreset(sel: NovelSelection): Promise<string> {
+  // 优先用清理后的原文；无则回退原始章节（清理阶段被跳过/未启用时）
+  const cleanPath = novelPaths.cleanedText(sel.novelName, sel.episode);
+  const chapterText = existsSync(cleanPath)
+    ? await fs.readFile(cleanPath, "utf-8")
+    : await loadRawChapter(sel.novelName);
+
   const outputPath = novelPaths.visualPreset(sel.novelName, sel.episode);
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });

@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
-import { visualPreset, archive, segment, storyboard, renderScene } from "./pipeline.js";
+import { cleanText, visualPreset, archive, segment, storyboard, renderScene } from "./pipeline.js";
 import type { RenderProgress, SceneRenderResult } from "./pipeline.js";
 import { initRenderLog, globalAlignAndMerge } from "./render.js";
 import { novelPaths } from "../utils/paths.js";
@@ -20,63 +20,73 @@ export async function runSolo(sel: NovelSelection) {
     // 读取本集已记录的阶段进度，用于跳过已完成阶段（续跑）
     const epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
 
-    // 画面预设
+    // 原文清理
     p.start(0, title);
+    if (epRec.stages.clean === "done") {
+      p.done(0, title, "已完成，跳过");
+    } else {
+      await cleanText(sel);
+      await markStage(sel.novelName, ep, "clean", "done", { chapter: sel.nextChapter });
+      p.done(0, title, "原文_clean.txt");
+    }
+
+    // 画面预设
+    p.start(1, title);
     let presetPath = novelPaths.visualPreset(sel.novelName, ep);
     if (epRec.stages.visualPreset === "done") {
-      p.done(0, title, "已完成，跳过");
+      p.done(1, title, "已完成，跳过");
     } else {
       presetPath = await visualPreset(sel);
       await markStage(sel.novelName, ep, "visualPreset", "done", { chapter: sel.nextChapter });
-      p.done(0, title, "画面预设.txt");
+      p.done(1, title, "画面预设.txt");
     }
 
     // 资源建档
-    p.start(1, title);
+    p.start(2, title);
     let archiveResult: { sceneNames: string[] };
     if (epRec.stages.archive === "done") {
       archiveResult = { sceneNames: epRec.sceneNames ?? [] };
-      p.done(1, title, `已完成，跳过（场景${archiveResult.sceneNames.length}个）`);
+      p.done(2, title, `已完成，跳过（场景${archiveResult.sceneNames.length}个）`);
     } else {
       archiveResult = await archive(sel, presetPath);
       await markStage(sel.novelName, ep, "archive", "done", { sceneNames: archiveResult.sceneNames });
-      p.done(1, title, `场景${archiveResult.sceneNames.length}个`);
+      p.done(2, title, `场景${archiveResult.sceneNames.length}个`);
     }
 
     // 剧本分场
-    p.start(2, title);
+    p.start(3, title);
     let scriptsDir = novelPaths.scriptsDir(sel.novelName, ep);
     if (epRec.stages.segment === "done") {
-      p.done(2, title, "已完成，跳过");
+      p.done(3, title, "已完成，跳过");
     } else {
       scriptsDir = await segment(sel, archiveResult, presetPath);
       await markStage(sel.novelName, ep, "segment", "done");
-      p.done(2, title, "scripts/");
+      p.done(3, title, "scripts/");
     }
 
     // 分镜制作
-    p.start(3, title);
+    p.start(4, title);
     if (epRec.stages.storyboard === "done") {
-      p.done(3, title, "已完成，跳过");
+      p.done(4, title, "已完成，跳过");
     } else {
       await storyboard(sel, scriptsDir, (prog) => {
-        p.updateSubLines(3, title, [
+        p.updateSubLines(4, title, [
           `分镜  ${progressBar(prog.done, prog.total)}`,
         ]);
       });
       await markStage(sel.novelName, ep, "storyboard", "done");
-      p.done(3, title);
+      p.done(4, title);
     }
 
     // 整集已完整渲染过，无需再跑
     if (epRec.stages.render === "done") {
-      p.done(4, title, "已完成，跳过");
+      p.done(5, title, "已完成，跳过");
       console.log(`\n  本集已完整渲染完成，无需重跑。`);
       return;
     }
 
     // 渲染（每个场景的 JSONL → 视频+TTS → final.mp4，各场景并行）
-    p.start(4, title);
+    p.start(5, title);
     initRenderLog(novelPaths.episodeDir(sel.novelName, sel.episode) + "/render.log");
     const storyboardsDir = novelPaths.storyboardsDir(sel.novelName, sel.episode);
     let jsonlFiles: string[] = [];
@@ -88,7 +98,7 @@ export async function runSolo(sel: NovelSelection) {
 
     const renderProgress: Record<string, RenderProgress> = {};
     const updateRenderSubLines = () => {
-      p.updateSubLines(4, title,
+      p.updateSubLines(5, title,
         Object.values(renderProgress).map(
           (rp) => `${rp.scene}  ${progressBar(rp.done, rp.total)}`,
         ),
@@ -103,7 +113,7 @@ export async function runSolo(sel: NovelSelection) {
         }),
       ),
     );
-    p.done(4, title, `${jsonlFiles.length} 个场景`);
+    p.done(5, title, `${jsonlFiles.length} 个场景`);
 
     // images-only 模式：只出分镜图，记 render=images_only，不推进进度（等 ComfyUI 就绪后重跑补视频）
     if (sel.imagesOnly) {
