@@ -85,6 +85,12 @@ export async function runSolo(sel: NovelSelection) {
       return;
     }
 
+    // ── 开启 GPU 实例 ──
+    console.log(`\n  正在开启 GPU 实例...`);
+    const { execSync } = await import("node:child_process");
+    execSync("python scripts/grab_gpu.py", { stdio: "inherit" });
+    console.log(`  GPU 实例已就绪\n`);
+
     // 渲染（每个场景的 JSONL → 视频+TTS → final.mp4，各场景并行）
     p.start(5, title);
     initRenderLog(novelPaths.episodeDir(sel.novelName, sel.episode) + "/render.log");
@@ -142,7 +148,6 @@ export async function runSolo(sel: NovelSelection) {
     console.log();
 
     // ── 视频生成完成，自动关闭 GPU 实例 ──
-    const { execSync } = await import("node:child_process");
     execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
   } catch (err) {
     console.error(`\n  x 流水线出错: ${err}\n`);
