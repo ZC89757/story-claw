@@ -136,8 +136,10 @@ export async function runSolo(sel: NovelSelection) {
       const episodeVideoPath = novelPaths.episodeVideo(sel.novelName, sel.episode);
       const epDir = novelPaths.episodeDir(sel.novelName, sel.episode);
       const orderedScenes = archiveResult.sceneNames.filter((s) => jsonlFiles.includes(s));
+      const visualPresetPath = novelPaths.visualPreset(sel.novelName, sel.episode);
+      const storyboardsDir = novelPaths.storyboardsDir(sel.novelName, sel.episode);
 
-      await globalAlignAndMerge(sceneResults, orderedScenes, episodeVideoPath, epDir);
+      await globalAlignAndMerge(sceneResults, orderedScenes, episodeVideoPath, epDir, visualPresetPath, storyboardsDir);
     }
 
     // 整集完成：render=done，追加 adapted、next_chapter +1

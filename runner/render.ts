@@ -1217,6 +1217,8 @@ export async function globalAlignAndMerge(
   orderedScenes: string[],
   episodeVideoPath: string,
   epDir: string,
+  visualPresetPath?: string,
+  storyboardsDir?: string,
 ): Promise<void> {
   if (results.length === 0) {
     console.log("[全局对齐] 无场景，跳过");
@@ -1224,13 +1226,107 @@ export async function globalAlignAndMerge(
   }
 
   // 按 orderedScenes 排序，过滤掉缺失文件的场景
-  const ordered = orderedScenes
+  let ordered = orderedScenes
     .map((name) => results.find((r) => r.sceneName === name))
     .filter((r): r is SceneRenderResult =>
       r !== undefined &&
       fsSync.existsSync(r.videoOnly) &&
       fsSync.existsSync(r.ttsAudio),
     );
+
+  // ── 按原文顺序重排 ──
+  if (visualPresetPath && storyboardsDir && fsSync.existsSync(visualPresetPath)) {
+    console.log("[全局对齐] 按原文顺序重排...");
+    try {
+      // 1. 解析画面预设.txt，提取原文顺序
+      const presetText = await fs.readFile(visualPresetPath, "utf-8");
+      const presetLines = presetText.split("\n")
+        .filter(line => line.trim())
+        .map((line, index) => {
+          const text = line.split("【")[0].trim()
+            .replace(/^[0-9]+\.\s*/, ""); // 去掉可能的序号
+          return { text, order: index };
+        });
+
+      // 2. 解析每个场景的 storyboard JSONL，提取每个 group 的原文
+      const groups: Array<{ scene: string; gi: number; text: string; order: number }> = [];
+      for (const sceneName of orderedScenes) {
+        const jsonlPath = path.join(storyboardsDir, `storyboard_${sceneName}.jsonl`);
+        if (!fsSync.existsSync(jsonlPath)) continue;
+        const jsonlText = await fs.readFile(jsonlPath, "utf-8");
+        const lines = jsonlText.split("\n").filter(l => l.trim());
+        for (let gi = 0; gi < lines.length; gi++) {
+          try {
+            const data = JSON.parse(lines[gi]);
+            const text = (data.text || "").split("【")[0].trim();
+            if (text) {
+              groups.push({ scene: sceneName, gi, text, order: -1 });
+            }
+          } catch { /* 跳过解析失败 */ }
+        }
+      }
+
+      // 3. 根据原文内容匹配，分配 global_order
+      for (const group of groups) {
+        // 在画面预设中找到最佳匹配
+        let bestMatch = -1;
+        let bestScore = 0;
+        for (const preset of presetLines) {
+          // 计算匹配度：检查原文是否包含画面预设的文本
+          const presetText = preset.text.replace(/[，。！？、；：""''《》（）【】]/g, "");
+          const groupText = group.text.replace(/[，。！？、；：""''《》（）【】]/g, "");
+          if (presetText && groupText.includes(presetText)) {
+            // 完全包含，匹配度高
+            if (presetText.length > bestScore) {
+              bestScore = presetText.length;
+              bestMatch = preset.order;
+            }
+          } else if (presetText && presetText.includes(groupText)) {
+            // 画面预设包含 group 文本，匹配度中等
+            if (groupText.length > bestScore * 0.5) {
+              bestScore = groupText.length * 0.5;
+              bestMatch = preset.order;
+            }
+          }
+        }
+        group.order = bestMatch >= 0 ? bestMatch : 999;
+      }
+
+      // 4. 按 global_order 排序
+      groups.sort((a, b) => a.order - b.order);
+
+      // 5. 按这个顺序重排 ordered
+      const orderedMap = new Map<string, SceneRenderResult>();
+      for (const r of ordered) {
+        orderedMap.set(r.sceneName, r);
+      }
+
+      const reordered: SceneRenderResult[] = [];
+      const addedScenes = new Set<string>();
+      for (const group of groups) {
+        if (!addedScenes.has(group.scene) && orderedMap.has(group.scene)) {
+          reordered.push(orderedMap.get(group.scene)!);
+          addedScenes.add(group.scene);
+        }
+      }
+
+      // 添加没有匹配到的场景
+      for (const r of ordered) {
+        if (!addedScenes.has(r.sceneName)) {
+          reordered.push(r);
+        }
+      }
+
+      if (reordered.length === ordered.length) {
+        console.log("[全局对齐] 按原文顺序重排完成");
+        ordered = reordered;
+      } else {
+        console.log("[全局对齐] 重排后场景数不匹配，保持原顺序");
+      }
+    } catch (err) {
+      console.log(`[全局对齐] 按原文顺序重排失败: ${err}，保持原顺序`);
+    }
+  }
 
   if (ordered.length === 0) {
     console.log("[全局对齐] 无有效场景文件，跳过");
