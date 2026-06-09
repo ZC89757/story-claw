@@ -916,9 +916,8 @@ export interface RenderProgress {
 }
 
 export interface SceneRenderResult {
-  sceneName: string;
-  videoOnly: string;  // _video_only.mp4
-  ttsAudio:  string;  // _tts_{sceneName}.mp3
+  groupVideos: string[];  // [render_场景A/g00.mp4, render_场景A/g01.mp4, ...]
+  groupTtsAudios: string[];  // [render_场景A/g00_tts.mp3, render_场景A/g01_tts.mp3, ...]
 }
 
 export async function renderScene(
@@ -1131,17 +1130,24 @@ export async function renderScene(
     const validVideos = groupVideos.filter((p) => fsSync.existsSync(p));
     console.log(`\n所有 ${validVideos.length} 个 group 视频生成完毕`);
 
-    const videoOnly = path.join(outputDir, "_video_only.mp4");
-    await concatVideos(validVideos, videoOnly);
-    return videoOnly;
+    return validVideos;
   })();
 
   // ── 等待视频管线（TTS 已在前面完成）──
-  const videoOnlyPath = await videoTask;
+  const groupVideoPaths = await videoTask;
 
-  console.log(`\n[场景完成] ${sceneName}  视频: ${path.basename(videoOnlyPath) || "(无)"}  音频: ${path.basename(sceneAudio) || "(无)"}`);
+  // 收集所有 group 的 TTS 音频路径
+  const groupTtsPaths: string[] = [];
+  for (let gi = 0; gi < groups.length; gi++) {
+    const ttsPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_tts.mp3`);
+    if (fsSync.existsSync(ttsPath)) {
+      groupTtsPaths.push(ttsPath);
+    }
+  }
 
-  return { sceneName, videoOnly: videoOnlyPath, ttsAudio: sceneAudio };
+  console.log(`\n[场景完成] ${sceneName}  视频: ${groupVideoPaths.length} 个 group  音频: ${groupTtsPaths.length} 个 group`);
+
+  return { groupVideos: groupVideoPaths, groupTtsAudios: groupTtsPaths };
 }
 
 // ── 全局音视频对齐合并 ────────────────────────────────────────────────────────
@@ -1212,49 +1218,157 @@ function computeAlignTarget(totalVideo: number, totalAudio: number): {
  *   5. ffmpeg concat 所有调整后的音频 → 合成音频
  *   6. ffmpeg mux 合成视频 + 合成音频 → 集最终 mp4
  */
+/**
+ * 全局对齐：收集所有 group 的视频和音频，按原文顺序排列，统一调整速度后拼接为集视频。
+ *
+ * 步骤：
+ *   1. 收集所有场景的 group 视频和音频
+ *   2. 按原文顺序排列所有 group
+ *   3. 量取所有 group 的视频/音频总时长
+ *   4. 用 computeAlignTarget 计算全局目标速度
+ *   5. 对每个 group：用 ffmpeg 调整视频 setpts 和音频 atempo，输出临时文件
+ *   6. ffmpeg concat 所有调整后的视频 → 合成视频
+ *   7. ffmpeg concat 所有调整后的音频 → 合成音频
+ *   8. ffmpeg mux 合成视频 + 合成音频 → 集最终 mp4
+ */
 export async function globalAlignAndMerge(
   results: SceneRenderResult[],
   orderedScenes: string[],
   episodeVideoPath: string,
   epDir: string,
+  visualPresetPath?: string,
+  storyboardsDir?: string,
 ): Promise<void> {
   if (results.length === 0) {
     console.log("[全局对齐] 无场景，跳过");
     return;
   }
 
-  // 按 orderedScenes 排序，过滤掉缺失文件的场景
-  const ordered = orderedScenes
-    .map((name) => results.find((r) => r.sceneName === name))
-    .filter((r): r is SceneRenderResult =>
-      r !== undefined &&
-      fsSync.existsSync(r.videoOnly) &&
-      fsSync.existsSync(r.ttsAudio),
-    );
+  // ── 收集所有 group 的视频和音频 ──
+  const allGroupVideos: string[] = [];
+  const allGroupTts: string[] = [];
 
-  if (ordered.length === 0) {
-    console.log("[全局对齐] 无有效场景文件，跳过");
+  for (const result of results) {
+    allGroupVideos.push(...result.groupVideos);
+    allGroupTts.push(...result.groupTtsAudios);
+  }
+
+  if (allGroupVideos.length === 0) {
+    console.log("[全局对齐] 无 group 视频，跳过");
     return;
   }
 
-  // ── 量取时长 ──
-  console.log("\n[全局对齐] 量取各场景时长...");
-  const durations = await Promise.all(
-    ordered.map(async (r) => ({
-      sceneName: r.sceneName,
-      video: await getMediaDuration(r.videoOnly),
-      audio: await getMediaDuration(r.ttsAudio),
-    })),
-  );
+  // ── 按原文顺序排列所有 group ──
+  let orderedGroupVideos = [...allGroupVideos];
+  let orderedGroupTts = [...allGroupTts];
 
-  const totalVideo = durations.reduce((s, d) => s + d.video, 0);
-  const totalAudio = durations.reduce((s, d) => s + d.audio, 0);
+  if (visualPresetPath && storyboardsDir && fsSync.existsSync(visualPresetPath)) {
+    console.log("[全局对齐] 按原文顺序重排 group...");
+    try {
+      // 1. 解析画面预设.txt，提取原文顺序
+      const presetText = await fs.readFile(visualPresetPath, "utf-8");
+      const presetLines = presetText.split("\n")
+        .filter(line => line.trim())
+        .map((line, index) => {
+          const text = line.split("【")[0].trim()
+            .replace(/^[0-9]+\.\s*/, ""); // 去掉可能的序号
+          return { text, order: index };
+        });
+
+      // 2. 解析每个场景的 storyboard JSONL，提取每个 group 的原文
+      const groups: Array<{ scene: string; gi: number; text: string; order: number; videoPath: string; ttsPath: string }> = [];
+      for (let si = 0; si < results.length; si++) {
+        const result = results[si];
+        const sceneName = orderedScenes[si] || `scene_${si}`;
+        const jsonlPath = path.join(storyboardsDir, `storyboard_${sceneName}.jsonl`);
+        if (!fsSync.existsSync(jsonlPath)) continue;
+        const jsonlText = await fs.readFile(jsonlPath, "utf-8");
+        const lines = jsonlText.split("\n").filter(l => l.trim());
+        for (let gi = 0; gi < lines.length; gi++) {
+          try {
+            const data = JSON.parse(lines[gi]);
+            const text = (data.text || "").split("【")[0].trim();
+            if (text && gi < result.groupVideos.length) {
+              groups.push({
+                scene: sceneName,
+                gi,
+                text,
+                order: -1,
+                videoPath: result.groupVideos[gi],
+                ttsPath: result.groupTtsAudios[gi],
+              });
+            }
+          } catch { /* 跳过解析失败 */ }
+        }
+      }
+
+      // 3. 根据原文内容匹配，分配 global_order
+      for (const group of groups) {
+        // 在画面预设中找到最佳匹配
+        let bestMatch = -1;
+        let bestScore = 0;
+        for (const preset of presetLines) {
+          // 计算匹配度：检查原文是否包含画面预设的文本
+          const presetTextClean = preset.text.replace(/[，。！？、；：""''《》（）【】]/g, "");
+          const groupTextClean = group.text.replace(/[，。！？、；：""''《》（）【】]/g, "");
+          if (presetTextClean && groupTextClean.includes(presetTextClean)) {
+            // 完全包含，匹配度高
+            if (presetTextClean.length > bestScore) {
+              bestScore = presetTextClean.length;
+              bestMatch = preset.order;
+            }
+          } else if (presetTextClean && presetTextClean.includes(groupTextClean)) {
+            // 画面预设包含 group 文本，匹配度中等
+            if (groupTextClean.length > bestScore * 0.5) {
+              bestScore = groupTextClean.length * 0.5;
+              bestMatch = preset.order;
+            }
+          }
+        }
+        group.order = bestMatch >= 0 ? bestMatch : 999;
+      }
+
+      // 4. 按 global_order 排序
+      groups.sort((a, b) => a.order - b.order);
+
+      // 5. 按这个顺序重排 group 视频和音频
+      orderedGroupVideos = groups.map(g => g.videoPath);
+      orderedGroupTts = groups.map(g => g.ttsPath);
+
+      console.log(`[全局对齐] 按原文顺序重排完成，共 ${groups.length} 个 group`);
+    } catch (err) {
+      console.log(`[全局对齐] 按原文顺序重排失败: ${err}，保持原顺序`);
+    }
+  }
+
+  // ── 过滤掉不存在的文件 ──
+  const validPairs: Array<{ video: string; tts: string }> = [];
+  for (let i = 0; i < orderedGroupVideos.length; i++) {
+    const video = orderedGroupVideos[i];
+    const tts = orderedGroupTts[i];
+    if (video && tts && fsSync.existsSync(video) && fsSync.existsSync(tts)) {
+      validPairs.push({ video, tts });
+    }
+  }
+
+  if (validPairs.length === 0) {
+    console.log("[全局对齐] 无有效的 group 文件，跳过");
+    return;
+  }
+
+  console.log(`[全局对齐] 共 ${validPairs.length} 个有效 group`);
+
+  // ── 量取时长 ──
+  console.log("\n[全局对齐] 量取各 group 时长...");
+  let totalVideo = 0;
+  let totalAudio = 0;
+  for (const pair of validPairs) {
+    totalVideo += await getMediaDuration(pair.video);
+    totalAudio += await getMediaDuration(pair.tts);
+  }
 
   console.log(`[全局对齐] 视频总时长: ${totalVideo.toFixed(1)}s`);
   console.log(`[全局对齐] 音频总时长: ${totalAudio.toFixed(1)}s`);
-  for (const d of durations) {
-    console.log(`  ${d.sceneName}: 视频 ${d.video.toFixed(1)}s  音频 ${d.audio.toFixed(1)}s`);
-  }
 
   // ── 计算目标速度 ──
   const { T, videoSpeed, audioSpeed, note } = computeAlignTarget(totalVideo, totalAudio);
@@ -1264,19 +1378,19 @@ export async function globalAlignAndMerge(
   const tmpDir = path.join(epDir, "_align_tmp");
   await fs.mkdir(tmpDir, { recursive: true });
 
-  // ── 调整每个场景的视频和音频 ──
+  // ── 调整每个 group 的视频和音频 ──
   const adjustedVideos: string[] = [];
   const adjustedAudios: string[] = [];
 
-  await Promise.all(ordered.map(async (r, i) => {
-    const idx    = String(i).padStart(2, "0");
-    const adjVid = path.join(tmpDir, `v${idx}_${r.sceneName}.mp4`);
-    const adjAud = path.join(tmpDir, `a${idx}_${r.sceneName}.mp3`);
+  await Promise.all(validPairs.map(async (pair, i) => {
+    const idx    = String(i).padStart(3, "0");
+    const adjVid = path.join(tmpDir, `v${idx}.mp4`);
+    const adjAud = path.join(tmpDir, `a${idx}.mp3`);
 
     // 视频调速：setpts=(1/speed)*PTS
     const ptsExpr = `${(1 / videoSpeed).toFixed(6)}*PTS`;
     await execFileAsync("ffmpeg", [
-      "-y", "-i", r.videoOnly,
+      "-y", "-i", pair.video,
       "-filter:v", `setpts=${ptsExpr}`,
       "-c:v", "libx264", "-preset", "fast", "-crf", "18",
       "-an",
@@ -1285,7 +1399,7 @@ export async function globalAlignAndMerge(
 
     // 音频调速：atempo（范围 0.5~2.0，本方案约束在 0.7~1.6 内，单个滤镜够用）
     await execFileAsync("ffmpeg", [
-      "-y", "-i", r.ttsAudio,
+      "-y", "-i", pair.tts,
       "-filter:a", `atempo=${audioSpeed.toFixed(6)}`,
       "-c:a", "libmp3lame", "-q:a", "2",
       adjAud,
@@ -1293,7 +1407,7 @@ export async function globalAlignAndMerge(
 
     adjustedVideos[i] = adjVid;
     adjustedAudios[i] = adjAud;
-    console.log(`  [对齐] ${r.sceneName} 完成`);
+    console.log(`  [对齐] group ${idx} 完成`);
   }));
 
   // ── concat 所有调整后的视频 ──
