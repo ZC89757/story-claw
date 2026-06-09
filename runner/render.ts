@@ -858,17 +858,21 @@ async function runGroupTtsPipeline(
       usedVoices[j] = voice;
       await ttsSem.acquire();
       try {
-        // TTS 重试机制：限流时等待 3 秒后重试，最多重试 3 次
+        // TTS 重试机制：限流或临时错误时等待 3 秒后重试，最多重试 3 次
         for (let retry = 0; retry <= 3; retry++) {
           try {
             await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p);
             break; // 成功则跳出重试循环
           } catch (err: any) {
-            if (err.message?.includes("quota exceeded") && retry < 3) {
-              console.warn(`[TTS] 限流，${3}秒后重试 (${retry + 1}/3)...`);
+            const isRetryable = err.message?.includes("quota exceeded") ||
+                               err.message?.includes("HTTP 403") ||
+                               err.message?.includes("HTTP 429") ||
+                               err.message?.includes("HTTP 500");
+            if (isRetryable && retry < 3) {
+              console.warn(`[TTS] 临时错误，${3}秒后重试 (${retry + 1}/3): ${err.message?.slice(0, 100)}`);
               await new Promise(r => setTimeout(r, 3000));
             } else {
-              throw err; // 非限流错误或重试次数用尽，抛出异常
+              throw err; // 非重试错误或重试次数用尽，抛出异常
             }
           }
         }
