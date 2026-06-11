@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
-import { cleanText, visualPreset, archive, segment, storyboard, renderScene } from "./pipeline.js";
+import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
 import type { RenderProgress, SceneRenderResult } from "./pipeline.js";
 import { initRenderLog, globalAlignAndMerge } from "./render.js";
 import { novelPaths } from "../utils/paths.js";
@@ -78,6 +78,9 @@ export async function runSolo(sel: NovelSelection) {
       p.done(4, title);
     }
 
+    // ── 为 group 附上 global_order ──
+    await assignGlobalOrder(sel.novelName, ep, archiveResult.sceneNames);
+
     // 整集已完整渲染过，无需再跑
     if (epRec.stages.render === "done") {
       p.done(5, title, "已完成，跳过");
@@ -135,9 +138,8 @@ export async function runSolo(sel: NovelSelection) {
     if (sceneResults.length > 0) {
       const episodeVideoPath = novelPaths.episodeVideo(sel.novelName, sel.episode);
       const epDir = novelPaths.episodeDir(sel.novelName, sel.episode);
-      const orderedScenes = archiveResult.sceneNames.filter((s) => jsonlFiles.includes(s));
 
-      await globalAlignAndMerge(sceneResults, orderedScenes, episodeVideoPath, epDir);
+      await globalAlignAndMerge(sceneResults, episodeVideoPath, epDir);
     }
 
     // 整集完成：render=done，追加 adapted、next_chapter +1
