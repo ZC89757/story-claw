@@ -138,6 +138,11 @@ const TTS_CONCURRENCY    = (ttsCfg.concurrency ?? 4) as number;
 // 是否启用角色音色：关闭时音色照常分配，但 TTS 合成时全部强制用旁白音
 const ASSIGN_CHARACTER_VOICE = (ttsCfg.assign_character_voice ?? true) as boolean;
 
+// SFX（音效）：字级时间戳触发，叠进子片段音频层
+const SFX_ENABLED = (ttsCfg.sfx_enabled ?? true) as boolean;
+const SFX_VOLUME  = (ttsCfg.sfx_volume ?? 0.7) as number;   // 音效相对音量 0–1
+const SFX_DIR     = path.join(CONFIG_DIR, "sfx");           // 全局音效库
+
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
 async function getOpenAI(apiKey: string, baseUrl: string) {
@@ -167,6 +172,49 @@ async function getMediaDuration(filePath: string): Promise<number> {
     "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", filePath,
   ]);
   return parseFloat(stdout.trim());
+}
+
+// ── 音效库（全局，扫 ~/.story-claw/sfx/）─────────────────────────────────────
+
+/** 扫 SFX_DIR 下 *.mp3/*.wav，返回 tag（去扩展名文件名）→ 绝对路径。目录不存在返回空 Map。 */
+export function loadSfxCatalog(): Map<string, string> {
+  const catalog = new Map<string, string>();
+  if (!fsSync.existsSync(SFX_DIR)) return catalog;
+  for (const f of fsSync.readdirSync(SFX_DIR)) {
+    if (/\.(mp3|wav)$/i.test(f)) {
+      const tag = f.replace(/\.(mp3|wav)$/i, "");
+      catalog.set(tag, path.join(SFX_DIR, f));
+    }
+  }
+  return catalog;
+}
+
+/** 音效时长缓存（避免对同一文件重复 ffprobe） */
+const _sfxDurCache = new Map<string, number>();
+async function getSfxDuration(filePath: string): Promise<number> {
+  const cached = _sfxDurCache.get(filePath);
+  if (cached !== undefined) return cached;
+  const d = await getMediaDuration(filePath);
+  _sfxDurCache.set(filePath, d);
+  return d;
+}
+
+/**
+ * 把音效延迟 triggerTime 秒后叠进子片段音频，覆盖写回原文件。
+ * ffmpeg 不能原地读写同一文件，故输出临时文件再覆盖。
+ * duration=first 保证输出长度 = 子片段原长（调用方已确保音效放得下，绝不撑长）。
+ */
+async function mixSfx(segPath: string, sfxFile: string, triggerTime: number): Promise<void> {
+  const ms  = Math.max(0, Math.round(triggerTime * 1000));
+  const tmp = segPath.replace(/\.mp3$/i, "_sfx.mp3");
+  await execFileAsync("ffmpeg", [
+    "-y", "-i", segPath, "-i", sfxFile,
+    "-filter_complex",
+    `[1:a]adelay=${ms}|${ms},volume=${SFX_VOLUME}[s];[0:a][s]amix=inputs=2:duration=first:dropout_transition=0[a]`,
+    "-map", "[a]", "-c:a", "libmp3lame", "-q:a", "2", tmp,
+  ]);
+  await fs.copyFile(tmp, segPath);
+  await fs.unlink(tmp).catch(() => {});
 }
 
 /** ffmpeg 拼接视频（同目录，用相对路径规避中文路径问题） */
@@ -612,15 +660,26 @@ class Semaphore {
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────
 
-async function ttsExecApi(text: string, voice: string, _stylePrompt: string, outputPath: string): Promise<void> {
+interface TtsWord { word: string; startTime: number; endTime: number; }
+
+async function ttsExecApi(
+  text: string,
+  voice: string,
+  _stylePrompt: string,
+  outputPath: string,
+  opts?: { timestamp?: boolean },
+): Promise<{ words: TtsWord[] }> {
   // 豆包 V3 HTTP Chunked 单向流式：一次性输入文本，响应体为多行 JSON，每行 data 为 base64 音频分片。
   // 注：seed-tts-1.0 接口无自由文本风格控制（仅多情感音色支持 emotion 枚举），故 stylePrompt 不下发。
+  // enable_timestamp（仅 TTS1.0 支持）开启时，响应里额外带 sentence.words[]，每项 {word,startTime,endTime}（驼峰、秒）。
+  const audioParams: Record<string, any> = { format: "mp3", sample_rate: 24000 };
+  if (opts?.timestamp) audioParams.enable_timestamp = true;
   const payload = {
     user: { uid: "story-claw" },
     req_params: {
       text,
       speaker: voice,
-      audio_params: { format: "mp3", sample_rate: 24000 },
+      audio_params: audioParams,
       additions: JSON.stringify({ disable_markdown_filter: true }),
     },
   };
@@ -642,11 +701,18 @@ async function ttsExecApi(text: string, voice: string, _stylePrompt: string, out
 
   const body = await resp.text();
   const chunks: Buffer[] = [];
+  const words: TtsWord[] = [];
   for (const line of body.split("\n")) {
     const s = line.trim();
     if (!s) continue;
     let d: any;
     try { d = JSON.parse(s); } catch { continue; }
+    // 时间戳：同次请求内多子句的 words 按出现顺序拼平，startTime 连续 = 子片段本地时间轴
+    if (opts?.timestamp && d.sentence?.words) {
+      for (const w of d.sentence.words) {
+        words.push({ word: String(w.word ?? ""), startTime: w.startTime, endTime: w.endTime });
+      }
+    }
     if (d.code === 0 && d.data) {
       chunks.push(Buffer.from(d.data as string, "base64"));
     } else if (d.code === 20000000) {
@@ -657,6 +723,7 @@ async function ttsExecApi(text: string, voice: string, _stylePrompt: string, out
   }
   if (!chunks.length) throw new Error(`TTS API 未返回音频: ${body.slice(0, 200)}`);
   await fs.writeFile(outputPath, Buffer.concat(chunks));
+  return { words };
 }
 
 async function ttsPhase4Concat(audioFiles: string[], outputPath: string): Promise<void> {
@@ -802,6 +869,8 @@ async function runGroupTtsPipeline(
   const llmSem = new Semaphore(TTS_CONCURRENCY);
   const ttsSem = new Semaphore(TTS_CONCURRENCY);
   const groupAudio = (gi: number) => path.join(outputDir, `g${String(gi).padStart(2, "0")}_tts.mp3`);
+  // 音效库（一次性加载）：group.sfx 里的 sound 标签据此解析为文件路径
+  const sfxCatalog = SFX_ENABLED ? loadSfxCatalog() : new Map<string, string>();
 
   const durations = await Promise.all(groups.map(async (group: any, gi: number): Promise<number> => {
     const ga = groupAudio(gi);
@@ -849,20 +918,27 @@ async function runGroupTtsPipeline(
       return getMediaDuration(ga);
     }
 
+    // 该 group 的音效任务：仅当启用、有 sfx、库非空时开字级时间戳
+    const sfxList: Array<{ anchor: string; sound: string }> =
+      (SFX_ENABLED && sfxCatalog.size > 0 && Array.isArray(group.sfx)) ? group.sfx : [];
+    const wantTs = sfxList.length > 0;
+
     // 2. 并行合成各子片段
     const usedVoices: string[] = [];
-    const segPaths = await Promise.all(synthSegs.map(async (s, j): Promise<string> => {
+    const segResults = await Promise.all(synthSegs.map(async (s, j): Promise<{ p: string; words: TtsWord[] }> => {
       const p = path.join(tmpDir, `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}.mp3`);
       const voice = ASSIGN_CHARACTER_VOICE
         ? (validVoices.has(s.voice) ? s.voice : DOUBAO_NARRATOR)
         : DOUBAO_NARRATOR;
       usedVoices[j] = voice;
+      let words: TtsWord[] = [];
       await ttsSem.acquire();
       try {
         // TTS 重试机制：限流或临时错误时等待 3 秒后重试，最多重试 3 次
         for (let retry = 0; retry <= 3; retry++) {
           try {
-            await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p);
+            const r = await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p, wantTs ? { timestamp: true } : undefined);
+            words = r.words;
             break; // 成功则跳出重试循环
           } catch (err: any) {
             const isRetryable = err.message?.includes("quota exceeded") ||
@@ -880,8 +956,47 @@ async function runGroupTtsPipeline(
       } finally {
         ttsSem.release();
       }
-      return p;
+      return { p, words };
     }));
+    const segPaths = segResults.map((r) => r.p);
+
+    // 2.5 音效叠入：每项 sfx 落在第一个含其 anchor 的子片段，命中即消费、不重复
+    if (wantTs) {
+      const gtag = `g${String(gi).padStart(2, "0")}`;
+      const items = sfxList.filter((x) => x && x.anchor && x.sound);
+      const consumed = new Set<number>();
+      for (let j = 0; j < segResults.length; j++) {
+        const { p, words } = segResults[j];
+        if (!words.length) continue;
+        // 按字展开：每个字映射其所属 token 的 startTime（标点黏前字，随该 token 一起展开）
+        const chars: string[] = [];
+        const charTime: number[] = [];
+        for (const w of words) for (const ch of w.word) { chars.push(ch); charTime.push(w.startTime); }
+        const joined = chars.join("");
+        for (let k = 0; k < items.length; k++) {
+          if (consumed.has(k)) continue;
+          const { anchor, sound } = items[k];
+          const sfxFile = sfxCatalog.get(sound);
+          if (!sfxFile) { console.warn(`[sfx ${gtag}] 标签未找到: 「${sound}」，跳过`); consumed.add(k); continue; }
+          const idx = joined.indexOf(anchor);
+          if (idx < 0) continue;  // 此子片段不含 anchor，留给后续子片段
+          const triggerTime = charTime[idx];
+          const sfxDur = await getSfxDuration(sfxFile);
+          const segDur = await getMediaDuration(p);
+          if (+(segDur - triggerTime).toFixed(2) < +sfxDur.toFixed(2)) {
+            console.warn(`[sfx ${gtag}] anchor「${anchor}」放不下（剩余 ${(segDur - triggerTime).toFixed(2)}s < 音效 ${sfxDur.toFixed(2)}s），跳过`);
+            consumed.add(k);
+            continue;
+          }
+          await mixSfx(p, sfxFile, triggerTime);
+          console.log(`[sfx ${gtag}] anchor「${anchor}」→「${sound}」@${triggerTime.toFixed(2)}s 已叠入 ${path.basename(p)}`);
+          consumed.add(k);
+        }
+      }
+      for (let k = 0; k < items.length; k++) {
+        if (!consumed.has(k)) console.warn(`[sfx ${gtag}] anchor「${items[k].anchor}」在所有子片段均未匹配，跳过`);
+      }
+    }
 
     // 音色分配明细（便于核对每段说话人是否正确）
     const assignment = synthSegs.map((s, j) => ({
