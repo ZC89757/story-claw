@@ -135,6 +135,8 @@ const DOUBAO_VOICES      = (ttsCfg.voices ?? {
 }) as Record<string, string>;
 const DOUBAO_NARRATOR    = (ttsCfg.narrator_voice ?? "zh_male_changtianyi_mars_bigtts") as string;
 const TTS_CONCURRENCY    = (ttsCfg.concurrency ?? 4) as number;
+// 是否启用角色音色：关闭时音色照常分配，但 TTS 合成时全部强制用旁白音
+const ASSIGN_CHARACTER_VOICE = (ttsCfg.assign_character_voice ?? true) as boolean;
 
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
@@ -363,7 +365,6 @@ async function selectResources(
         { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
         { role: "user",   content: parts.join("\n") },
       ],
-      temperature: 0,
     });
   } catch (e: any) {
     console.error(
@@ -726,7 +727,6 @@ export async function assignVoices(
     const resp = await client.chat.completions.create({
       model: LLM_MODEL,
       max_tokens: LLM_MAX_TOKENS,
-      temperature: 0,
       messages: [
         { role: "system", content: ASSIGN_VOICE_SYSTEM },
         { role: "user", content: userContent },
@@ -817,7 +817,6 @@ async function runGroupTtsPipeline(
       const resp = await client.chat.completions.create({
         model: LLM_MODEL,
         max_tokens: LLM_MAX_TOKENS,
-        temperature: 0.3,
         messages: [
           { role: "system", content: GROUP_TTS_SYSTEM },
           { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${DOUBAO_NARRATOR}\n\n句子：${text}` },
@@ -854,7 +853,9 @@ async function runGroupTtsPipeline(
     const usedVoices: string[] = [];
     const segPaths = await Promise.all(synthSegs.map(async (s, j): Promise<string> => {
       const p = path.join(tmpDir, `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}.mp3`);
-      const voice = validVoices.has(s.voice) ? s.voice : DOUBAO_NARRATOR;
+      const voice = ASSIGN_CHARACTER_VOICE
+        ? (validVoices.has(s.voice) ? s.voice : DOUBAO_NARRATOR)
+        : DOUBAO_NARRATOR;
       usedVoices[j] = voice;
       await ttsSem.acquire();
       try {

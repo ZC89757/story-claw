@@ -45,7 +45,7 @@ Stored in `~/.story-claw/` (not in the repo):
 - `config.json`: LLM provider/model/api_key/base_url
 - `image_gen_config.json`: `{ api_key, model, base_url }` — 当前 model 为 `openai/gpt-image-2:openai`，base_url 为 `https://zenmux.ai/api/vertex-ai`
 - `video_config.json`: ComfyUI base_url、workflow_path、duration、concurrency
-- `tts_config.json`: 豆包语音（火山引擎 语音合成大模型 V3，HTTP Chunked 单向流式）api_key（X-Api-Key）、base_url（`https://openspeech.bytedance.com/api/v3/tts/unidirectional`）、resource_id（`seed-tts-1.0`，决定可用音色版本与计费）、voices（`{voice_type: 性别}` 可分配音色池，key 为豆包 voice_type，**不应包含旁白音**）、narrator_voice（旁白专用 voice_type，独立于 voices 池）、concurrency
+- `tts_config.json`: 豆包语音（火山引擎 语音合成大模型 V3，HTTP Chunked 单向流式）api_key（X-Api-Key）、base_url（`https://openspeech.bytedance.com/api/v3/tts/unidirectional`）、resource_id（`seed-tts-1.0`，决定可用音色版本与计费）、voices（`{voice_type: 性别}` 可分配音色池，key 为豆包 voice_type，**不应包含旁白音**）、narrator_voice（旁白专用 voice_type，独立于 voices 池）、concurrency、assign_character_voice（可选，默认 `true`；设为 `false` 时音色照常分配，但 TTS 合成时全部强制用 narrator_voice，相当于全程旁白音）
 
 ### Key Utilities
 - `utils/paths.ts`: 所有输出路径的集中管理，**构造路径时必须使用此文件**
