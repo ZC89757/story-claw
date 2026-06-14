@@ -185,7 +185,7 @@
   "320:287": {
     "inputs": {
       "samples": [
-        "320:307",
+        "320:402",
         0
       ],
       "upscale_model": [
@@ -679,6 +679,59 @@
     "class_type": "ComfyMathExpression",
     "_meta": {
       "title": "Math Expression (length)"
+    }
+  },
+  "320:400": {
+    "inputs": {
+      "images": [
+        "320:401",
+        0
+      ],
+      "enabled": true
+    },
+    "class_type": "SubtitleRemoverVSR",
+    "_meta": {
+      "title": "字幕去除(VSR/STTN)"
+    }
+  },
+  "320:401": {
+    "inputs": {
+      "samples": [
+        "320:307",
+        0
+      ],
+      "vae": [
+        "320:316",
+        2
+      ],
+      "tile_size": 768,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 4
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE解码(base,去字幕前)"
+    }
+  },
+  "320:402": {
+    "inputs": {
+      "pixels": [
+        "320:400",
+        0
+      ],
+      "vae": [
+        "320:316",
+        2
+      ],
+      "tile_size": 768,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 4
+    },
+    "class_type": "VAEEncodeTiled",
+    "_meta": {
+      "title": "VAE编码(去字幕后)"
     }
   }
 }
