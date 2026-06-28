@@ -1157,10 +1157,11 @@ async function runGroupTtsPipeline(
 
 // ── 字幕文本处理 ──────────────────────────────────────────────────────────────
 
-const PUNCT_SET = new Set("，。！？；：、""''「」『』（）【】…—～,.!?;:\"'()[\\]");
+// 中英文标点正则（用 Unicode 转义避免源码中出现会被 esbuild 误解析的引号字符）
+const PUNCT_RE = /[，。！？；：、“”‘’「」『』（）【】…—～,.!?;:"'()[\]]/;
 
 function isPunct(ch: string): boolean {
-  return PUNCT_SET.has(ch);
+  return PUNCT_RE.test(ch);
 }
 
 /** 去掉字符串末尾连续的标点符号和空白 */
