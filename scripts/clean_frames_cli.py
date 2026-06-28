@@ -1,203 +1,229 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-帧目录 -> 帧目录 的字幕去除助手（运行在隔离的 vsr 环境）。
+帧目录 -> 帧目录 的字幕去除助手。
 
-被 ComfyUI 自定义节点 SubtitleRemoverVSR 以子进程方式调用，复用 video-subtitle-remover
-已验证的检测(PaddleOCR det) + STTN(sttn-det) 组件，在内存帧序列上操作，全程无损 PNG。
+检测：EasyOCR detect()（只定位文字区域，不识别内容）
+过滤标准：
+  1. y_top > H * BAND_TOP        在底部 70% 以内
+  2. width > height              横向矩形
+  3. |center_x - W/2| < W*0.10  水平居中（10% 容差）
+修复：LaMa 单帧神经网络修复（仅替换 mask 像素）
 
-【最优参数全部写死在下方常量，外部不可传，避免传错】
-
-三种模式（--mode，唯一可变的结构性参数）：
-  gate ：只在 in-dir 现有帧（节点先写的少量抽检帧）上跑检测，输出 RESULT=HIT / RESULT=CLEAN，
-         不做全量检测、不加载 STTN、不写盘。
-  full ：跳过闸门，对 in-dir 全部帧做(每 SAMPLE_STEP 帧+插值)检测 + STTN 擦除，写 out-dir。
-  auto ：（独立 CLI 用）先抽样闸门，干净则 CLEAN，命中再 full。
-
-stdout 末行：RESULT=HIT / RESULT=CLEAN / RESULT=CLEANED / RESULT=ERROR
+stdout 末行：RESULT=CLEAN / RESULT=CLEANED / RESULT=ERROR
 """
-import os
-import sys
-import glob
-import argparse
-
-# ============ 最优参数（写死，勿外传）============
-BAND_TOP = 0.5        # 字幕搜索带上沿（占高比）：下半部
-BAND_BOTTOM = 1.0     # 下沿
-DILATION = 8          # mask 膨胀像素（STTN 下擦得净又不过糊的最优值）
-GATE_FRAMES = 8       # 闸门抽检帧数（等距）
-SAMPLE_STEP = 4       # 全量检测抽帧步长（每 4 帧检测 + 插值；目的是圈字幕区域，字幕段连续故足够）
-# ================================================
+import os, sys, glob, argparse, types
 
 VSR_ROOT = "/root/video-subtitle-remover"
 sys.path.insert(0, VSR_ROOT)
 
+# ---- headless shim ----
+def _shim(name):
+    m = types.ModuleType(name); sys.modules[name] = m; return m
+for _n in ['PySide6','PySide6.QtCore','PySide6.QtWidgets',
+           'PySide6.QtGui','PySide6.QtNetwork','PySide6.QtSvg']:
+    _shim(_n)
+_qfw = _shim('qfluentwidgets')
+class _CI:
+    def __init__(self, *a, **k): self.value = a[2] if len(a) > 2 else None
+class _QConfig:
+    def set(self, i, v): i.value = v
+_qfw.ConfigItem = _qfw.RangeConfigItem = _qfw.OptionsConfigItem = _CI
+_qfw.BoolValidator = _qfw.OptionsValidator = _qfw.RangeValidator = \
+    _qfw.ConfigValidator = lambda *a,**k: None
+_qfw.EnumSerializer = lambda *a,**k: None
+_qfw.QConfig = _QConfig
+_qfw.qconfig = type('_qc',(),{'load':staticmethod(lambda *a,**k:None)})()
+
+import backend.config as _bc
+_tr = os.path.join(os.path.dirname(os.path.abspath(_bc.__file__)), 'interface', 'ch.ini')
+_bc.tr.read(_tr, encoding='utf-8')
+# ---- end shim ----
+
 import cv2
 import numpy as np
+
+BAND_TOP    = 0.30   # 检测区上沿（底部 70%）
+CENTER_TOL  = 0.10   # 居中容差（帧宽的 10%）
+DILATION    = 8      # mask 膨胀像素
+GATE_FRAMES = 8      # gate 抽检帧数
 
 
 def log(msg):
     print(f"[clean_frames_cli] {msg}", file=sys.stderr, flush=True)
 
 
-def list_frames(in_dir):
-    return sorted(glob.glob(os.path.join(in_dir, "*.png")))
+def list_frames(d):
+    return sorted(glob.glob(os.path.join(d, "*.png")))
 
 
-def make_detector(sample_path, band):
-    from backend.config import config
-    from backend.tools.subtitle_detect import SubtitleDetect
-    config.subtitleAreaDeviationPixel.value = DILATION
-    sd = SubtitleDetect(sample_path, [band])
-    sd.SAMPLE_STEP = 1
-    return sd, config
+
+def is_subtitle_box(box, frame_gray, H, W):
+    """合并后判断是否满足字幕四条标准"""
+    x1, x2, y1, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
+    bw, bh = x2 - x1, y2 - y1
+    if bw <= 0 or bh <= 0:
+        return False
+    # 1. 底部 70% 以内
+    if y1 < H * BAND_TOP:
+        return False
+    # 2. 横向矩形
+    if bw <= bh:
+        return False
+    # 3. 框内有白色文字（最大亮度 > 200，且高亮像素占比 > 5%）
+    crop = frame_gray[max(0,y1):min(H,y2), max(0,x1):min(W,x2)]
+    if crop.size == 0:
+        return False
+    if crop.max() <= 200:
+        return False
+    if (crop > 200).sum() / crop.size < 0.05:
+        return False
+    # 4. 水平居中（10% 容差）
+    cx = (x1 + x2) / 2
+    if abs(cx - W / 2) > W * CENTER_TOL:
+        return False
+    return True
+
+
+def detect_subtitle_boxes(reader, frame_bgr, H, W):
+    """EasyOCR 检测 → 合并相近框 → 过滤 → 返回字幕框列表"""
+    ymin = int(H * BAND_TOP)
+    crop = frame_bgr[ymin:]
+    result = reader.detect(crop, slope_ths=0.1, add_margin=0.05)
+    raw = result[0][0] if (result and result[0]) else []
+
+    # 坐标转回全帧，直接应用字幕过滤标准
+    all_boxes = [(b[0], b[1], b[2] + ymin, b[3] + ymin) for b in raw]
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    return [b for b in all_boxes if is_subtitle_box(b, gray, H, W)]
+
+
+def boxes_to_mask(boxes, H, W):
+    mask = np.zeros((H, W), dtype=np.uint8)
+    for (x1, x2, y1, y2) in boxes:
+        mask[max(0, int(y1)):min(H, int(y2)),
+             max(0, int(x1)):min(W, int(x2))] = 255
+    if mask.max() > 0:
+        kernel = np.ones((DILATION, DILATION), np.uint8)
+        mask = cv2.dilate(mask, kernel, iterations=2)
+    return mask
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in-dir", required=True)
+    ap.add_argument("--in-dir",  required=True)
     ap.add_argument("--out-dir", default="")
-    ap.add_argument("--mode", default="auto", choices=["auto", "gate", "full"])
+    ap.add_argument("--mode",    default="auto", choices=["auto","gate","full"])
     args = ap.parse_args()
-
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
     files = list_frames(args.in_dir)
     if not files:
-        log("no input frames")
-        print("RESULT=ERROR")
-        return 2
+        log("no input frames"); print("RESULT=ERROR"); return 2
 
-    first = cv2.imread(files[0])
-    if first is None:
-        log("failed to read first frame")
-        print("RESULT=ERROR")
-        return 2
-    H, W = first.shape[:2]
-    ymin = max(0, int(round(BAND_TOP * H)))
-    ymax = min(H, int(round(BAND_BOTTOM * H)))
-    band = (ymin, ymax, 0, W)
+    frames = [cv2.imread(f) for f in files]
+    if any(f is None for f in frames):
+        log("failed to read frames"); print("RESULT=ERROR"); return 2
 
-    sd, config = make_detector(files[0], band)
+    n = len(frames)
+    H, W = frames[0].shape[:2]
 
-    # ---------- gate：只对现有帧检测 ----------
-    if args.mode == "gate":
-        for f in files:
-            fr = cv2.imread(f)
-            if fr is not None and len(sd.detect_subtitle(fr)) > 0:
-                log(f"gate HIT @ {os.path.basename(f)}")
-                print("RESULT=HIT")
-                return 0
-        log(f"gate CLEAN ({len(files)} frames)")
-        print("RESULT=CLEAN")
-        return 0
+    import easyocr
+    reader = easyocr.Reader(['ch_sim'], gpu=True, verbose=False)
 
-    # ---------- auto：抽样闸门 ----------
-    n = len(files)
-    if args.mode == "auto":
+    # ---------- gate ----------
+    if args.mode in ("gate", "auto"):
         k = max(1, min(GATE_FRAMES, n))
-        gate_idx = sorted(set(int(round(i * (n - 1) / max(1, k - 1))) for i in range(k))) if k > 1 else [0]
-        if not any(
-            (fr := cv2.imread(files[gi])) is not None and len(sd.detect_subtitle(fr)) > 0
-            for gi in gate_idx
-        ):
-            log(f"auto gate CLEAN ({len(gate_idx)} sampled)")
-            print("RESULT=CLEAN")
-            return 0
+        idx = (sorted(set(int(round(i*(n-1)/max(1,k-1))) for i in range(k)))
+               if k > 1 else [0])
+        hit = any(detect_subtitle_boxes(reader, frames[i], H, W) for i in idx)
+        if not hit:
+            log(f"gate CLEAN ({len(idx)} frames sampled)")
+            print("RESULT=CLEAN"); return 0
+        if args.mode == "gate":
+            print("RESULT=HIT"); return 0
 
-    # ---------- full：每 SAMPLE_STEP 帧检测 + 插值 + STTN ----------
+    # ---------- full ----------
     if not args.out_dir:
-        log("full 模式需要 --out-dir")
-        print("RESULT=ERROR")
-        return 2
+        log("full 需要 --out-dir"); print("RESULT=ERROR"); return 2
 
     import torch
-    from backend.tools.inpaint_tools import create_mask, expand_frame_ranges
+    from backend.inpaint.lama_inpaint import LamaInpaint
     from backend.tools.model_config import ModelConfig
-    from backend.inpaint.sttn_det_inpaint import STTNDetInpaint
 
-    frames = [cv2.imread(f) for f in files]  # BGR
-    sampled = {}
-    for i, fr in enumerate(frames):
-        if fr is None or (i % SAMPLE_STEP) != 0:
-            continue
-        boxes = sd.detect_subtitle(fr)
-        if boxes:
-            sampled[i + 1] = boxes  # 1-based
-    if not sampled:
-        log("full detect found nothing -> CLEAN")
-        print("RESULT=CLEAN")
-        return 0
-
-    # 插值：相邻采样帧间隔 <= SAMPLE_STEP*2 时，中间帧继承前一帧的框
-    filled = {}
-    nos = sorted(sampled.keys())
-    max_gap = SAMPLE_STEP * 2
-    for f, nf in zip(nos, nos[1:]):
-        filled[f] = sampled[f]
-        if nf - f <= max_gap:
-            for ff in range(f + 1, nf):
-                filled[ff] = sampled[f]
-    filled[nos[-1]] = sampled[nos[-1]]
-
-    sub_list = sd.unify_regions(filled)
-    sub_list = {k: v for k, v in sub_list.items() if len(v) > 0}
-    log(f"detect step={SAMPLE_STEP}: sampled {len(sampled)} -> filled {len(sub_list)}")
-
-    ranges = sd.find_continuous_ranges_with_same_mask(sub_list)
-    ranges = expand_frame_ranges(
-        ranges,
-        config.subtitleTimelineBackwardFrameCount.value,
-        config.subtitleTimelineForwardFrameCount.value,
-    )
-    ranges = sd.filter_and_merge_intervals(ranges, config.sttnReferenceLength.value)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     mc = ModelConfig()
-    model = STTNDetInpaint(device, mc.STTN_DET_MODEL_PATH)
-    mask_size = (H, W)
-    max_load = config.getSttnMaxLoadNum()
-    yx_diff = config.subtitleYXAxisDifferencePixel.value
+    model_path = os.path.join(mc.LAMA_MODEL_DIR, 'big-lama.pt')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = LamaInpaint(device, model_path)
+    log(f"LaMa on {device}，detecting & repairing {n} frames")
 
-    out = list(frames)
-    for (start, end) in ranges:
-        start = max(1, int(start))
-        end = min(n, int(end))
-        if end < start:
-            continue
-        coords = []
-        for fno in range(start, end + 1):
-            if fno in sub_list:
-                for area in sub_list[fno]:
-                    xmin, xmax, _ymin, _ymax = area
-                    if (_ymax - _ymin) - (xmax - xmin) > yx_diff:
-                        continue
-                    if area not in coords:
-                        coords.append(area)
-        if not coords:
-            continue
-        mask = create_mask(mask_size, coords)
-        seg = frames[start - 1:end]
-        done = []
-        for b0 in range(0, len(seg), max_load):
-            done.extend(model(seg[b0:b0 + max_load], mask))
-        for j, ff in enumerate(done):
-            out[start - 1 + j] = ff
+    # 第一遍：检测所有帧，收集字幕框和居中偏移
+    all_boxes = []
+    for f in frames:
+        all_boxes.append(detect_subtitle_boxes(reader, f, H, W))
+
+    # 有字幕的帧
+    detected_idx = [i for i, b in enumerate(all_boxes) if b]
+    if not detected_idx:
+        log("no subtitle detected → CLEAN")
+        print("RESULT=CLEAN"); return 0
+
+    # 计算典型居中偏移（中位数）和最宽字幕框
+    offsets, widest = [], None
+    for boxes in all_boxes:
+        for b in boxes:
+            x1,x2 = int(b[0]),int(b[1])
+            off = abs((x1+x2)/2 - W/2)
+            offsets.append(off)
+            if widest is None or (x2-x1) > (int(widest[1])-int(widest[0])):
+                widest = b
+    typical_off = float(np.median(offsets))
+    log(f"detected {len(detected_idx)}/{n} frames, typical offset={typical_off:.1f}px, widest x={int(widest[0])}-{int(widest[1])}")
+
+    # 第二遍：逐框处理——偏移异常的框单独扩宽 x，y 不变；正常框保持原样
+    ANOMALY_MULT = 2.0
+    wx1, wx2 = int(widest[0]), int(widest[1])
+    frame_masks = []
+    for i, boxes in enumerate(all_boxes):
+        if not boxes:
+            frame_masks.append(None); continue
+        adjusted = []
+        for b in boxes:
+            x1, x2, y1, y2 = int(b[0]), int(b[1]), int(b[2]), int(b[3])
+            off = abs((x1+x2)/2 - W/2)
+            if off > typical_off * ANOMALY_MULT + 20:
+                # 只扩宽 x 到最宽范围，y 位置不变
+                adjusted.append((wx1, wx2, y1, y2))
+                log(f"frame {i:03d}: box offset={off:.0f}px→expanded x to {wx1}-{wx2}")
+            else:
+                adjusted.append(b)
+        frame_masks.append(boxes_to_mask(adjusted, H, W))
+
+    need_idx = [i for i, m in enumerate(frame_masks) if m is not None]
+    log(f"running LaMa on {len(need_idx)} frames")
+
+    # 批量 LaMa
+    imgs   = [frames[i] for i in need_idx]
+    masks  = [frame_masks[i] for i in need_idx]
+    lama_out = model._inpaint_batch(imgs, masks)
+
+    # 合并：只替换 mask 像素
+    results = list(frames)
+    for i, (orig_i, lama, mask) in enumerate(zip(need_idx, lama_out, masks)):
+        result = frames[orig_i].copy()
+        result[mask > 0] = lama[mask > 0]
+        results[orig_i] = result
 
     os.makedirs(args.out_dir, exist_ok=True)
-    for i, ff in enumerate(out):
-        cv2.imwrite(os.path.join(args.out_dir, os.path.basename(files[i])), ff)
-    log(f"cleaned {len(ranges)} segment(s), wrote {len(out)} frames")
-    print("RESULT=CLEANED")
-    return 0
+    for i, result in enumerate(results):
+        cv2.imwrite(os.path.join(args.out_dir, os.path.basename(files[i])), result)
+
+    log(f"done, wrote {n} frames")
+    print("RESULT=CLEANED"); return 0
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception:
-        import traceback
-        traceback.print_exc()
-        print("RESULT=ERROR")
-        sys.exit(1)
+        import traceback; traceback.print_exc()
+        print("RESULT=ERROR"); sys.exit(1)

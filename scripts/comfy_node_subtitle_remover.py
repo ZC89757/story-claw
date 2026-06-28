@@ -24,7 +24,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-VSR_PYTHON = "/root/miniconda3/envs/vsr/bin/python"
+VSR_PYTHON = "/root/miniconda3/bin/python"
 HELPER = "/root/video-subtitle-remover/clean_frames_cli.py"
 GATE_FRAMES = 8  # 闸门等距抽样帧数（与助手内常量一致）
 

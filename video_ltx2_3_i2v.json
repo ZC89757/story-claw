@@ -46,7 +46,7 @@
   "320:278": {
     "inputs": {
       "video_latent": [
-        "320:288",
+        "320:901",
         0
       ],
       "audio_latent": [
@@ -732,6 +732,40 @@
     "class_type": "VAEEncodeTiled",
     "_meta": {
       "title": "VAE编码(去字幕后)"
+    }
+  },
+  "320:900": {
+    "inputs": {
+      "image": [
+        "320:400",
+        0
+      ],
+      "upscale_method": "bicubic",
+      "scale_by": 2.0
+    },
+    "class_type": "ImageScaleBy",
+    "_meta": {
+      "title": "像素2x放大(擦字幕帧)"
+    }
+  },
+  "320:901": {
+    "inputs": {
+      "pixels": [
+        "320:900",
+        0
+      ],
+      "vae": [
+        "320:316",
+        2
+      ],
+      "tile_size": 768,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 4
+    },
+    "class_type": "VAEEncodeTiled",
+    "_meta": {
+      "title": "高清重编码->refine latent"
     }
   }
 }
