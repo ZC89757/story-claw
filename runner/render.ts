@@ -1180,12 +1180,8 @@ function wrapSubtitleLines(text: string, maxChars: number): string {
   const lines: string[] = [];
   let rem = text;
   while (rem.length > maxChars) {
-    let cutAt = maxChars;
-    for (let i = maxChars - 1; i >= 0; i--) {
-      if (isPunct(rem[i])) { cutAt = i + 1; break; }
-    }
-    lines.push(rem.slice(0, cutAt));
-    rem = rem.slice(cutAt).replace(/^\s+/, "");
+    lines.push(rem.slice(0, maxChars));
+    rem = rem.slice(maxChars);
   }
   if (rem) lines.push(rem);
   return lines.join("\\N");
