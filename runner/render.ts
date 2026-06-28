@@ -1093,12 +1093,12 @@ async function runGroupTtsPipeline(
         const { p, words } = segResults[j];
         const segDur = await getMediaDuration(p);
         if (words.length > 0) {
-          // 贪心 + 标点切分：遇标点且已累积 >= minLen 字时切断，超过 2×maxChars 强制切
-          const minLen = Math.ceil(maxChars / 2);
+          // maxChars 为软阈值：未达到时遇标点不切；达到或超过后等到下一个标点才切
+          let exceeded = false;
           let curWords: TtsWord[] = [];
           let curText = "";
           const flush = () => {
-            const display = formatSubtitleText(curText, maxChars);
+            const display = wrapSubtitleLines(curText, maxChars);
             if (display && curWords.length > 0) {
               events.push({
                 start: groupOffset + curWords[0].startTime,
@@ -1106,19 +1106,15 @@ async function runGroupTtsPipeline(
                 text:  display,
               });
             }
-            curWords = []; curText = "";
+            curWords = []; curText = ""; exceeded = false;
           };
           for (const w of words) {
             const wc = w.word.replace(/\s/g, "");
             if (!wc) continue;
             curWords.push(w);
             curText += wc;
-            const lastCh = curText[curText.length - 1];
-            if (isPunct(lastCh) && curText.length >= minLen) {
-              flush();
-            } else if (curText.length >= maxChars * 2) {
-              flush();
-            }
+            if (curText.length >= maxChars) exceeded = true;
+            if (exceeded && isPunct(curText[curText.length - 1])) flush();
           }
           if (curText) flush();
         } else {
@@ -1176,8 +1172,7 @@ function stripTrailingPunct(text: string): string {
 
 /**
  * 将过长的字幕文本按 maxChars 换行（ASS 硬换行 \\N）。
- * 优先在标点处切，找不到则强制在 maxChars 处切。
- * 每行末尾标点均去掉。
+ * 优先在标点处切，找不到则强制在 maxChars 处切。保留标点。
  */
 function wrapSubtitleLines(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
@@ -1188,20 +1183,11 @@ function wrapSubtitleLines(text: string, maxChars: number): string {
     for (let i = maxChars - 1; i >= 0; i--) {
       if (isPunct(rem[i])) { cutAt = i + 1; break; }
     }
-    const line = stripTrailingPunct(rem.slice(0, cutAt));
-    if (line) lines.push(line);
+    lines.push(rem.slice(0, cutAt));
     rem = rem.slice(cutAt).replace(/^\s+/, "");
   }
-  const last = stripTrailingPunct(rem);
-  if (last) lines.push(last);
+  if (rem) lines.push(rem);
   return lines.join("\\N");
-}
-
-/** 原始文本 → 去末尾标点 → 超长时换行 */
-function formatSubtitleText(raw: string, maxChars: number): string {
-  const stripped = stripTrailingPunct(raw);
-  if (!stripped) return "";
-  return wrapSubtitleLines(stripped, maxChars);
 }
 
 /** 秒 → ASS 时间戳 H:MM:SS.cc */
