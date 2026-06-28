@@ -3,6 +3,7 @@
  */
 
 import fs from "node:fs/promises";
+import { execSync } from "node:child_process";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
@@ -153,7 +154,6 @@ export async function runSolo(sel: NovelSelection) {
     console.error(`\n  x 流水线出错: ${err}\n`);
   } finally {
     // ── 无论成功还是出错，都关闭 GPU 实例 ──
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("child_process").execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
+    execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
   }
 }
