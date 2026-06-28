@@ -1098,7 +1098,7 @@ async function runGroupTtsPipeline(
           let curWords: TtsWord[] = [];
           let curText = "";
           const flush = () => {
-            const display = wrapSubtitleLines(curText, maxChars);
+            const display = wrapSubtitleLines(stripTrailingPunct(curText), maxChars);
             if (display && curWords.length > 0) {
               events.push({
                 start: groupOffset + curWords[0].startTime,
@@ -1120,7 +1120,7 @@ async function runGroupTtsPipeline(
         } else {
           // 无 word 级时间戳（API 降级情况）：整段文本作单条，时长占满该子片段
           const segText = String(synthSegs[j]?.text ?? "").replace(/【[^】]*】/g, "").trim();
-          if (segText) events.push({ start: groupOffset, end: groupOffset + segDur, text: segText });
+          if (segText) events.push({ start: groupOffset, end: groupOffset + segDur, text: stripTrailingPunct(segText) });
         }
         groupOffset += segDur;
       }
@@ -1175,6 +1175,10 @@ function stripTrailingPunct(text: string): string {
  * 将过长的字幕文本按 maxChars 换行（ASS 硬换行 \\N）。
  * 优先在标点处切，找不到则强制在 maxChars 处切。保留标点。
  */
+function stripTrailingPunct(text: string): string {
+  return text.replace(/[\p{P}\p{S}]+$/u, "");
+}
+
 function wrapSubtitleLines(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const lines: string[] = [];
