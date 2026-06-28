@@ -144,6 +144,12 @@ const SFX_ENABLED = (ttsCfg.sfx_enabled ?? true) as boolean;
 const SFX_VOLUME  = (ttsCfg.sfx_volume ?? 0.7) as number;   // 音效相对音量 0–1
 const SFX_DIR     = path.join(CONFIG_DIR, "sfx");           // 全局音效库
 
+// 字幕（逐 group 烧制到视频）
+const SUBTITLES_ENABLED    = (ttsCfg.subtitles_enabled             ?? true) as boolean;
+const SUBTITLES_CHARS_PORT = (ttsCfg.subtitles_max_chars_portrait  ?? 12)   as number;
+const SUBTITLES_CHARS_LAND = (ttsCfg.subtitles_max_chars_landscape ?? 18)   as number;
+const SUBTITLES_FONT_SIZE  = (ttsCfg.subtitles_font_size           ?? 52)   as number;
+
 // ── 动态导入（避免 top-level import 拖慢启动）────────────────────────────────
 
 async function getOpenAI(apiKey: string, baseUrl: string) {
@@ -928,6 +934,7 @@ async function runGroupTtsPipeline(
   voiceMap: Record<string, string>,
   outputDir: string,
   sceneName: string,
+  aspectRatio: string,
 ): Promise<number[]> {
   const tmpDir = path.join(outputDir, "tts_segments");
   await fs.mkdir(tmpDir, { recursive: true });
@@ -1000,7 +1007,7 @@ async function runGroupTtsPipeline(
     // 该 group 的音效任务：仅当启用、有 sfx、库非空时开字级时间戳
     const sfxList: Array<{ anchor: string; sound: string }> =
       (SFX_ENABLED && sfxCatalog.size > 0 && Array.isArray(group.sfx)) ? group.sfx : [];
-    const wantTs = sfxList.length > 0;
+    const wantTs = sfxList.length > 0 || SUBTITLES_ENABLED;
 
     // 2. 并行合成各子片段
     const usedVoices: string[] = [];
@@ -1077,6 +1084,44 @@ async function runGroupTtsPipeline(
       }
     }
 
+    // 字幕事件生成：按子片段逐字分组 → 写 g{XX}_subtitles.json（group 本地秒）
+    if (SUBTITLES_ENABLED) {
+      const maxChars = aspectRatio === "9:16" ? SUBTITLES_CHARS_PORT : SUBTITLES_CHARS_LAND;
+      const events: Array<{ start: number; end: number; text: string }> = [];
+      let groupOffset = 0;
+      for (let j = 0; j < segResults.length; j++) {
+        const { p, words } = segResults[j];
+        const segDur = await getMediaDuration(p);
+        if (words.length > 0) {
+          let curText = "";
+          let curStart = groupOffset;
+          let curEnd   = groupOffset;
+          for (const w of words) {
+            const wc = w.word.replace(/\s/g, "");
+            if (!wc) continue;
+            if (curText.length + wc.length > maxChars && curText.length > 0) {
+              events.push({ start: curStart, end: groupOffset + w.startTime, text: curText });
+              curText  = wc;
+              curStart = groupOffset + w.startTime;
+              curEnd   = groupOffset + w.endTime;
+            } else {
+              if (!curText) curStart = groupOffset + w.startTime;
+              curText += wc;
+              curEnd   = groupOffset + w.endTime;
+            }
+          }
+          if (curText) events.push({ start: curStart, end: curEnd, text: curText });
+        } else {
+          // 无 word 级时间戳（API 降级情况）：整段文本作单条，时长占满该子片段
+          const segText = String(synthSegs[j]?.text ?? "").replace(/【[^】]*】/g, "").trim();
+          if (segText) events.push({ start: groupOffset, end: groupOffset + segDur, text: segText });
+        }
+        groupOffset += segDur;
+      }
+      const subsPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_subtitles.json`);
+      await fs.writeFile(subsPath, JSON.stringify(events), "utf-8");
+    }
+
     // 音色分配明细（便于核对每段说话人是否正确）
     const assignment = synthSegs.map((s, j) => ({
       说话人: speakerOf(usedVoices[j]),
@@ -1100,6 +1145,109 @@ async function runGroupTtsPipeline(
   await ttsPhase4Concat(groups.map((_: any, gi: number) => groupAudio(gi)), sceneAudio);
   console.log(`[groupTTS] 场景音频 → ${path.basename(sceneAudio)}`);
   return durations;
+}
+
+// ── 字幕 ASS 生成 + group 视频烧录 ───────────────────────────────────────────
+
+/** 秒 → ASS 时间戳 H:MM:SS.cc */
+function toAssTime(sec: number): string {
+  const h  = Math.floor(sec / 3600);
+  const m  = Math.floor((sec % 3600) / 60);
+  const s  = Math.floor(sec % 60);
+  const cc = Math.min(99, Math.round((sec % 1) * 100));
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cc).padStart(2, "0")}`;
+}
+
+/** 字幕事件数组 → ASS 字符串（PlayResX/Y 按宽高比切换） */
+function buildAss(
+  events: Array<{ start: number; end: number; text: string }>,
+  aspectRatio: string,
+): string {
+  const [px, py] = aspectRatio === "16:9" ? [1280, 720] : [720, 1280];
+  const lines = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    `PlayResX: ${px}`,
+    `PlayResY: ${py}`,
+    "WrapStyle: 0",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    // 白字黑边，底部居中（Alignment=2），粗体，描边 3px，阴影 1px
+    `Style: Default,Microsoft YaHei,${SUBTITLES_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,20,1`,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ...events.map((e) => `Dialogue: 0,${toAssTime(e.start)},${toAssTime(e.end)},Default,,0,0,0,,${e.text}`),
+  ];
+  return lines.join("\n") + "\n";
+}
+
+/**
+ * panel 视频拼接 + 字幕烧录（原子操作）。
+ * 有字幕数据：ffmpeg concat + -vf subtitles（libx264 重编码）。
+ * 无字幕数据：走原来的 copy / concatVideos 快速路径（-c:v copy）。
+ */
+async function concatAndBurnSubs(
+  panelVids: string[],
+  outputDir: string,
+  gi: number,
+  groupVidPath: string,
+  aspectRatio: string,
+): Promise<void> {
+  const gtag       = `g${String(gi).padStart(2, "0")}`;
+  const subsJson   = path.join(outputDir, `${gtag}_subtitles.json`);
+  const assRelName = `${gtag}_subtitles.ass`;
+  const assPath    = path.join(outputDir, assRelName);
+
+  let events: Array<{ start: number; end: number; text: string }> | null = null;
+  if (SUBTITLES_ENABLED && fsSync.existsSync(subsJson)) {
+    try {
+      events = JSON.parse(await fs.readFile(subsJson, "utf-8"));
+    } catch { /* 解析失败则不烧字幕 */ }
+  }
+
+  if (!events || events.length === 0) {
+    // 无字幕：快速路径
+    if (panelVids.length === 1) {
+      await fs.copyFile(panelVids[0], groupVidPath);
+    } else {
+      await concatVideos(panelVids, groupVidPath);
+    }
+    return;
+  }
+
+  // 写临时 ASS（basename 全 ASCII，绕过 ffmpeg filter 中文路径问题）
+  await fs.writeFile(assPath, buildAss(events, aspectRatio), "utf-8");
+
+  const outDir  = path.dirname(groupVidPath);
+  const outBase = path.basename(groupVidPath);
+  const vfExpr  = `subtitles=${assRelName}`;
+
+  try {
+    if (panelVids.length === 1) {
+      await execFileAsync("ffmpeg", [
+        "-y", "-i", path.basename(panelVids[0]),
+        "-vf", vfExpr,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+        "-an", outBase,
+      ], { cwd: outDir });
+    } else {
+      const listName = `_concat_${gtag}.txt`;
+      const listPath = path.join(outDir, listName);
+      await fs.writeFile(listPath, panelVids.map((p) => `file '${path.basename(p)}'`).join("\n"), "utf-8");
+      await execFileAsync("ffmpeg", [
+        "-y", "-f", "concat", "-safe", "0",
+        "-i", listName,
+        "-vf", vfExpr,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+        "-an", outBase,
+      ], { cwd: outDir });
+      await fs.unlink(listPath).catch(() => {});
+    }
+  } finally {
+    await fs.unlink(assPath).catch(() => {});
+  }
 }
 
 // ── 主渲染函数（供 pipeline 调用）────────────────────────────────────────────
@@ -1157,7 +1305,7 @@ export async function renderScene(
     if (fsSync.existsSync(voiceMapPath)) {
       voiceMap = JSON.parse(await fs.readFile(voiceMapPath, "utf-8"));
     }
-    groupDurations = await runGroupTtsPipeline(groups, voiceMap, outputDir, sceneName);
+    groupDurations = await runGroupTtsPipeline(groups, voiceMap, outputDir, sceneName, sel.aspectRatio);
     sceneAudio = path.join(outputDir, `_tts_${sceneName}.mp3`);
   }
 
@@ -1316,11 +1464,7 @@ export async function renderScene(
         continue;
       }
 
-      if (panelVids.length === 1) {
-        await fs.copyFile(panelVids[0], groupVidPath);
-      } else {
-        await concatVideos(panelVids, groupVidPath);
-      }
+      await concatAndBurnSubs(panelVids, outputDir, gi, groupVidPath, sel.aspectRatio);
       console.log(`  拼接完成: ${path.basename(groupVidPath)}`);
       groupVideos.push(groupVidPath);
       onProgress?.({ scene: sceneName, done: gi + 1, total: groups.length });
