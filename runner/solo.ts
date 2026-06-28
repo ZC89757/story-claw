@@ -149,9 +149,11 @@ export async function runSolo(sel: NovelSelection) {
     console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
     console.log();
 
-    // ── 视频生成完成，自动关闭 GPU 实例 ──
-    execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
   } catch (err) {
     console.error(`\n  x 流水线出错: ${err}\n`);
+  } finally {
+    // ── 无论成功还是出错，都关闭 GPU 实例 ──
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("child_process").execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
   }
 }

@@ -70,6 +70,7 @@ const ttsCfg = loadConfig("tts_config.json");
 const IMAGE_CONCURRENCY = (imgCfg.concurrency ?? 4) as number;
 const IMAGE_MAX_RETRIES = 3;
 const IMAGE_RETRY_SLEEP = 3000; // ms
+const SOFTEN_MAX = 2; // 被内容安全系统拒绝时，提示词递进软化的最大档数
 
 // 视频生成（ComfyUI）
 const VIDEO_BASE_URL         = (vidCfg.base_url         ?? "http://127.0.0.1:8188") as string;
@@ -483,6 +484,41 @@ function runPython(args: string[]): Promise<{ ok: boolean; stderr: string }> {
   });
 }
 
+/** 判断 stderr 是否为内容安全系统拒绝（gpt-image-2 透传的 400 safety_violations 等） */
+function isSafetyRejection(stderr: string): boolean {
+  return /rejected by the safety system|safety_violations/i.test(stderr);
+}
+
+const SOFTEN_SYSTEM = `你是生图提示词安全改写专员。给你一段生图提示词和它被内容安全系统拒绝的原因，请改写出一段能通过审核的版本。
+
+规则：
+1. 保留画面主体、构图、景别、镜头、光影、情绪基调不变。
+2. 保留所有 "the person in image N" / "the background in image N" 占位符原样不动（N 是数字），不得删除或改写它们。
+3. 仅弱化会触发内容安全审核的血腥、暴力、惊悚、伤害等直白描写：用含蓄、间接、艺术化的表达替代（如"破碎的大脑组织带血丝"→"掌心一团模糊的暗红色物体，虚化处理"）。
+4. 不要添加新的画面元素，只做必要的弱化。
+5. 只输出改写后的提示词纯文本，不要解释、不要 JSON、不要方括号标签、不要代码块包裹。`;
+
+/** 用主文本 LLM 软化提示词，使其通过内容安全审核（递进：传入的可能是上一档软化结果） */
+async function softenPrompt(prompt: string, rejectionInfo: string): Promise<string> {
+  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
+  const resp = await client.chat.completions.create({
+    model: LLM_MODEL,
+    max_tokens: LLM_MAX_TOKENS,
+    messages: [
+      { role: "system", content: SOFTEN_SYSTEM },
+      { role: "user", content: `原提示词：\n${prompt}\n\n被拒原因：\n${rejectionInfo}\n\n请输出软化后的提示词：` },
+    ],
+  });
+  let raw = resp.choices[0].message.content?.trim() ?? "";
+  if (raw.includes("```")) {
+    raw = raw.split("```")[1] ?? raw;
+    if (raw.startsWith("json")) raw = raw.slice(4);
+    raw = raw.trim();
+  }
+  if (!raw) throw new Error("softenPrompt 返回空");
+  return raw;
+}
+
 async function generateImage(
   imgSem: Semaphore,
   prompt: string,
@@ -497,32 +533,55 @@ async function generateImage(
 
     const gptHelperPath = path.join(RENDER_DIR, "../utils/gpt-image-gen.py");
 
-    // ── 主路径：gpt-image-gen.py（带重试）──────────────────────────────
-    for (let attempt = 1; attempt <= IMAGE_MAX_RETRIES; attempt++) {
-      const args = [gptHelperPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
+    // ── 主路径：gpt-image-gen.py（普通失败重试 + 安全拒绝时递进软化）──────
+    let curPrompt = prompt;   // 当前使用的提示词（可能被软化覆盖）
+    let softenCount = 0;      // 已软化档数
+    let normalAttempt = 0;    // 普通失败重试次数
+    while (true) {
+      const args = [gptHelperPath, outputPath, curPrompt, "--aspect", aspectRatio, ...refPaths];
       const { ok, stderr } = await runPython(args);
       if (ok) {
         console.log(`    [生图] [gpt-image-2] 已保存: ${path.basename(outputPath)}`);
         return;
       }
       const errMsg = stderr.slice(-1500);
-      console.log(`    [生图] [${attempt}/${IMAGE_MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
-      if (attempt < IMAGE_MAX_RETRIES) {
-        console.log(`    [生图] ${IMAGE_RETRY_SLEEP / 1000}s 后重试...`);
-        await sleep(IMAGE_RETRY_SLEEP);
+
+      // 内容安全拒绝：递进软化提示词后立即重试（不计入普通重试、不 sleep）
+      if (isSafetyRejection(stderr)) {
+        if (softenCount >= SOFTEN_MAX) {
+          console.log(`    [生图] 安全拒绝，已软化 ${SOFTEN_MAX} 档仍未通过，降级 Gemini...`);
+          break;
+        }
+        try {
+          const softened = await softenPrompt(curPrompt, errMsg);
+          softenCount++;
+          console.log(`    [生图] 检测到内容安全拒绝，第 ${softenCount}/${SOFTEN_MAX} 次软化提示词后重试`);
+          curPrompt = softened;
+          continue;
+        } catch (e: any) {
+          console.log(`    [生图] 软化提示词失败（${e?.message ?? e}），降级 Gemini...`);
+          break;
+        }
       }
+
+      // 普通失败：限次重试 + sleep
+      normalAttempt++;
+      console.log(`    [生图] [${normalAttempt}/${IMAGE_MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
+      if (normalAttempt >= IMAGE_MAX_RETRIES) break;
+      console.log(`    [生图] ${IMAGE_RETRY_SLEEP / 1000}s 后重试...`);
+      await sleep(IMAGE_RETRY_SLEEP);
     }
 
-    // ── 降级：调用 Gemini Python helper ──────────────────────────────
+    // ── 降级：调用 Gemini Python helper（使用最新（可能已软化的）提示词）──
     console.log(`    [生图] gpt-image-2 失败，降级到 Gemini...`);
     const geminiPath = path.join(RENDER_DIR, "../utils/gemini-image-gen.py");
-    const geminiArgs = [geminiPath, outputPath, prompt, "--aspect", aspectRatio, ...refPaths];
+    const geminiArgs = [geminiPath, outputPath, curPrompt, "--aspect", aspectRatio, ...refPaths];
     const { ok: geminiOk, stderr: geminiErr } = await runPython(geminiArgs);
     if (geminiOk) {
       console.log(`    [生图] [Gemini] 已保存: ${path.basename(outputPath)}`);
       return;
     }
-    throw new Error(`生图失败（gpt-image-2 ${IMAGE_MAX_RETRIES}次 + Gemini 降级）: ${path.basename(outputPath)}: ${geminiErr.slice(-1500)}`);
+    throw new Error(`生图失败（gpt-image-2 + Gemini 降级，软化 ${softenCount} 档）: ${path.basename(outputPath)}: ${geminiErr.slice(-1500)}`);
   } finally {
     imgSem.release();
   }
@@ -626,7 +685,13 @@ async function generateVideo(
         return;
       } catch (e) {
         if (attempt < VIDEO_MAX_RETRIES) {
-          console.log(`    [视频] 第 ${attempt} 次失败: ${e}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
+          const cause = (e as any)?.cause;
+          const causeStr = cause
+            ? ` [cause: ${cause?.code ?? cause?.message ?? String(cause)}]`
+            : "";
+          const now = new Date();
+          const ts = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
+          console.log(`    [视频][${ts}] 第 ${attempt} 次失败: ${e}${causeStr}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
           await sleep(VIDEO_RETRY_SLEEP);
         } else {
           throw new Error(`视频生成失败（${VIDEO_MAX_RETRIES}次）: ${path.basename(outputPath)}: ${e}`);
@@ -656,6 +721,11 @@ class Semaphore {
     if (next) { next(); } else { this.count++; }
   }
 }
+
+// 模块级单例：跨场景共享，让 IMAGE_CONCURRENCY / VIDEO_CONCURRENCY 真正限制全局并发。
+// （之前每个 renderScene 各自 new 一次，N 个场景并行时实际并发被乘 N 倍。）
+const _globalImgSem = new Semaphore(IMAGE_CONCURRENCY);
+const _globalVidSem = new Semaphore(VIDEO_CONCURRENCY);
 
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────
@@ -835,10 +905,11 @@ const GROUP_TTS_SYSTEM = `你是配音切分助手。给定剧本中的一句话
 会提供给你：
 - voice_map：角色名 → 音色名
 - narrator_voice：旁白音色名
+- 说话人参考（可能有）：画面预设已标注的「(说话人)台词」，直接告诉你这句里哪段是谁说的台词，优先据此判断台词归属
 
 规则：
 - 叙述、说话引导语（如"他说："、"XX道："）→ 用 narrator_voice
-- 引号内台词 / 角色说出的话 → 用该角色的音色（在 voice_map 里查；简称/别名也要匹配到对应角色；查不到 → narrator_voice）
+- 引号内台词 / 角色说出的话 → 用该角色的音色（优先看"说话人参考"确定说话人，再在 voice_map 里查；简称/别名也要匹配到对应角色；查不到 → narrator_voice）
 - 内心独白 → 用该角色的音色
 - 从左到右、按原文顺序切；同一连续片段用同一音色，直到说话人切换
 - text 必须是原文逐字（去掉【】标注部分），覆盖所有可读文字，不遗漏、不改写
@@ -878,6 +949,14 @@ async function runGroupTtsPipeline(
 
     const text = String(group.text ?? "").trim();
 
+    // 从本 group 的【】里抽出【语言】字段（画面预设标注的「(说话人)台词」），显式拼给切分 LLM 作参考
+    const langRefs: string[] = [];
+    for (const mm of text.matchAll(/【([^】]*)】/g)) {
+      const f = mm[1].split("|").map((s) => s.trim());
+      if (f.length >= 8 && f[7] && f[7] !== "无") langRefs.push(f[7]);
+    }
+    const langRef = langRefs.join("　");
+
     // 1. LLM 按说话人切分
     let segs: Array<{ text: string; voice: string; style?: string }> = [];
     await llmSem.acquire();
@@ -888,7 +967,7 @@ async function runGroupTtsPipeline(
         max_tokens: LLM_MAX_TOKENS,
         messages: [
           { role: "system", content: GROUP_TTS_SYSTEM },
-          { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${DOUBAO_NARRATOR}\n\n句子：${text}` },
+          { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${DOUBAO_NARRATOR}\n\n句子：${text}${langRef ? `\n\n说话人参考（画面预设已标注的「(说话人)台词」，据此判断台词归谁；名字对不上就回旁白）：${langRef}` : ""}` },
         ],
       });
       let raw = resp.choices[0].message.content?.trim() ?? "[]";
@@ -1065,8 +1144,9 @@ export async function renderScene(
   const catalog = await buildResourceCatalog(workspaceDir);
   console.log(`资源目录已构建，共 ${catalog.pathMap.size} 个资源`);
 
-  const imgSem     = new Semaphore(IMAGE_CONCURRENCY);
-  const vidSem     = new Semaphore(VIDEO_CONCURRENCY);
+  // 全局共享，跨场景统一限并发（不再 per-scene 各 new 一把）
+  const imgSem     = _globalImgSem;
+  const vidSem     = _globalVidSem;
   const videoEvents = new Map<string, { resolve: () => void; promise: Promise<void> }>();
 
   // ── 阶段二:先逐 group 配音，拿到每组真实时长 d_g 驱动视频（imagesOnly 跳过）──
