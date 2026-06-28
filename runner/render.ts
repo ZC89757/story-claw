@@ -1093,24 +1093,34 @@ async function runGroupTtsPipeline(
         const { p, words } = segResults[j];
         const segDur = await getMediaDuration(p);
         if (words.length > 0) {
+          // 贪心 + 标点切分：遇标点且已累积 >= minLen 字时切断，超过 2×maxChars 强制切
+          const minLen = Math.ceil(maxChars / 2);
+          let curWords: TtsWord[] = [];
           let curText = "";
-          let curStart = groupOffset;
-          let curEnd   = groupOffset;
+          const flush = () => {
+            const display = formatSubtitleText(curText, maxChars);
+            if (display && curWords.length > 0) {
+              events.push({
+                start: groupOffset + curWords[0].startTime,
+                end:   groupOffset + curWords[curWords.length - 1].endTime,
+                text:  display,
+              });
+            }
+            curWords = []; curText = "";
+          };
           for (const w of words) {
             const wc = w.word.replace(/\s/g, "");
             if (!wc) continue;
-            if (curText.length + wc.length > maxChars && curText.length > 0) {
-              events.push({ start: curStart, end: groupOffset + w.startTime, text: curText });
-              curText  = wc;
-              curStart = groupOffset + w.startTime;
-              curEnd   = groupOffset + w.endTime;
-            } else {
-              if (!curText) curStart = groupOffset + w.startTime;
-              curText += wc;
-              curEnd   = groupOffset + w.endTime;
+            curWords.push(w);
+            curText += wc;
+            const lastCh = curText[curText.length - 1];
+            if (isPunct(lastCh) && curText.length >= minLen) {
+              flush();
+            } else if (curText.length >= maxChars * 2) {
+              flush();
             }
           }
-          if (curText) events.push({ start: curStart, end: curEnd, text: curText });
+          if (curText) flush();
         } else {
           // 无 word 级时间戳（API 降级情况）：整段文本作单条，时长占满该子片段
           const segText = String(synthSegs[j]?.text ?? "").replace(/【[^】]*】/g, "").trim();
@@ -1149,6 +1159,51 @@ async function runGroupTtsPipeline(
 
 // ── 字幕 ASS 生成 + group 视频烧录 ───────────────────────────────────────────
 
+// ── 字幕文本处理 ──────────────────────────────────────────────────────────────
+
+const PUNCT_SET = new Set("，。！？；：、""''「」『』（）【】…—～,.!?;:\"'()[\\]");
+
+function isPunct(ch: string): boolean {
+  return PUNCT_SET.has(ch);
+}
+
+/** 去掉字符串末尾连续的标点符号和空白 */
+function stripTrailingPunct(text: string): string {
+  let i = text.length - 1;
+  while (i >= 0 && (isPunct(text[i]) || text[i] === " ")) i--;
+  return text.slice(0, i + 1);
+}
+
+/**
+ * 将过长的字幕文本按 maxChars 换行（ASS 硬换行 \\N）。
+ * 优先在标点处切，找不到则强制在 maxChars 处切。
+ * 每行末尾标点均去掉。
+ */
+function wrapSubtitleLines(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const lines: string[] = [];
+  let rem = text;
+  while (rem.length > maxChars) {
+    let cutAt = maxChars;
+    for (let i = maxChars - 1; i >= 0; i--) {
+      if (isPunct(rem[i])) { cutAt = i + 1; break; }
+    }
+    const line = stripTrailingPunct(rem.slice(0, cutAt));
+    if (line) lines.push(line);
+    rem = rem.slice(cutAt).replace(/^\s+/, "");
+  }
+  const last = stripTrailingPunct(rem);
+  if (last) lines.push(last);
+  return lines.join("\\N");
+}
+
+/** 原始文本 → 去末尾标点 → 超长时换行 */
+function formatSubtitleText(raw: string, maxChars: number): string {
+  const stripped = stripTrailingPunct(raw);
+  if (!stripped) return "";
+  return wrapSubtitleLines(stripped, maxChars);
+}
+
 /** 秒 → ASS 时间戳 H:MM:SS.cc */
 function toAssTime(sec: number): string {
   const h  = Math.floor(sec / 3600);
@@ -1174,7 +1229,8 @@ function buildAss(
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     // 白字黑边，底部居中（Alignment=2），粗体，描边 3px，阴影 1px
-    `Style: Default,Microsoft YaHei,${SUBTITLES_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,20,1`,
+    // 竖屏 MarginV = PlayResY × 35%（距底部 35%），横屏保持贴底 20px
+    `Style: Default,Microsoft YaHei,${SUBTITLES_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,${aspectRatio === "9:16" ? Math.round(py * 0.35) : 20},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
