@@ -1217,7 +1217,7 @@ function buildAss(
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     // 白字黑边，底部居中（Alignment=2），粗体，描边 3px，阴影 1px
     // 竖屏 MarginV = PlayResY × 35%（距底部 35%），横屏保持贴底 20px
-    `Style: Default,Microsoft YaHei,${SUBTITLES_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,${aspectRatio === "9:16" ? Math.round(py * 0.35) : 20},1`,
+    `Style: Default,Microsoft YaHei,${SUBTITLES_FONT_SIZE},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,1,2,10,10,${aspectRatio === "9:16" ? Math.round(py * 0.22) : 20},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
