@@ -46,7 +46,7 @@ import numpy as np
 BAND_TOP    = 0.30   # 检测区上沿（底部 70%）
 CENTER_TOL  = 0.10   # 居中容差（帧宽的 10%）
 DILATION    = 8      # mask 膨胀像素
-GATE_FRAMES = 8      # gate 抽检帧数
+GATE_FRAMES = None   # gate 抽检帧数：动态计算为总帧数的 1/4
 
 
 def log(msg):
@@ -132,12 +132,12 @@ def main():
 
     # ---------- gate ----------
     if args.mode in ("gate", "auto"):
-        k = max(1, min(GATE_FRAMES, n))
+        k = max(1, n // 4)  # 总帧数的 1/4
         idx = (sorted(set(int(round(i*(n-1)/max(1,k-1))) for i in range(k)))
                if k > 1 else [0])
         hit = any(detect_subtitle_boxes(reader, frames[i], H, W) for i in idx)
         if not hit:
-            log(f"gate CLEAN ({len(idx)} frames sampled)")
+            log(f"gate CLEAN ({len(idx)}/{n} frames sampled)")
             print("RESULT=CLEAN"); return 0
         if args.mode == "gate":
             print("RESULT=HIT"); return 0
@@ -198,8 +198,17 @@ def main():
                 adjusted.append(b)
         frame_masks.append(boxes_to_mask(adjusted, H, W))
 
+    # 兜底扩展：与检测帧相邻（N=1）的未检测帧，用最近检测帧的 mask
+    N = 1
+    detected_set = {i for i, m in enumerate(frame_masks) if m is not None}
+    for i in list(detected_set):
+        for j in [i - N, i + N]:
+            if 0 <= j < n and frame_masks[j] is None:
+                frame_masks[j] = frame_masks[i]  # 用最近检测帧的 mask
+                log(f"frame {j:03d}: fallback from frame {i:03d}")
+
     need_idx = [i for i, m in enumerate(frame_masks) if m is not None]
-    log(f"running LaMa on {len(need_idx)} frames")
+    log(f"running LaMa on {len(need_idx)} frames ({len(detected_set)} detected + {len(need_idx)-len(detected_set)} fallback)")
 
     # 批量 LaMa
     imgs   = [frames[i] for i in need_idx]
