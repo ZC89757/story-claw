@@ -3,45 +3,56 @@
 ```
 # Story Claw
 
+<p>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node >= 18">
+  <img src="https://img.shields.io/github/last-commit/ZC89757/story-claw" alt="Last commit">
+</p>
+
 [English](./README.md) | 中文
 
-**AI 驱动的小说转短剧分镜生成工具。** 输入网文章节，全自动输出带画面的分镜图片。
+丢一个小说章节文件夹进去，一条命令拿回一集配好音、配好乐、加了音效的成片短剧。如果你想把网文改编成短剧，又不想为视频生成按秒付费、也不想自己盯着人物一致性手动纠错，这个工具就是照着这个需求做的。
 
-从小说原文到可视化分镜，Story Claw 将完整流水线封装为一条命令：剧本改编 → 结构化解析 → 角色/场景图生成 → 分镜构图 → 最终画面合成。
+<video src="https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4" controls width="360"></video>
+
+*以上为 Story Claw 全自动生成的成片，未做任何手动剪辑：剧本改编 → 角色/场景生图 → 分镜构图 → 配音+BGM+音效 → 视频渲染。*
+
+---
+
+## 用 AI 改编一部两百章小说会踩的坑
+
+自己动手做过小说转视频自动化的人，大概到第 20 章都会撞上同一堵墙：主角被绑架、结婚、参军之后，身上穿的还是"开学第一天"那套衣服；每个角色说话的声音都一样，因为没人管过音色一致性；每一段视频都是一次赌博——模型悄悄给人物多画出一只手，或者去字幕之后屏幕上还残留着一道字幕的鬼影，播放的时候才发现。
+
+Story Claw 的流水线就是照着"不让这些问题溜过去"设计的：
+
+- **角色和场景按阶段演进，而不是一次定型。** 每个角色只生成一张原型图，只有当**服装或随身道具**发生真正的视觉变化时才补一张"造型图"——开学报到背单肩包 → 出事故后坐轮椅 → 打完架衣服脏破。场景同理，光线/时间/道具变了才算新阶段（"教室，开学第一天，明亮的下午" vs "教室，考试夜晚，只有一盏灯闪烁"）。是否需要新阶段由每章内容判断，两百章的小说不会每章都重新生图，但也不会让角色从头到尾都穿着第一章那套衣服。
+- **每段视频出片前都要过视觉大模型的审核。** 一个自定义 ComfyUI 节点会在生成流程内部，把每段视频的首尾帧直接送进 VLM 判断：主体人物首尾是否是同一个人？有没有凭空多长出一张脸？去完字幕之后画面上还有没有残留的文字鬼影？没通过就在流程内静默重来（有重试上限，到了上限就放行，不会卡住整集渲染）——这样本地视频模型的质量控制不用你自己盯着几百段视频一条条看。
+- **一个角色从头到尾一个声音。** 角色第一次开口时，会从音色池里分配一个 TTS 音色，写进这部小说专属的音色映射表；之后不管第几章、第几集，都按角色名查表复用同一个音色。旁白有专属音色，不会跟角色池混用。
+- **视频模型跑在自己的 GPU 上。** 渲染阶段是自己部署的 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 图生视频工作流，中间没有可灵、Seedance 那种按秒计费的商业接口。
+- **画面实际生成用 `gpt-image-2`。** 面对这套流水线常见的那种"人物身份+姿态+构图+光影"多约束同时给出的密集提示词，它扛得住，试过的其他方案里明显更稳。
 
 ---
 
 ## 工作原理
 
-Story Claw 通过多个 AI 智能体协作，将小说文本逐集改编为短剧分镜：
+每一集按顺序跑五个阶段，分别由 LLM 子智能体或直接的 API 调用驱动：
 
 ```
 小说章节 (.txt)
     │
     ▼
-┌─────────────────────────────────────────────┐
-│  A  剧本创作    LLM 智能体改编为短剧剧本     │
-│  B  剧本解析    LLM 智能体提取结构化数据      │
-│  C  资源生成    Gemini 生成角色参考图/场景底图  │
-│  E  合成帧      角色 + 场景底图合成 → 校验     │
-│  F  分镜画面    LLM 导演构图 → Gemini 生成面板  │
-└─────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│ 1  画面预设   逐句标注：场景/人物/景别/角度/镜头运动/情绪     │
+│ 2  资源建档   识别角色与场景；生成带阶段感知的参考图 + 分配音色│
+│ 3  剧本分场   按场景把原文切分为独立剧本                      │
+│ 4  分镜制作   逐场景设计分镜，产出图片/视频 prompt            │
+│ 5  渲染合成   TTS → BGM → 音效 → 分镜图片 → 视频片段          │
+│              （经 VLM 质检）→ 最终成片                        │
+└────────────────────────────────────────────────────────────┘
     │
     ▼
-分镜图片 + 剧本 (.md) + 结构化数据 (.json)
+ep{N}.mp4
 ```
-
-### 核心特性
-
-- **全流程自动化** — 一条命令完成从小说到分镜图片的全部工作
-- **多 LLM 支持** — OpenAI / Anthropic / Google，可配置自定义 API 端点
-- **智能体架构** — 每个阶段由专门的 AI 智能体执行，工具化调用，可追溯
-- **增量生成** — 角色和场景图跨集复用，只生成新增资源
-- **进度续编** — 记录已改编集数、剧情摘要、悬念线索，支持中断后继续
-- **滑动窗口** — 超长小说自动截断，上下文预算 80K 字符，避免 token 溢出
-- **校验循环** — 合成帧经 AI 校验，不合格自动重试（最多 4 次）
-- **并行执行** — 场景级和 beat 级并行，充分利用 API 并发
-- **资源可替换** — Custom 模式下暂停，手动替换角色/场景图后再继续
 
 ---
 
@@ -65,8 +76,11 @@ npm start
 ### 环境要求
 
 - **Node.js** >= 18
-- **LLM API Key** — OpenAI / Anthropic / Google 任选其一
-- **Gemini API Key** — 用于图像生成（需支持 `generateContent` + `IMAGE` 输出）
+- **LLM API Key** — OpenAI / Anthropic / Google 任选其一，驱动全部子智能体
+- **图像生成 API** — 推荐 `gpt-image-2`，也可用 Gemini 系图像模型
+- **TTS API Key** — 用于配音与台词合成
+- **一个 ComfyUI 实例**（自己部署，本地机器或租用 GPU 均可），跑 LTX 图生视频工作流
+- *（可选）* BGM 生成接口 + 本地音效库（`.mp3`/`.wav`），用于背景音乐和音效
 
 ---
 
@@ -78,16 +92,9 @@ npm start
 story-claw
 ```
 
-首次运行会进入交互式配置向导，引导你填写两个配置文件：
-
-| 配置文件 | 用途 | 存储位置 |
-|----------|------|----------|
-| `config.json` | LLM 智能体（剧本改编/解析/分镜导演） | `~/.story-claw/` |
-| `image_gen_config.json` | Gemini 图像生成 API | `~/.story-claw/` |
+首次运行会进入交互式配置向导，引导你填写所需配置文件（见下方[配置](#配置)），统一存放在 `~/.story-claw/`。
 
 ### 2. 准备小说文件
-
-在任意目录下创建小说文件夹，按章节拆分为 `.txt` 文件：
 
 ```
 我的小说/
@@ -106,68 +113,52 @@ cd 你的工作目录
 story-claw
 ```
 
-进入交互界面后：
-
 ```
-  /solo      全自动模式 — 选择小说后一键完成
-  /custom    自定义模式 — 资源生成后暂停，可手动替换图片
+  /solo      全自动模式 — 选择小说，改编并渲染下一集
   /status    查看所有小说的改编进度
+  /help      查看帮助
+  /exit      退出
 ```
 
 ### 4. 产物目录
 
-生成结果存放在工作目录的 `workspace/` 下：
-
 ```
 workspace/
 └── 我的小说/
-    ├── 改编进度.json
-    ├── characters/            角色参考图（跨集共享）
-    │   ├── 张三.png
-    │   └── 李四.png
-    ├── scenes/                场景底图（跨集共享）
-    │   ├── 教室.png
-    │   └── 操场.png
-    └── ep01/                  第1集
-        ├── 我的小说_第1集.md       剧本
-        ├── scene_data.json         结构化场景数据
-        ├── panels_scene_01_beat01.json   分镜构图（含每帧画面描述）
-        ├── panels_scene_01_beat02.json
-        ├── ...
-        ├── character_frames/       合成帧（角色+场景）
-        │   ├── frame_01.png
-        │   └── ...
-        └── storyboard_panels/      最终分镜图片
-            ├── panel_0001.png
-            └── ...
-```
-
-**`panels_*.json` 是连接分镜图片与剧本的关键文件。** 每个文件对应一个场景的一个 beat，内含逐帧的完整画面描述（景别、角色、表情、动作、背景细节）。它既是生成分镜图片的输入 prompt，也可以直接作为后续视频制作的分镜脚本——每帧 prompt 与 `storyboard_panels/` 下的图片一一对应：
-
-```json
-{
-  "scene_id": "scene_03",
-  "beat_num": 1,
-  "beat_title": "魏俊熙与学姐在报到台前",
-  "panel_count": 6,
-  "panels": [
-    {
-      "id": 1,
-      "prompt": "以全景景别拍摄，大学新生报到处走廊，穿白色短袖T恤背单肩包的男生站在报到台来访侧..."
-    },
-    {
-      "id": 2,
-      "prompt": "以近景景别拍摄，穿红色志愿者马甲内搭白色衬衫的女生，面对镜头..."
-    }
-  ]
-}
+    ├── 改编进度.json          # 跨集进度
+    ├── voice_map.json         # 角色 → TTS 音色映射（跨集共享，全剧统一）
+    ├── characters/            # 角色参考图（跨集共享）
+    │   ├── 张三.json
+    │   ├── 张三_原型.png          # 基础原型
+    │   └── 张三_{阶段}.png        # 造型阶段变体（服装/道具变化时才生成）
+    ├── scenes/                # 场景底图（跨集共享）
+    │   ├── 教室.json
+    │   └── 教室.png
+    └── ep01/                  # 第1集
+        ├── 画面预设.txt
+        ├── scripts/               # 分场剧本
+        ├── storyboards/           # 各场景分镜数据（图片/视频 prompt）
+        ├── render_{场景名}/       # 分镜图片、分镜/场景视频片段、配音音频
+        ├── render.log
+        └── ep01.mp4               # 最终渲染成片
 ```
 
 ---
 
 ## 配置
 
-### LLM 配置 (`~/.story-claw/config.json`)
+所有配置文件都放在 `~/.story-claw/`，首次运行的配置向导会引导你逐个创建。
+
+| 配置文件 | 用途 |
+|----------|------|
+| `config.json` | 驱动全部子智能体的 LLM provider/model/API key |
+| `image_gen_config.json` | 图像生成 API（推荐 `gpt-image-2`） |
+| `video_config.json` | ComfyUI 地址、LTX 工作流路径、视频时长/并发 |
+| `tts_config.json` | TTS provider、可分配音色池、专属旁白音、并发度 |
+| `sfx/`（可选） | 本地音效库 — 放入 `.mp3`/`.wav` 文件，标签取自文件名 |
+
+<details>
+<summary>示例：<code>config.json</code></summary>
 
 ```json
 {
@@ -177,124 +168,19 @@ workspace/
   "base_url": "https://your-proxy.com/v1"
 }
 ```
+</details>
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `provider` | 是 | `openai` / `anthropic` / `google` |
-| `model` | 是 | 模型 ID |
-| `api_key` | 是 | API 密钥 |
-| `base_url` | 否 | 自定义端点，不填则使用官方 API |
-
-### 图像生成配置 (`~/.story-claw/image_gen_config.json`)
+<details>
+<summary>示例：<code>image_gen_config.json</code></summary>
 
 ```json
 {
   "api_key": "sk-...",
-  "model": "gemini-2.0-flash-exp-image-generation",
-  "base_url": "https://generativelanguage.googleapis.com"
+  "model": "openai/gpt-image-2",
+  "base_url": "https://your-api-endpoint.com/api/vertex-ai"
 }
 ```
-
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `api_key` | 是 | Gemini API 密钥 |
-| `model` | 是 | 支持图像生成的 Gemini 模型 |
-| `base_url` | 是 | API 端点 |
-
----
-
-## 运行模式
-
-### Solo 模式 (`/solo`)
-
-全自动执行，无需人工干预：
-
-```
-A 剧本创作 .......... 完成  我的小说_第1集.md
-B 剧本解析 .......... 完成  scene_data.json
-C 资源生成 .......... 完成  角色2 场景3 跳过1
-E+F 分镜与画面 ...... 进行中
-    分镜导演  ████████░░░░░░░░ 5/10
-    画面合成  ██████░░░░░░░░░░ 3/10
-```
-
-### Custom 模式 (`/custom`)
-
-资源生成后暂停，展示角色和场景图目录，你可以用自己的图片替换：
-
-```
-  ──────────────────────────────────────────────────
-  资源已就绪，请检查并按需替换：
-
-  角色参考图: workspace/我的小说/characters/
-    张三.png  李四.png
-
-  场景底图:   workspace/我的小说/scenes/
-    教室.png  操场.png
-
-  替换方法：将自己的图片放入目录，同名覆盖即可。
-  ──────────────────────────────────────────────────
-  按 Enter 继续生成分镜...
-```
-
----
-
-## 流水线详解
-
-### Stage A — 剧本创作
-
-LLM 智能体扫描小说章节，从专业编剧角度决定改编范围，生成短剧剧本（Markdown 格式）。内置改编原则：忠于原著、场景连贯、每集必须有钩子、内心转视觉、台词口语化。
-
-### Stage B — 剧本解析
-
-LLM 智能体将剧本 Markdown 解析为结构化 JSON（`scene_data.json`），提取场景、角色、位置、情绪、动作等信息。
-
-### Stage C — 资源生成
-
-调用 Gemini API 为每个新角色生成参考图（多角度 + 面部特写），为每个新场景生成空背景底图。已有资源自动跳过。
-
-### Stage E — 合成帧
-
-将角色参考图与场景底图合成为「合成帧」，经 AI 校验智能体检查人物完整性和空间合理性。校验不通过则自动重试。
-
-### Stage F — 分镜画面
-
-LLM 分镜导演智能体为每个 beat 设计镜头构图（远景/中景/近景/特写），生成完整的画面描述 prompt。然后调用 Gemini 以合成帧为参考，生成最终分镜图片。
-
----
-
-## 项目结构
-
-```
-story-claw/
-├── bin/cli.js              CLI 入口（shebang）
-├── cli.ts                  交互式命令行界面
-├── agent.ts                智能体基础设施（Session / Sub-agent）
-├── runner/
-│   ├── pipeline.ts         核心流水线（Stage A/B/C/E+F）
-│   ├── solo.ts             全自动模式
-│   └── custom.ts           自定义模式
-├── tools/
-│   ├── scan-novel.ts       小说扫描（滑动窗口读取）
-│   ├── save-script.ts      剧本保存 + 进度更新
-│   ├── parse-script.ts     剧本结构化解析
-│   ├── generate-character.ts  角色参考图生成
-│   ├── generate-scene.ts   场景底图生成
-│   ├── direct-storyboard.ts  分镜构图设计
-│   ├── generate-images.ts  合成帧 + 分镜图片 + 校验
-│   ├── schemas.ts          JSON Schema 定义
-│   └── index.ts            工具导出
-├── ui/
-│   ├── welcome.ts          启动界面
-│   ├── select.ts           小说选择/创建
-│   ├── status.ts           进度展示
-│   └── progress.ts         实时进度条
-└── utils/
-    ├── run-python.ts       全局路径常量（CONFIG_DIR / WORK_DIR）
-    ├── paths.ts            统一路径管理
-    ├── image-gen.ts        Gemini 图像生成接口
-    └── setup.ts            首次运行引导
-```
+</details>
 
 ---
 
@@ -304,35 +190,32 @@ story-claw/
 
 目前支持 `.txt` 格式，文件名需匹配 `第{N}章 {标题}.txt`。
 
-### 超长小说会不会 token 爆炸？
+### 生视频要另外付费吗？
 
-不会。内置滑动窗口机制，单次最多读取约 80K 字符。连续改编时自动加载上 2 集的回顾章节 + 后续待改编章节。
+不需要。生视频阶段调用的是你自己部署的 ComfyUI 实例（跑 LTX 图生视频工作流），算力自备，不是按次计费的商业视频 API。
 
-### 可以用国内 API 代理吗？
+### 角色什么时候会补生成新的参考图？
 
-可以。在 `config.json` 和 `image_gen_config.json` 中设置 `base_url` 即可。
+只有服装或随身道具发生真正的视觉变化时才会——从"刚入学"变成"出事故后坐轮椅"算，情绪、地点、光线的变化不算。这样长篇小说不会一直重复生图，但也不会漏掉真正的造型变化。
 
-### 生成的图片质量不满意怎么办？
+### 视频模型生成的某段视频翻车了怎么办？
 
-使用 `/custom` 模式，在资源生成后暂停，用你自己的角色图/场景图替换，再继续生成分镜。
+有一道基于 VLM 的质检 Gate，检查每段视频首尾帧的人物一致性、有没有凭空捏造人脸，以及去字幕后有没有残留文字。没通过会在限定次数内自动重新生成；到了重试上限就放行，不会卡住整集渲染。
 
 ### 中途失败了怎么办？
 
-进度保存在 `改编进度.json` 中，重新运行会从上次的下一集继续。角色和场景资源不会重复生成。
-
-### 生成效果
-
-<img width="1204" height="820" alt="image" src="https://github.com/user-attachments/assets/2f7e1053-8a72-42d7-abad-6e0d6120c2d9" />
+进度按集、按阶段记录在 `改编进度.json` 中，重新运行同一集会跳过已完成的阶段，只补齐缺失的部分。
 
 ---
-
 
 ## 技术栈
 
 - **Runtime** — Node.js + [tsx](https://github.com/privatenumber/tsx)
 - **Agent Framework** — [@mariozechner/pi-coding-agent](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
-- **Image Generation** — Google Gemini API (txt2img / img2img)
-- **Schema Validation** — [@sinclair/typebox](https://github.com/sinclairzx81/typebox)
+- **图像生成** — `gpt-image-2`（主力），Gemini 系图像模型（降级）
+- **视频生成** — 自建 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 图生视频，自定义节点实现 VLM 质检
+- **语音合成** — 支持字级时间戳的 TTS（驱动音效精确定位）+ 全剧统一的角色音色分配
+- **Schema 校验** — [@sinclair/typebox](https://github.com/sinclairzx81/typebox)
 
 ---
 

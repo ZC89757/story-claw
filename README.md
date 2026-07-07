@@ -3,45 +3,59 @@ Technology ultimately has to serve people. True productivity does not lie in how
 ```
 # Story Claw
 
+<p>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node >= 18">
+  <img src="https://img.shields.io/github/last-commit/ZC89757/story-claw" alt="Last commit">
+</p>
+
 English | [中文](./README_CN.md)
 
-**AI-powered novel-to-storyboard pipeline.** Feed in novel chapters, get fully illustrated storyboard panels automatically.
+Point it at a folder of novel chapters. It hands back a finished short-drama episode — narrated, scored, sound-effected, rendered — with one command. If you want to turn a web novel into short-drama episodes without paying per second for video generation or babysitting character consistency by hand, this is built for exactly that.
 
-From raw novel text to visual storyboards, Story Claw wraps the entire pipeline into a single command: script adaptation → structured parsing → character/scene image generation → shot composition → final panel synthesis.
+<video src="https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4" controls width="360"></video>
+
+*Generated end-to-end by Story Claw, zero manual editing: script adaptation → character/scene art → shot composition → voice + BGM + sfx → video render.*
+
+---
+
+## The problem with AI-adapting a 200-chapter novel
+
+Anyone who has tried to automate novel-to-video adaptation runs into the same wall around chapter 20: the protagonist is still wearing their "chapter 1 first-day-of-school" outfit after they've been kidnapped, gotten married, and joined the army. Every character sounds the same because nobody bothered to keep voices consistent. And every clip is a gamble — the video model quietly fabricates an extra hand, or the subtitle-removal step leaves a ghost of text sitting on someone's forehead, and nobody notices until playback.
+
+Story Claw's pipeline is built specifically around not letting any of that slide:
+
+- **Characters and scenes evolve in stages, not once.** Each character gets one base reference image, plus a new "stage" image only when their *outfit or carried items* meaningfully change — school uniform → hospital gown after an injury → battle-worn after a fight. Scenes get the same treatment for lighting/time-of-day/props ("classroom, first day, bright afternoon" vs. "classroom, exam night, one flickering light"). The pipeline decides per chapter whether a new stage is actually needed, so a 200-chapter novel doesn't regenerate art every chapter, but also never freezes a character in their chapter-1 look for the whole story.
+- **Every video clip is graded by a vision model before it's accepted.** A custom ComfyUI node pipes each generated clip's first/last frame to a VLM right inside the render graph: does the main subject stay the same person start to finish? Did the model hallucinate an extra face? After subtitle removal, is there still a ghost of text on screen? A clip that fails gets silently regenerated (bounded retries, then it's let through rather than blocking the whole render) — so quality control on a self-hosted video model doesn't mean you personally have to scrub through hundreds of clips.
+- **One voice per character, for the whole show.** The first time a character speaks, they're assigned a TTS voice from the pool and it's written to a per-novel voice map — every later chapter, every later episode, looks them up by name and reuses the same voice. The narrator gets a dedicated voice, never picked from the character pool.
+- **The video model runs on your own GPU.** Rendering is a self-hosted [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 image-to-video workflow — no Seedance/Kling-style per-second billing sitting between you and an episode.
+- **`gpt-image-2` for the actual pixels.** It holds up under the kind of dense, multi-constraint prompt this pipeline throws at it (locked character identity + pose + composition + lighting, all at once) far better than the alternatives we tried.
 
 ---
 
 ## How It Works
 
-Story Claw orchestrates multiple AI agents to adapt novel text into short drama storyboards, episode by episode:
+Five stages per episode, each driven by an LLM sub-agent or direct API calls:
 
 ```
-Novel Chapters (.txt)
+Novel Chapter (.txt)
     │
     ▼
-┌──────────────────────────────────────────────────────┐
-│  A  Script Writing    LLM agent adapts novel to script│
-│  B  Script Parsing    LLM agent extracts structured   │
-│  C  Asset Generation  Gemini generates character/scene │
-│  E  Composite Frames  Character + scene → validation   │
-│  F  Panel Rendering   LLM director → Gemini panels    │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│ 1  Visual Preset       Tag every line: scene / character /      │
+│                        shot size / angle / camera move / mood   │
+│ 2  Asset Archiving     Identify characters & scenes; generate   │
+│                        stage-aware reference images + voices    │
+│ 3  Script Segmentation Split the chapter into per-scene scripts │
+│ 4  Storyboard Direction Design shot-by-shot panels with         │
+│                        image/video prompts, per scene           │
+│ 5  Render              TTS → BGM → sfx → panel images → video   │
+│                        clips (VLM-graded) → final episode video │
+└────────────────────────────────────────────────────────────────┘
     │
     ▼
-Storyboard Panels + Script (.md) + Structured Data (.json)
+ep{N}.mp4
 ```
-
-### Key Features
-
-- **End-to-end automation** — One command from novel text to storyboard images
-- **Multi-LLM support** — OpenAI / Anthropic / Google, with custom API endpoint support
-- **Agent architecture** — Each stage runs as a dedicated AI agent with tool-based invocation and full traceability
-- **Incremental generation** — Character and scene images are shared across episodes; only new assets are generated
-- **Progress continuity** — Tracks adapted episodes, plot summaries, and open hooks; supports resuming after interruption
-- **Sliding window** — Automatically truncates long novels with an 80K character context budget to prevent token overflow
-- **Validation loop** — Composite frames are validated by an AI agent; failed frames are retried up to 4 times
-- **Parallel execution** — Scene-level and beat-level parallelism for maximum API throughput
-- **Replaceable assets** — Custom mode pauses after asset generation so you can swap in your own character/scene images
 
 ---
 
@@ -65,8 +79,11 @@ npm start
 ### Requirements
 
 - **Node.js** >= 18
-- **LLM API Key** — OpenAI / Anthropic / Google (pick one)
-- **Gemini API Key** — For image generation (must support `generateContent` with `IMAGE` output)
+- **LLM API Key** — OpenAI / Anthropic / Google (pick one, drives all sub-agents)
+- **Image generation API** — `gpt-image-2` (recommended) or a Gemini image model
+- **TTS API Key** — for narration and dialogue synthesis
+- **A ComfyUI instance** (self-hosted, local or rented GPU) running an LTX image-to-video workflow
+- *(Optional)* A BGM generation endpoint and a local sound-effect library (`.mp3`/`.wav`) for background music and sfx
 
 ---
 
@@ -78,16 +95,9 @@ npm start
 story-claw
 ```
 
-On first launch, an interactive setup wizard guides you through creating two config files:
-
-| Config File | Purpose | Location |
-|-------------|---------|----------|
-| `config.json` | LLM agent (script writing / parsing / storyboard director) | `~/.story-claw/` |
-| `image_gen_config.json` | Gemini image generation API | `~/.story-claw/` |
+On first launch, an interactive setup wizard walks you through the required config files (see [Configuration](#configuration)), all stored under `~/.story-claw/`.
 
 ### 2. Prepare Novel Files
-
-Create a novel folder with chapters split into `.txt` files:
 
 ```
 my-novel/
@@ -106,68 +116,52 @@ cd your-working-directory
 story-claw
 ```
 
-Interactive CLI commands:
-
 ```
-  /solo      Auto mode — select a novel and run the full pipeline
-  /custom    Custom mode — pause after asset generation to swap images
+  /solo      Fully automated mode — select a novel, adapt and render the next episode
   /status    View adaptation progress for all novels
+  /help      Show help
+  /exit      Exit
 ```
 
 ### 4. Output Directory
 
-Generated results are stored in `workspace/` under your working directory:
-
 ```
 workspace/
 └── my-novel/
-    ├── 改编进度.json
-    ├── characters/            Character reference images (shared across episodes)
-    │   ├── Alice.png
-    │   └── Bob.png
-    ├── scenes/                Scene backgrounds (shared across episodes)
-    │   ├── classroom.png
-    │   └── playground.png
-    └── ep01/                  Episode 1
-        ├── my-novel_第1集.md       Script
-        ├── scene_data.json         Structured scene data
-        ├── panels_scene_01_beat01.json   Shot composition (per-frame descriptions)
-        ├── panels_scene_01_beat02.json
-        ├── ...
-        ├── character_frames/       Composite frames (character + scene)
-        │   ├── frame_01.png
-        │   └── ...
-        └── storyboard_panels/      Final storyboard images
-            ├── panel_0001.png
-            └── ...
-```
-
-**`panels_*.json` files bridge storyboard images and the script.** Each file corresponds to one beat of a scene and contains per-frame visual descriptions (shot type, characters, expressions, actions, background details). They serve as both the input prompts for panel generation and a ready-made storyboard reference for downstream video production — each frame prompt maps 1:1 to images in `storyboard_panels/`:
-
-```json
-{
-  "scene_id": "scene_03",
-  "beat_num": 1,
-  "beat_title": "Wei Junxi meets the senior at the registration desk",
-  "panel_count": 6,
-  "panels": [
-    {
-      "id": 1,
-      "prompt": "Wide shot of a university registration hallway. A young man in a white T-shirt with a shoulder bag stands at the visitor side of the desk..."
-    },
-    {
-      "id": 2,
-      "prompt": "Close-up of a young woman in a red volunteer vest over a white shirt, facing the camera..."
-    }
-  ]
-}
+    ├── 改编进度.json          # Cross-episode progress
+    ├── voice_map.json         # Character → TTS voice mapping (shared across episodes)
+    ├── characters/            # Character reference images (shared across episodes)
+    │   ├── Alice.json
+    │   ├── Alice_原型.png          # base reference
+    │   └── Alice_{stage}.png       # per-stage variant (outfit/props changed)
+    ├── scenes/                # Scene backgrounds (shared across episodes)
+    │   ├── classroom.json
+    │   └── classroom.png
+    └── ep01/                  # Episode 1
+        ├── 画面预设.txt
+        ├── scripts/               # Per-scene scripts
+        ├── storyboards/           # Per-scene shot data (image/video prompts)
+        ├── render_{sceneName}/    # Panel images, panel/scene video clips, TTS audio
+        ├── render.log
+        └── ep01.mp4               # Final rendered episode
 ```
 
 ---
 
 ## Configuration
 
-### LLM Config (`~/.story-claw/config.json`)
+All config files live in `~/.story-claw/` and are created by the first-run setup wizard.
+
+| Config File | Purpose |
+|-------------|---------|
+| `config.json` | LLM provider/model/API key driving all sub-agents |
+| `image_gen_config.json` | Image generation API (`gpt-image-2` recommended) |
+| `video_config.json` | ComfyUI endpoint, LTX workflow path, video duration/concurrency |
+| `tts_config.json` | TTS provider, voice pool, dedicated narrator voice, concurrency |
+| `sfx/` (optional) | Local sound-effect library — drop `.mp3`/`.wav` files here, tagged by filename |
+
+<details>
+<summary>Example: <code>config.json</code></summary>
 
 ```json
 {
@@ -177,124 +171,19 @@ workspace/
   "base_url": "https://your-proxy.com/v1"
 }
 ```
+</details>
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `provider` | Yes | `openai` / `anthropic` / `google` |
-| `model` | Yes | Model ID |
-| `api_key` | Yes | API key |
-| `base_url` | No | Custom endpoint; omit to use the official API |
-
-### Image Generation Config (`~/.story-claw/image_gen_config.json`)
+<details>
+<summary>Example: <code>image_gen_config.json</code></summary>
 
 ```json
 {
   "api_key": "sk-...",
-  "model": "gemini-2.0-flash-exp-image-generation",
-  "base_url": "https://generativelanguage.googleapis.com"
+  "model": "openai/gpt-image-2",
+  "base_url": "https://your-api-endpoint.com/api/vertex-ai"
 }
 ```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `api_key` | Yes | Gemini API key |
-| `model` | Yes | Gemini model with image generation support |
-| `base_url` | Yes | API endpoint |
-
----
-
-## Run Modes
-
-### Solo Mode (`/solo`)
-
-Fully automated, no manual intervention:
-
-```
-A Script Writing .... Done   my-novel_ep01.md
-B Script Parsing .... Done   scene_data.json
-C Asset Generation .. Done   chars:2 scenes:3 skipped:1
-E+F Storyboard ...... In Progress
-    Director   ████████░░░░░░░░ 5/10
-    Rendering  ██████░░░░░░░░░░ 3/10
-```
-
-### Custom Mode (`/custom`)
-
-Pauses after asset generation to let you review and replace images:
-
-```
-  ──────────────────────────────────────────────────
-  Assets ready. Review and replace as needed:
-
-  Character refs: workspace/my-novel/characters/
-    Alice.png  Bob.png
-
-  Scene backgrounds: workspace/my-novel/scenes/
-    classroom.png  playground.png
-
-  To replace: drop your own images into the directory with the same filename.
-  ──────────────────────────────────────────────────
-  Press Enter to continue generating storyboards...
-```
-
----
-
-## Pipeline Details
-
-### Stage A — Script Writing
-
-An LLM agent scans novel chapters and adapts them into a short drama script (Markdown format) from a professional screenwriter's perspective. Built-in adaptation principles: faithfulness to source material, scene continuity, cliffhangers at episode endings, inner thoughts converted to visuals, dialogue kept colloquial.
-
-### Stage B — Script Parsing
-
-An LLM agent parses the Markdown script into structured JSON (`scene_data.json`), extracting scenes, characters, locations, emotions, actions, and more.
-
-### Stage C — Asset Generation
-
-Calls the Gemini API to generate reference images for each new character (multi-angle + facial close-up) and empty background images for each new location. Existing assets are automatically skipped.
-
-### Stage E — Composite Frames
-
-Merges character reference images with scene backgrounds into "composite frames", which are then validated by an AI agent for character completeness and spatial correctness. Failed frames are automatically retried.
-
-### Stage F — Panel Rendering
-
-An LLM storyboard director agent designs shot composition for each beat (wide / medium / close-up / extreme close-up) and generates complete visual description prompts. Gemini then renders the final storyboard panels using composite frames as reference.
-
----
-
-## Project Structure
-
-```
-story-claw/
-├── bin/cli.js              CLI entry point (shebang)
-├── cli.ts                  Interactive command-line interface
-├── agent.ts                Agent infrastructure (Session / Sub-agent)
-├── runner/
-│   ├── pipeline.ts         Core pipeline (Stages A/B/C/E+F)
-│   ├── solo.ts             Full automation mode
-│   └── custom.ts           Custom mode with pause
-├── tools/
-│   ├── scan-novel.ts       Novel scanner (sliding window)
-│   ├── save-script.ts      Script persistence + progress updates
-│   ├── parse-script.ts     Script structured parsing
-│   ├── generate-character.ts  Character reference image generation
-│   ├── generate-scene.ts   Scene background generation
-│   ├── direct-storyboard.ts  Shot composition design
-│   ├── generate-images.ts  Composite frames + panel images + validation
-│   ├── schemas.ts          JSON Schema definitions
-│   └── index.ts            Tool exports
-├── ui/
-│   ├── welcome.ts          Startup screen
-│   ├── select.ts           Novel selection / creation
-│   ├── status.ts           Progress display
-│   └── progress.ts         Real-time progress bars
-└── utils/
-    ├── run-python.ts       Global path constants (CONFIG_DIR / WORK_DIR)
-    ├── paths.ts            Centralized path management
-    ├── image-gen.ts        Gemini image generation interface
-    └── setup.ts            First-run setup wizard
-```
+</details>
 
 ---
 
@@ -304,25 +193,21 @@ story-claw/
 
 Currently `.txt` files with the naming pattern `第{N}章 {title}.txt`.
 
-### Will long novels cause token overflow?
+### Do I need to pay for a video generation API?
 
-No. A built-in sliding window mechanism limits each read to ~80K characters. When adapting continuously, the system automatically loads review chapters from the last 2 episodes plus upcoming chapters to be adapted.
+No. The video stage talks to your own ComfyUI instance running an LTX image-to-video workflow — you provide the GPU, not a per-second-billed commercial API.
 
-### Can I use a China-based API proxy?
+### How does it decide when a character needs a new reference image?
 
-Yes. Set `base_url` in both `config.json` and `image_gen_config.json`.
+Only when their outfit or carried items change in a way that's visually meaningful — going from "just enrolled" to "in a wheelchair after an accident" gets a new stage image; changing emotion, location, or lighting does not. This keeps art generation cheap across a long novel while still tracking real visual changes.
 
-### What if I'm not happy with the generated images?
+### What happens when the video model messes up a clip?
 
-Use `/custom` mode. It pauses after asset generation so you can replace character/scene images with your own, then continues storyboard generation.
+A VLM-based gate checks the clip's first/last frame for subject consistency and fabricated faces (and, separately, leftover subtitle text after removal). Failures trigger an automatic re-render up to a configurable retry limit; once the limit is hit, the clip is accepted as-is rather than stalling the whole episode.
 
 ### What if the pipeline fails midway?
 
-Progress is saved in `改编进度.json`. Re-running will continue from the next episode. Character and scene assets are not regenerated.
-
-### Sample Output
-
-<img width="1204" height="820" alt="image" src="https://github.com/user-attachments/assets/2f7e1053-8a72-42d7-abad-6e0d6120c2d9" />
+Progress is tracked per episode and per stage in `改编进度.json`. Re-running the same episode skips stages that already completed, and only regenerates what's missing.
 
 ---
 
@@ -330,7 +215,9 @@ Progress is saved in `改编进度.json`. Re-running will continue from the next
 
 - **Runtime** — Node.js + [tsx](https://github.com/privatenumber/tsx)
 - **Agent Framework** — [@mariozechner/pi-coding-agent](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
-- **Image Generation** — Google Gemini API (txt2img / img2img)
+- **Image Generation** — `gpt-image-2` (primary), Gemini image models (fallback)
+- **Video Generation** — self-hosted [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 image-to-video, with custom nodes for VLM-based quality gating
+- **Voice Synthesis** — TTS with word-level timestamps (drives sound-effect placement) and persistent per-character voice assignment
 - **Schema Validation** — [@sinclair/typebox](https://github.com/sinclairzx81/typebox)
 
 ---
