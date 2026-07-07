@@ -13,9 +13,9 @@
 
 丢一个小说章节文件夹进去，一条命令拿回一集配好音、配好乐、加了音效的成片短剧。如果你想把网文改编成短剧，又不想为视频生成按秒付费、也不想自己盯着人物一致性手动纠错，这个工具就是照着这个需求做的。
 
-<video src="https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4" controls width="360"></video>
+[![演示视频](assets/demo-thumb.jpg)](https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4)
 
-*以上为 Story Claw 全自动生成的成片，未做任何手动剪辑：剧本改编 → 角色/场景生图 → 分镜构图 → 配音+BGM+音效 → 视频渲染。*
+*点击播放。以上为 Story Claw 全自动生成的成片，未做任何手动剪辑：剧本改编 → 角色/场景生图 → 分镜构图 → 配音+BGM+音效 → 视频渲染。*
 
 ---
 

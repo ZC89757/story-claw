@@ -13,9 +13,9 @@ English | [中文](./README_CN.md)
 
 Point it at a folder of novel chapters. It hands back a finished short-drama episode — narrated, scored, sound-effected, rendered — with one command. If you want to turn a web novel into short-drama episodes without paying per second for video generation or babysitting character consistency by hand, this is built for exactly that.
 
-<video src="https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4" controls width="360"></video>
+[![Demo](assets/demo-thumb.jpg)](https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4)
 
-*Generated end-to-end by Story Claw, zero manual editing: script adaptation → character/scene art → shot composition → voice + BGM + sfx → video render.*
+*Click to play. Generated end-to-end by Story Claw, zero manual editing: script adaptation → character/scene art → shot composition → voice + BGM + sfx → video render.*
 
 ---
 
