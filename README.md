@@ -1,3 +1,6 @@
+```
+Technology ultimately has to serve people. True productivity does not lie in how many monkeys you raise with AI, but in how you use AI to create an effective tool for yourself.
+```
 # Story Claw
 
 English | [中文](./README_CN.md)
