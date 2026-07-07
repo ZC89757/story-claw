@@ -52,7 +52,7 @@ Stored in `~/.story-claw/` (not in the repo):
 - `utils/paths.ts`: 所有输出路径的集中管理，**构造路径时必须使用此文件**
 - `utils/image-gen.ts`: Node.js 生图统一入口，调用 `gpt-image-gen.py`（3次重试），失败后降级 `gemini-image-gen.py`
 - `utils/gpt-image-gen.py`: 主力生图脚本，使用 Google GenAI SDK（Vertex AI 模式）调用 `openai/gpt-image-2:openai`
-- `utils/gemini-image-gen.py`: 降级生图脚本，使用 `google/gemini-3.1-flash-image-preview`
+- `utils/gemini-image-gen.py`: 降级生图脚本，使用 `google/gemini-3.1-flash-lite-image`
 - `utils/run-python.ts`: 导出 `CONFIG_DIR`（`~/.story-claw/`）、`WORK_DIR`（cwd）和 `PROJECT_ROOT`（别名）
 - `utils/progress.ts`: 改编进度读写（`readProgress` / `getEpisodeRecord` / `markStage` / `finalizeEpisode`），记录每集每阶段完成状态
 

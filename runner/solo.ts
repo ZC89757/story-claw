@@ -3,7 +3,9 @@
  */
 
 import fs from "node:fs/promises";
-import { execSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execSync, execFileSync } from "node:child_process";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
@@ -145,6 +147,18 @@ export async function runSolo(sel: NovelSelection) {
 
     // 整集完成：render=done，追加 adapted、next_chapter +1
     await finalizeEpisode(sel.novelName, ep);
+
+    // ── 生成集尾 BGM（独立脚本，失败不影响整集完成；必须在下面 finally 关 GPU 之前跑，
+    //   因为 ACE-Step 服务跟 ComfyUI 在同一台被 grab/shutdown 的 GPU 实例上）──
+    try {
+      const cleanTextPath = novelPaths.cleanedText(sel.novelName, ep);
+      await fs.access(cleanTextPath);
+      console.log(`\n  正在生成 BGM...`);
+      const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "utils", "generate-bgm.ts");
+      execFileSync(process.execPath, ["--import", "tsx", scriptPath, cleanTextPath], { stdio: "inherit" });
+    } catch (err) {
+      console.warn(`  [BGM] 生成失败或跳过: ${err}`);
+    }
 
     console.log(`\n  ${"=".repeat(50)}`);
     console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);

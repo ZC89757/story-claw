@@ -59,7 +59,7 @@ def main():
 
     img_config = types.ImageConfig(aspectRatio=aspect_ratio) if aspect_ratio else None
     resp = client.models.generate_content(
-        model="google/gemini-3.1-flash-image-preview",
+        model="google/gemini-3.1-flash-lite-image",
         contents=contents,
         config=types.GenerateContentConfig(
             response_modalities=["TEXT", "IMAGE"],

@@ -1175,10 +1175,6 @@ function stripTrailingPunct(text: string): string {
  * 将过长的字幕文本按 maxChars 换行（ASS 硬换行 \\N）。
  * 优先在标点处切，找不到则强制在 maxChars 处切。保留标点。
  */
-function stripTrailingPunct(text: string): string {
-  return text.replace(/[\p{P}\p{S}]+$/u, "");
-}
-
 function wrapSubtitleLines(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const lines: string[] = [];

@@ -185,7 +185,7 @@
   "320:287": {
     "inputs": {
       "samples": [
-        "320:307",
+        "gate12",
         0
       ],
       "upscale_model": [
@@ -200,6 +200,44 @@
     "class_type": "LTXVLatentUpsampler",
     "_meta": {
       "title": "LTXV潜空间上采样器"
+    }
+  },
+  "gate_decode": {
+    "inputs": {
+      "tile_size": 768,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 4,
+      "samples": [
+        "320:307",
+        0
+      ],
+      "vae": [
+        "320:316",
+        2
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "Gate1/2 base帧解码"
+    }
+  },
+  "gate12": {
+    "inputs": {
+      "images": [
+        "gate_decode",
+        0
+      ],
+      "latent": [
+        "320:307",
+        0
+      ],
+      "job_key": "",
+      "enabled": true
+    },
+    "class_type": "PersonFaceGate",
+    "_meta": {
+      "title": "Gate1/2 人物一致性+人脸捏造检测"
     }
   },
   "320:288": {
