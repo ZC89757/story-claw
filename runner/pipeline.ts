@@ -847,16 +847,22 @@ export async function assignGlobalOrder(
   // 极短句（如"没有。"）正向分母小、几乎所有含这几字的 preset 都饱和到 1.0，
   // 此时反向分按 preset 长度稀释，把裁决导向长度最接近 group 的那句（真身）。
   const EPS = 1e-9;
+  // 分镜 sub-agent 抄写原文时常把弯引号（“”‘’）写成直引号（""''），短句里这 1-2 个
+  // 字符的差异就能把正向覆盖率拉到阈值以下（分母小），造成漏匹配→999。匹配打分前
+  // 统一去掉引号字符，只影响打分，不影响落盘文本。
+  const stripQuotes = (t: string) => t.replace(/["'“”‘’]/g, "");
   for (const group of groups) {
     let bestMatch = -1;
     let bestFwd = 0;   // 正向
     let bestRev = 0;   // 反向（并列裁决用）
-    if (group.text.length > 0) {
+    const groupText = stripQuotes(group.text);
+    if (groupText.length > 0) {
       for (const preset of presetLines) {
         if (!preset.text) continue;
-        const lcs = lcsLen(group.text, preset.text);
-        const fwd = lcs / group.text.length;
-        const rev = lcs / preset.text.length;
+        const presetText = stripQuotes(preset.text);
+        const lcs = lcsLen(groupText, presetText);
+        const fwd = lcs / groupText.length;
+        const rev = lcs / presetText.length;
         // 正向严格更高 → 胜；正向并列且反向更高 → 胜
         const better = fwd > bestFwd + EPS
           || (Math.abs(fwd - bestFwd) <= EPS && rev > bestRev + EPS);
