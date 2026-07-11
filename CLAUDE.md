@@ -142,6 +142,27 @@ Chapter files: `第{N}章 {title}.txt`，放在用户指定的小说文件夹中
 
 > 注意：`imagesOnly` 模式（用户在 `/solo` 选「只生分镜图」）会跳过 TTS、生视频、拼接与合并，只产出 panel 静态图，且不推进进度，便于 ComfyUI 未就绪时先出图、之后重跑补视频。
 
+### GPU 渲染服务端组件：`pipeline_wrapper.py`（可选，独立于本仓库主流程部署）
+
+`pipeline_wrapper.py` + `video_ltx2_3_i2v_PRESUB.json` + `video_ltx2_3_subtitle_remove.json` 是跑在 GPU 渲染服务器上的一个独立 Python HTTP 服务（端口 8191，随 ComfyUI 一起由 supervisord 管理，见 `systemd/story-claw-services.conf`），**不属于本仓库 `runner/render.ts` 的默认路径**——`render.ts` 默认直连 `video_config.json` 的 `base_url`（默认 `http://127.0.0.1:8188`，即 ComfyUI 本身）。把 `base_url` 改成指向这个服务的 8191 端口，`render.ts` 就能在完全不改代码的前提下额外获得质检重试与去字幕能力，因为它对外暴露的 `/prompt`、`/history/{id}` 跟 ComfyUI 原生接口形状一致。
+
+**角色**：单张参考图→单个 i2v 短视频 panel 生成的质检+后处理外壳，在原始 i2v 生成结果之上叠加两类保障：
+1. **人物/人脸一致性质检**（Gate1/2，`PersonFaceGate` 节点，直接嵌在 i2v ComfyUI 工作流图里，不是 wrapper 这边代码触发的）
+2. **去字幕/去水印**（原来是外部 STTN+LaMa 工具，v6 起换成 LTX2.3 IC-LoRA 生成式修复工作流）
+
+**双队列调度**（`_scheduler_loop`，唯一后台线程，详见 `STTN_SCHEDULER_REWRITE_PLAN.md`）：`i2v_pending` 和 `sttn_pending` 两个队列严格分阶段轮流耗尽，保证 i2v 生成和去字幕生成不会同时抢 GPU——这是为了替换掉早期"猜时机"调度里的一个真实竞态 bug。
+
+- **i2v 阶段**（`build_and_submit_i2v`）：`/prompt` 收到 render.ts 的请求后只登记 + 塞进 `i2v_pending`，立即返回 `prompt_id`（不即时提交 ComfyUI）；调度循环轮到时才真正提交，读 `video_ltx2_3_i2v_PRESUB.json` 模板，注入参考图（拷进 ComfyUI `input/`）、prompt、分辨率、按目标时长换算的帧数、**两个每次都重新随机的种子**（同一 panel 因 Gate 拒绝而重试时，图/prompt/时长完全相同，种子若不变 LTX 大概率复现一模一样的缺陷，重试等于白跑）、以及注入给 `gate12`（PersonFaceGate）节点的 `job_key`。
+- **去字幕阶段**（`_run_sttn_and_gate3`）：
+  1. `check_subtitle_presence` 前置探测——抽 i2v 输出视频中间 3 帧（排除首尾）喂视觉 LLM，判断有没有字幕/水印；判不出来时保守当作"有"（漏判代价更高）。
+  2. 无字幕 → 直接把原视频拷过去当结果，跳过后面所有步骤（省下一整段生成式修复的 GPU 时间）。
+  3. 有字幕 → `run_ltx_subtitle_removal`：把视频拷进 ComfyUI `input/`，提交 `video_ltx2_3_subtitle_remove.json`（LTX2.3 去水印/去字幕 IC-LoRA 工作流）。这个工作流跟 i2v 共用同一个底模 + 蒸馏 LoRA（只是叠加的 IC-LoRA 不同），ComfyUI 自身的模型缓存能免掉大部分重新加载，因此两阶段之间**不需要**主动腾显存（旧版外部 STTN 工具是独立子进程，需要专门调 ComfyUI 的 `/free` 腾显存，这套逻辑随外部工具一起被去掉了）。
+  4. `check_gate3` 残留检测——修复完再抽 3 帧问一遍"还有没有残留字幕"，同一套抽帧+VLM 机制（`_vlm_subtitle_probe`），只是 prompt 反过来。判不出来时保守视为"通过"，避免无限重试卡死。
+
+**质检重试怎么触发**：`gate_decide(job_key, gate, passed)` 按 `(job_key, gate)` 分别累计连续失败次数，达到阈值（dashboard 上可调，默认 5）前返回 `"reject"`（本次判失败），达到阈值后返回 `"accept_anyway"`（强制放行，避免无限卡死）。**重新生成本身是靠 render.ts 重新发一次 `/prompt` 完成的**——`job_key` 由参考图+prompt+时长+宽高比的哈希算出，同一 panel 原样重试会算出同一个 `job_key`，wrapper 侧不需要 render.ts 显式传"这是第几次重试"。Gate1/2（`person_face`）和 Gate3（`subtitle`）分开计数，避免共用计数器导致互相清零、其中一个永远攒不到阈值。
+
+**Dashboard**（`GET /`，:8191）：任务统计（成功/失败/字幕触发率/平均耗时/P50/P95）、最近 30 条任务详情、实时日志尾、可在线改视觉模型 id 和两个 Gate 的重试阈值（持久化到 `/root/gate_config.json`，重启不丢）。
+
 ### 视频时长控制（`tryGenerateVideoComfyUI` / `durationToFrames`）
 LTX 帧数必须为 `8k+1`（latent 时间维 8× 压缩，模型架构属性，常量 `LTX_FRAME_STEP=8`），故输出时长按 **`LTX_FRAME_STEP/fps` 的栅格**量化（25fps 时 0.32s/步），**无法精确到 0.1s**。
 - **fps 单一真值**：从 workflow 节点 `320:300` 读取（`getVideoFps`），它同时驱动输出帧率与帧数换算。**改帧率只改这一个节点，代码自动适配，切勿在别处硬编码 fps。**

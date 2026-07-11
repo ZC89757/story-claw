@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-pipeline_wrapper.py — 调度型版本 v5（双队列互斥轮转）
+pipeline_wrapper.py — 调度型版本 v6（双队列互斥轮转，去字幕改用 LTX2.3 工作流）
 
 架构：
   /prompt 只登记 + 塞进 i2v_pending，不立即提交给 ComfyUI。
@@ -8,10 +8,22 @@ pipeline_wrapper.py — 调度型版本 v5（双队列互斥轮转）
     i2v 阶段：耗尽 i2v_pending（一个提交、等它跑完、再提交下一个，直到队列空
               且没有 job 卡在 queued/running），PersonFaceGate 节点（Gate1/2）
               在这一步的 ComfyUI 图里回调 POST /gate_verdict。
-    STTN 阶段：耗尽 sttn_pending（跑 STTN，完成后跑 Gate3 残留字幕检测）。
+    去字幕阶段：耗尽 sttn_pending，每个 job 先跑 check_subtitle_presence 前置
+              探测（VLM 判断有没有字幕/水印），无字幕直接短路成功；有字幕才跑
+              run_ltx_subtitle_removal，完成后跑 Gate3 残留字幕检测。
   两阶段互斥由代码结构保证，不存在"猜时机"的等待逻辑，详见
   STTN_SCHEDULER_REWRITE_PLAN.md。
-  无字幕 → i2v 完成即 success；有字幕 → STTN 全部完成后 success。
+  无字幕 → i2v 完成即 success；有字幕 → 去字幕全部完成后 success。
+
+  v6 变化：去字幕方法从外部 video-subtitle-remover（STTN+LaMa 子进程）换成
+  LTX2.3 IC-LoRA 去水印/去字幕 ComfyUI 工作流（video_ltx2_3_subtitle_remove.json）。
+  该工作流没有内置的廉价字幕探测（不像旧工具会先 OCR 探测再决定要不要跑），
+  所以新增 check_subtitle_presence 作为前置 Gate，复用 Gate3 那套"抽中间3帧
+  喂 VLM"的机制（_vlm_subtitle_probe），只是问题反过来：判断"有没有字幕需要
+  处理"而不是"处理完有没有残留"。
+  与 i2v 共用同一个 ComfyUI 进程和同一份底模，不再需要在两阶段之间主动腾显存
+  （见 run_ltx_subtitle_removal 与已删除的 _free_comfy_vram）。队列/调度结构、
+  Gate1/2、dashboard、history 全部不变，只是"去字幕"这一步换了引擎并加了前置探测。
 """
 from __future__ import annotations
 
@@ -43,10 +55,9 @@ HISTORY_PATH   = Path("/root/job_history.jsonl")
 COMFY_INPUT    = Path("/root/ComfyUI/input")
 COMFY_OUTPUT   = Path("/root/ComfyUI/output")
 WF_I2V         = "/root/video_ltx2_3_i2v_PRESUB.json"
+WF_SUBTITLE_REMOVE = "/root/video_ltx2_3_subtitle_remove.json"
 LTX_FRAME_STEP = 8
 
-VSR_PYTHON  = "/root/miniconda3/bin/python"
-HELPER      = "/root/video-subtitle-remover/clean_frames_cli.py"
 VSR_FFMPEG  = "/root/video-subtitle-remover/backend/ffmpeg/linux_x64/ffmpeg"
 
 for _bin in ("/root/miniconda3/bin", "/usr/local/ffmpeg/bin"):
@@ -103,13 +114,22 @@ def set_gate_retry_limits(gate12: int, gate3: int) -> None:
         GATE3_RETRY_LIMIT  = gate3
         _save_gate_config()
 
-SUBTITLE_RESIDUAL_PROMPT = """这三张图片是同一段视频去字幕处理后的画面（已排除首尾帧）。请判断这三张图里有没有任意一张仍残留字幕文字，或者有浮动的水印状文字（不限于画面底部，可能出现在画面任意位置）。
+SUBTITLE_RESIDUAL_PROMPT = """这三张图片是同一段视频去字幕处理后的画面（已排除首尾帧）。请判断这三张图里有没有任意一张仍残留明显的字幕/水印文字——这类文字的典型特征是像贴在画面表层的一层叠加物，不随镜头透视、光影、景深变化，跟所在位置的场景明显不融合，一眼就能看出是后期加上去的，可能出现在画面任意位置，不限于画面底部。
+注意排除：画面场景里原本就存在的文字，比如门牌号、招牌、路牌、书本封面、屏幕显示内容等——只要这些文字符合所在物体的透视、光影、景深，看起来是场景里真实存在的东西，即使能看清内容也不算，不需要标记。
 只输出如下 JSON：
 {"has_residual_subtitle": true/false, "which_frame": 1/2/3/null, "reason": "一句话说明"}"""
 
-# STTN 阶段并发度：每个 STTN 任务都会独立开子进程加载 EasyOCR+LaMa，并发数直接
-# 乘在显存占用上，且没实测过 STTN 阶段（ComfyUI 空闲但权重可能仍常驻显存）到底
-# 还剩多少余量，先固定为 1（串行），以后有把握了再调大。
+# 去字幕前置探测用的 prompt：跟 SUBTITLE_RESIDUAL_PROMPT 共用同一套"抽中间3帧
+# 喂 VLM"机制（见 _vlm_subtitle_probe），只是问的问题反过来——判断有没有字幕
+# 需要处理，而不是处理完有没有残留。LTX2.3 去字幕工作流本身没有内置的廉价
+# 探测能力，靠这个前置 Gate 决定要不要跑（没字幕就跳过，省下整段生成式修复）。
+SUBTITLE_PRESENCE_PROMPT = """这三张图片是同一段视频的画面（已排除首尾帧）。请判断这三张图里有没有任意一张存在明显的字幕/水印文字——这类文字的典型特征是像贴在画面表层的一层叠加物，不随镜头透视、光影、景深变化，跟所在位置的场景明显不融合，一眼就能看出是后期加上去的，可能出现在画面任意位置，不限于画面底部。
+注意排除：画面场景里原本就存在的文字，比如门牌号、招牌、路牌、书本封面、屏幕显示内容等——只要这些文字符合所在物体的透视、光影、景深，看起来是场景里真实存在的东西，即使能看清内容也不算，不需要标记。
+只输出如下 JSON：
+{"has_subtitle": true/false, "which_frame": 1/2/3/null, "reason": "一句话说明"}"""
+
+# 去字幕阶段并发度：v6 起去字幕本身也是提交给 ComfyUI 的一次生成任务，跟 i2v
+# 共用同一个 GPU/ComfyUI 进程，不存在真正的并行空间，固定为 1（串行）。
 STTN_CONCURRENCY = 1
 
 # ─── 状态 ──────────────────────────────────────────────────────────────────────
@@ -249,7 +269,9 @@ def poll_comfy_history(comfy_pid: str) -> dict | None:
 
 def video_path_from_outputs(outputs: dict, node_id: str = "75") -> str:
     out    = outputs.get(node_id, {})
-    videos = out.get("videos") or out.get("images") or []
+    # "gifs" 是 VHS_VideoCombine 节点的输出键（去字幕工作流用的是它，i2v 用的
+    # SaveVideo 节点是 "videos"/"images"）。
+    videos = out.get("gifs") or out.get("videos") or out.get("images") or []
     if not videos:
         raise RuntimeError(f"节点 {node_id} 无视频输出: {out}")
     v   = videos[0]
@@ -291,10 +313,6 @@ def build_and_submit_i2v(cfg: dict) -> str:
     wf["320:276"]["inputs"]["noise_seed"]    = cfg["base_seed"]
     wf["320:277"]["inputs"]["noise_seed"]    = cfg["refine_seed"]
     wf["75"]["inputs"]["filename_prefix"]    = f"pipeline/{cfg['output_name']}_i2v"
-    # 注入 job_id 到 SubtitleDetector 节点
-    if "sub_det" in wf:
-        wf["sub_det"]["inputs"]["job_id"]  = cfg["output_name"]
-        wf["sub_det"]["inputs"]["enabled"] = True
     # 注入 job_key 到 PersonFaceGate 节点（Gate1/2）
     if "gate12" in wf:
         wf["gate12"]["inputs"]["job_key"] = cfg["job_key"]
@@ -411,7 +429,7 @@ def _submit_and_wait_i2v(prompt_id: str) -> None:
             _jobs[prompt_id]["status"]     = "queued_sttn"
             _jobs[prompt_id]["t_i2v"]      = t_i2v
         sttn_pending.put(prompt_id)
-        log(f"job {prompt_id[:8]} ComfyUI done → STTN gate")
+        log(f"job {prompt_id[:8]} ComfyUI done → 去字幕 gate")
     except Exception as e:
         _mark_error(prompt_id, str(e), cfg)
         _cleanup_image(cfg)
@@ -432,7 +450,7 @@ def _run_i2v_phase() -> None:
         _submit_and_wait_i2v(prompt_id)
 
 
-# ─── STTN 工具函数 ─────────────────────────────────────────────────────────────
+# ─── 抽帧工具（去字幕前置探测 + Gate3 残留检测共用）────────────────────────────
 VSR_FFPROBE = "/usr/local/ffmpeg/bin/ffprobe"
 
 
@@ -446,81 +464,43 @@ def _get_video_fps(video_path: str) -> float:
     return int(num) / int(den)
 
 
-def _wait_for_file(path: str, max_wait: int = 300, poll: int = 3) -> bool:
-    deadline = time.time() + max_wait
-    while time.time() < deadline:
-        if os.path.exists(path):
-            sz = os.path.getsize(path)
-            if sz > 0:
-                time.sleep(1)
-                if os.path.getsize(path) == sz:
-                    return True
-        time.sleep(poll)
-    return False
-
-
-def run_sttn(video_path: str, output_name: str) -> str:
+def run_ltx_subtitle_removal(video_path: str, output_name: str) -> tuple[str, bool]:
     """
-    对 video_path 跑 STTN 字幕去除。
+    用 LTX2.3 IC-LoRA 去水印/去字幕 ComfyUI 工作流对 video_path 做生成式修复，
+    取代原先的外部 video-subtitle-remover（STTN+LaMa 子进程）。
+
+    与 i2v 共用同一个 ComfyUI 进程、同一份底模+蒸馏 LoRA（仅去水印/去字幕两个
+    IC-LoRA 不同），ComfyUI 自己的模型缓存能免掉大部分重新加载，因此不再需要
+    像旧流程那样在阶段之间调 /free 腾显存。
+
+    走到这里说明 check_subtitle_presence 前置探测已经判定有字幕，一定会做一次
+    真实生成，第二个返回值恒为 True（保留 run_sttn 原来 (path, had_sub) 的
+    返回约定，方便 _run_sttn_and_gate3 无缝调用）。
     返回输出视频绝对路径（在 COMFY_OUTPUT/pipeline/ 下）。
     """
-    in_dir  = Path(tempfile.mkdtemp(prefix="sttn_in_"))
-    out_dir = Path(tempfile.mkdtemp(prefix="sttn_out_"))
+    wf = json.loads(Path(WF_SUBTITLE_REMOVE).read_text(encoding="utf-8"))
+    video_name = f"{output_name}_desub_in.mp4"
+    dest = COMFY_INPUT / video_name
+    shutil.copy(video_path, dest)
+    wf["5099"]["inputs"]["video"]             = video_name
+    wf["5069"]["inputs"]["filename_prefix"]   = f"pipeline/{output_name}_desub"
+
     try:
-        fps = _get_video_fps(video_path)
-        log(f"  STTN decode {video_path} fps={fps:.3f}")
-        subprocess.run([
-            VSR_FFMPEG, "-y", "-loglevel", "error",
-            "-i", video_path,
-            str(in_dir / "%05d.png"),
-        ], check=True)
+        comfy_pid = submit_to_comfy(wf)
+        log(f"  去字幕(LTX2.3) → ComfyUI {comfy_pid[:8]}")
 
-        env = dict(os.environ)
-        env["QT_QPA_PLATFORM"]                  = "offscreen"
-        env["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
-        proc = subprocess.run(
-            [VSR_PYTHON, HELPER,
-             "--in-dir", str(in_dir),
-             "--out-dir", str(out_dir),
-             "--mode", "auto"],
-            env=env, capture_output=True, text=True, timeout=3600,
-        )
-        result = next(
-            (l.strip() for l in reversed((proc.stdout or "").splitlines()) if l.startswith("RESULT=")),
-            "RESULT=ERROR",
-        )
-        log(f"  STTN result={result}")
-        if proc.returncode != 0 and proc.stderr:
-            log("  STTN stderr: " + proc.stderr.strip().splitlines()[-1])
+        entry = None
+        while entry is None:
+            time.sleep(5)
+            entry = poll_comfy_history(comfy_pid)   # ComfyUI 报错这里会抛异常
 
-        sttn_out = COMFY_OUTPUT / "pipeline" / f"{output_name}_sttn.mp4"
-        sttn_out.parent.mkdir(parents=True, exist_ok=True)
-
-        if result == "RESULT=CLEANED":
-            src_frames = str(out_dir / "%05d.png")
-        elif result == "RESULT=CLEAN":
-            shutil.copy(video_path, sttn_out)
-            return str(sttn_out), False
-        else:
-            raise RuntimeError(f"STTN 失败: {result}")
-
-        enc = subprocess.run([
-            VSR_FFMPEG, "-y", "-loglevel", "warning",
-            "-framerate", f"{fps:.6f}",
-            "-i", src_frames,
-            "-i", video_path,
-            "-map", "0:v",
-            "-map", "1:a?",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-c:a", "copy",
-            str(sttn_out),
-        ], capture_output=True, text=True)
-        if enc.returncode != 0:
-            raise RuntimeError(f"ffmpeg 重编失败 rc={enc.returncode}: {enc.stderr.strip()[-300:]}")
-        return str(sttn_out), True
+        abs_path = video_path_from_outputs(entry["outputs"], node_id="5069")
+        return abs_path, True
     finally:
-        shutil.rmtree(in_dir,  ignore_errors=True)
-        shutil.rmtree(out_dir, ignore_errors=True)
+        try:
+            dest.unlink()
+        except Exception:
+            pass
 
 
 def _extract_middle_frames(video_path: str, n: int = 3) -> list[bytes]:
@@ -547,18 +527,31 @@ def _extract_middle_frames(video_path: str, n: int = 3) -> list[bytes]:
     return out
 
 
-def check_gate3(sttn_out: str) -> tuple[bool, str]:
-    """Gate3：去字幕后中间抽 3 帧，判断有没有残留字幕/水印。返回 (passed, reason)。"""
+def _vlm_subtitle_probe(video_path: str, prompt: str, key: str) -> tuple[bool | None, str]:
+    """抽视频中间 3 帧（排除首尾）喂 VLM，返回 (verdict[key]，reason)；
+    抽帧或 LLM 调用失败时第一项返回 None，由调用方决定 fail-open 的方向。"""
     try:
-        frames_png = _extract_middle_frames(sttn_out, n=3)
+        frames_png = _extract_middle_frames(video_path, n=3)
     except Exception as e:
-        log(f"[Gate3] 抽帧失败，视为通过: {e}")
-        return True, "抽帧失败"
-    verdict = call_vision_llm(frames_png, SUBTITLE_RESIDUAL_PROMPT)
+        return None, f"抽帧失败: {e}"
+    verdict = call_vision_llm(frames_png, prompt)
     if verdict is None:
-        return True, "LLM 调用失败，视为通过"
-    has_residual = bool(verdict.get("has_residual_subtitle", False))
-    return (not has_residual), verdict.get("reason", "")
+        return None, "LLM 调用失败"
+    return bool(verdict.get(key, False)), verdict.get("reason", "")
+
+
+def check_subtitle_presence(video_path: str) -> tuple[bool, str]:
+    """去字幕前置 Gate：判断 i2v 输出视频里是不是真的有字幕/水印需要处理。
+    判不出来时保守当作"有"，交给去字幕工作流兜底处理（漏判比误判代价更高）。"""
+    has_sub, reason = _vlm_subtitle_probe(video_path, SUBTITLE_PRESENCE_PROMPT, "has_subtitle")
+    return (True if has_sub is None else has_sub), reason
+
+
+def check_gate3(sttn_out: str) -> tuple[bool, str]:
+    """Gate3：去字幕后中间抽 3 帧，判断有没有残留字幕/水印。返回 (passed, reason)。
+    判不出来时保守视为通过，避免无限重试卡死调度器。"""
+    has_residual, reason = _vlm_subtitle_probe(sttn_out, SUBTITLE_RESIDUAL_PROMPT, "has_residual_subtitle")
+    return (True if has_residual is None else not has_residual), reason
 
 
 # ─── STTN 阶段（调度循环消费 sttn_pending）─────────────────────────────────────
@@ -579,22 +572,32 @@ def _run_sttn_and_gate3(prompt_id: str) -> None:
         if prompt_id not in _jobs:              # /clear 后跳过
             return
         _jobs[prompt_id]["status"] = "sttn"
-    log(f"job {prompt_id[:8]} [STTN gate] {video_path}")
+    log(f"job {prompt_id[:8]} [去字幕 gate] {video_path}")
 
     t = time.time()
     try:
-        sttn_out, had_sub = run_sttn(video_path, output_name)
-        passed, reason = check_gate3(sttn_out)
+        has_sub, pre_reason = check_subtitle_presence(video_path)
+        log(f"job {prompt_id[:8]} 字幕预检 has_subtitle={has_sub} ({pre_reason})")
+        if has_sub:
+            sttn_out, had_sub = run_ltx_subtitle_removal(video_path, output_name)
+            passed, reason = check_gate3(sttn_out)
+        else:
+            # 预检判定无字幕：LTX2.3 去字幕工作流本身没有廉价的内置探测，靠这个
+            # 前置 Gate 短路掉，省下一整段生成式修复（不用跑，也不用再检残留）。
+            sttn_out = str(COMFY_OUTPUT / "pipeline" / f"{output_name}_desub.mp4")
+            Path(sttn_out).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(video_path, sttn_out)
+            had_sub, passed, reason = False, True, "预检无字幕，跳过去字幕与残留检测"
         action = gate_decide(cfg.get("job_key", prompt_id), "subtitle", passed)
         log(f"job {prompt_id[:8]} gate3 passed={passed} action={action} ({reason})")
         if action == "reject":
             _mark_error(prompt_id, f"Gate3 残留字幕检测未通过: {reason}", cfg)
         else:
             _mark_success(prompt_id, sttn_out, had_sub,
-                          {"i2v": t_i2v, "sttn": round(time.time() - t, 1)},
+                          {"i2v": t_i2v, "desub": round(time.time() - t, 1)},
                           cfg)
     except Exception as e:
-        _mark_error(prompt_id, f"STTN 失败: {e}", cfg)
+        _mark_error(prompt_id, f"去字幕失败: {e}", cfg)
     finally:
         _cleanup_image(cfg)
 
@@ -617,62 +620,16 @@ def _run_sttn_phase() -> None:
         t.join()
 
 
-# ─── STTN 前腾显存 ──────────────────────────────────────────────────────────────
-STTN_MIN_FREE_VRAM_MB = 3000  # STTN（EasyOCR+LaMa）所需显存的安全余量
-STTN_FREE_WAIT_MAX_S  = 60    # 轮询等待上限，超时就不再等（fail-open，避免卡死调度器）
-STTN_FREE_POLL_S      = 2
-
-
-def _get_comfy_vram_free_mb() -> float | None:
-    try:
-        stats = json.loads(urllib.request.urlopen(f"{COMFY_BASE}/system_stats", timeout=8).read())
-        return stats["devices"][0]["vram_free"] / (1024 * 1024)
-    except Exception as e:
-        log(f"查询 ComfyUI 显存失败: {e}")
-        return None
-
-
-def _free_comfy_vram() -> None:
-    """i2v 阶段排空、STTN 阶段开始前调用：让 ComfyUI 主动卸载模型权重腾出显存，
-    给 STTN 的 EasyOCR+LaMa 子进程留出空间（否则常驻显存的 ComfyUI 会把它挤到 OOM）。
-    此时 ComfyUI 处于空闲态，卸载不会打断正在跑的生成任务；代价是下一轮 i2v 第一个
-    任务要重新加载模型、多花点冷启动时间，比 OOM 后 render.ts 整段重跑（分钟级）划算。
-
-    /free 触发的是异步卸载，调用返回不代表显存已经真的空出来，所以这里轮询
-    ComfyUI 自己的 /system_stats 直到 vram_free 达标或超时，超时/查询失败都
-    直接放行（fail-open），不让调度器卡死。"""
-    try:
-        req = urllib.request.Request(
-            f"{COMFY_BASE}/free",
-            data=json.dumps({"unload_models": True, "free_memory": True}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=15).read()
-    except Exception as e:
-        log(f"ComfyUI /free 调用失败（不影响流程）: {e}")
-        return
-
-    deadline = time.time() + STTN_FREE_WAIT_MAX_S
-    while time.time() < deadline:
-        free_mb = _get_comfy_vram_free_mb()
-        if free_mb is None:
-            return
-        if free_mb >= STTN_MIN_FREE_VRAM_MB:
-            log(f"ComfyUI 显存已释放（空闲 {free_mb:.0f}MB），进入 STTN 阶段")
-            return
-        time.sleep(STTN_FREE_POLL_S)
-    log(f"等待 ComfyUI 释放显存超时（{STTN_FREE_WAIT_MAX_S}s），直接进入 STTN 阶段")
-
-
-# ─── 调度循环：i2v 阶段和 STTN 阶段互斥轮转，取代之前"猜时机"的等待逻辑 ─────────
+# ─── 调度循环：i2v 阶段和去字幕阶段互斥轮转，取代之前"猜时机"的等待逻辑 ────────
+# v6 起去字幕也在 ComfyUI 进程内跑（LTX2.3 工作流），跟 i2v 共用同一份底模权重，
+# 阶段之间不再需要主动腾显存——旧版这里调 _free_comfy_vram() 是为了给外部
+# STTN(EasyOCR+LaMa) 子进程腾出显存，现在两阶段都在 ComfyUI 里，腾了反而会
+# 逼 ComfyUI 把还能复用的权重卸载掉，白白增加下一轮的冷加载时间。
 def _scheduler_loop() -> None:
     _ensure_comfy_ready()
     log("调度器启动（双队列互斥轮转：i2v_pending ⇄ sttn_pending）")
     while True:
         _run_i2v_phase()
-        if not sttn_pending.empty():
-            _free_comfy_vram()
         _run_sttn_phase()
         if i2v_pending.empty() and sttn_pending.empty():
             time.sleep(1)
@@ -729,7 +686,7 @@ def compute_stats(rows: list[dict]) -> dict:
     sub_yes = [r for r in success if r.get("had_subtitle")]
     sub_no  = [r for r in success if r.get("had_subtitle") is False]
     i2v_t   = [r["timings"]["i2v"]  for r in success if (r.get("timings") or {}).get("i2v") is not None]
-    sttn_t  = [r["timings"]["sttn"] for r in sub_yes  if (r.get("timings") or {}).get("sttn") is not None]
+    sttn_t  = [r["timings"]["desub"] for r in sub_yes  if (r.get("timings") or {}).get("desub") is not None]
     tot_sub = [r["total_s"] for r in sub_yes if r.get("total_s") is not None]
     tot_no  = [r["total_s"] for r in sub_no  if r.get("total_s") is not None]
     tot_all = [r["total_s"] for r in success if r.get("total_s") is not None]
@@ -778,7 +735,7 @@ def render_dashboard() -> str:
     if running > 0 or i2v_dep > 0:
         phase_html = f'<span style="color:#d97706">● i2v 阶段（运行中 {running} / 排队 {i2v_dep}）</span>'
     elif sttn_dep > 0:
-        phase_html = f'<span style="color:#7c3aed">● STTN 阶段（排队 {sttn_dep}）</span>'
+        phase_html = f'<span style="color:#7c3aed">● 去字幕阶段（排队 {sttn_dep}）</span>'
     else:
         phase_html = '<span style="color:#16a34a">● 空闲</span>'
 
@@ -810,7 +767,7 @@ def render_dashboard() -> str:
             f"<td>{html.escape(r.get('aspect', '-'))}</td>"
             f"<td>{sub_cell}</td>"
             f"<td>{tm.get('i2v', '-')}</td>"
-            f"<td>{tm.get('sttn', '-') or '-'}</td>"
+            f"<td>{tm.get('desub', '-') or '-'}</td>"
             f"<td>{r.get('total_s', '-') if r.get('status') == 'success' else '-'}</td>"
             f"<td>{sc}</td>"
             f'<td><button class="expbtn" onclick="toggleDetail(this)">▼</button></td>'
@@ -870,7 +827,7 @@ def render_dashboard() -> str:
     function clearJobs(){{
       if(!confirm('清空所有任务？（ComfyUI 队列不受影响）'))return;
       fetch('/clear',{{method:'POST'}}).then(r=>r.json()).then(d=>{{
-        alert('已清空 '+d.cleared_jobs+' 个任务，'+d.cleared_pending+' 个排队项（i2v+STTN）');
+        alert('已清空 '+d.cleared_jobs+' 个任务，'+d.cleared_pending+' 个排队项（i2v+去字幕）');
         location.reload();
       }});
     }}
@@ -910,10 +867,10 @@ def render_dashboard() -> str:
 </head>
 <body>
   <h1>Story Claw 视频生成统计</h1>
-  <div class="sub">pipeline_wrapper v5（双队列调度） · :8190 · 每 10s 刷新</div>
+  <div class="sub">pipeline_wrapper v6（双队列调度） · :8190 · 每 10s 刷新</div>
   <div class="card">
     <h3>调度器状态</h3>
-    {phase_html} &nbsp;·&nbsp; i2v 排队：{i2v_dep} &nbsp;·&nbsp; STTN 排队：{sttn_dep}
+    {phase_html} &nbsp;·&nbsp; i2v 排队：{i2v_dep} &nbsp;·&nbsp; 去字幕排队：{sttn_dep}
     &nbsp;&nbsp;
     <button onclick="clearJobs()" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">清空任务</button>
   </div>
@@ -950,7 +907,7 @@ def render_dashboard() -> str:
   <div class="card">
     <h3>平均耗时（秒）</h3>
     {stat(f"{s['avg_i2v_s']:.0f}", 'i2v PRESUB')}
-    {stat(f"{s['avg_sttn_s']:.0f}", 'STTN（有字幕）')}
+    {stat(f"{s['avg_sttn_s']:.0f}", '去字幕（有字幕，LTX2.3）')}
     {stat(f"{s['avg_total_no_subtitle']:.0f}", '无字幕 panel 总耗时')}
     {stat(f"{s['avg_total_subtitle']:.0f}", '有字幕 panel 总耗时')}
     {stat(f"{s['p50_total']:.0f}", 'P50 总耗时')}
@@ -961,7 +918,7 @@ def render_dashboard() -> str:
     <table>
       <thead><tr>
         <th>开始时间</th><th>目标</th><th>比例</th><th>字幕</th>
-        <th>i2v(s)</th><th>STTN(s)</th><th>总耗时</th><th>状态</th><th></th>
+        <th>i2v(s)</th><th>去字幕(s)</th><th>总耗时</th><th>状态</th><th></th>
       </tr></thead>
       <tbody>{rows_html}</tbody>
     </table>
@@ -1004,32 +961,6 @@ class Handler(BaseHTTPRequestHandler):
         path   = self.path.rstrip("/")
         length = int(self.headers.get("Content-Length", "0"))
         body   = self.rfile.read(length) if length else b""
-
-        # ── /subtitle_record —— SubtitleDetector 节点回调 ──────────────────────
-        if path == "/subtitle_record":
-            try:
-                data   = json.loads(body)
-                job_id = data.get("job_id", "")
-            except Exception:
-                return self._json(400, {"error": "bad json"})
-
-            found = None
-            with _jobs_lock:
-                for pid, job in _jobs.items():
-                    if job.get("output_name") == job_id:
-                        found = pid
-                        if not job.get("had_subtitle"):
-                            job["had_subtitle"] = True
-                            job["status"]       = "queued_sttn"
-                        break
-
-            if found:
-                sttn_pending.put(found)
-                log(f"subtitle_record job_id={job_id} pid={found[:8]} → sttn_pending")
-                return self._json(200, {"ok": True})
-            else:
-                log(f"subtitle_record job_id={job_id} 未找到对应 job")
-                return self._json(404, {"error": "job not found"})
 
         # ── /gate_verdict —— PersonFaceGate 节点回调（Gate1/2）──────────────────
         if path == "/gate_verdict":
@@ -1112,7 +1043,7 @@ class Handler(BaseHTTPRequestHandler):
                         drained += 1
                     except Exception:
                         break
-            log(f"/clear: 清空 {count} 个 job，{drained} 个排队项（i2v+STTN）")
+            log(f"/clear: 清空 {count} 个 job，{drained} 个排队项（i2v+去字幕）")
             return self._json(200, {"cleared_jobs": count, "cleared_pending": drained})
 
         return self._json(404, {"error": "not found"})
@@ -1178,7 +1109,7 @@ class Handler(BaseHTTPRequestHandler):
                 "jobs":        len(_jobs),
                 "running":     running,
                 "i2v_pending": i2v_pending.qsize(),
-                "sttn_queue":  sttn_pending.qsize(),
+                "desub_queue": sttn_pending.qsize(),
             })
 
         if parsed.path in ("/", "/index.html", "/dashboard"):
@@ -1220,7 +1151,7 @@ class Handler(BaseHTTPRequestHandler):
 # ─── 启动 ──────────────────────────────────────────────────────────────────────
 def main() -> None:
     threading.Thread(target=_scheduler_loop, daemon=True).start()
-    log(f"pipeline_wrapper v5（双队列调度） listening on 0.0.0.0:{PORT}")
+    log(f"pipeline_wrapper v6（双队列调度） listening on 0.0.0.0:{PORT}")
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.serve_forever()
 

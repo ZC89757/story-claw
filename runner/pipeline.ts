@@ -786,14 +786,21 @@ export async function assignGlobalOrder(
   const storyboardsDir = novelPaths.storyboardsDir(novelName, episode);
 
   // 1. 解析画面预设.txt，提取原文顺序
+  // 按【...】标注边界切分整个文件，不按换行分行——sub-agent 偶尔会漏加换行，把两句
+  // 话的【标注】写在同一物理行里，此时按行分割会导致第二句连同其标注一起被前一句的
+  // `line.split("【")[0]` 吞掉、永远进不了候选池（实测：见 STTN_SCHEDULER_REWRITE_PLAN.md
+  // 之外的测试小说案例，第二句因此被误判 999）。正则按序扫描全文本身就保留了阅读顺序。
   const presetText = await fs.readFile(visualPresetPath, "utf-8");
-  const presetLines = presetText.split("\n")
-    .filter(line => line.trim())
-    .map((line, index) => {
-      const text = line.split("【")[0].trim()
-        .replace(/^[0-9]+\.\s*/, ""); // 去掉可能的序号
-      return { text, order: index };
-    });
+  const presetLines: Array<{ text: string; order: number }> = [];
+  {
+    const re = /([^【]*)【[^】]*】/g;
+    let m: RegExpExecArray | null;
+    let idx = 0;
+    while ((m = re.exec(presetText)) !== null) {
+      const text = m[1].trim().replace(/^[0-9]+\.\s*/, ""); // 去掉可能的序号
+      if (text) presetLines.push({ text, order: idx++ });
+    }
+  }
 
   // 2. 遍历所有 JSONL 文件，提取每个 group 的原文（顺带按文本去重，保留 panel 最多者）
   // 同一句原文被分场阶段切进多个场景时会重复渲染、重复播放，这里按归一化文本去重。
