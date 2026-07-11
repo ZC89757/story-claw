@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
 """
-pipeline_wrapper.py — 调度型版本 v4 (STTN)
+pipeline_wrapper.py — 调度型版本 v5（双队列互斥轮转）
 
 架构：
-  i2v PRESUB 提交后立即返回；ComfyUI 自带队列并发执行。
-  SubtitleDetector 节点命中时回调 POST /subtitle_record。
-  STTN 单线程 runner 串行去字幕。
+  /prompt 只登记 + 塞进 i2v_pending，不立即提交给 ComfyUI。
+  _scheduler_loop 是唯一的后台线程，死循环交替跑两个阶段：
+    i2v 阶段：耗尽 i2v_pending（一个提交、等它跑完、再提交下一个，直到队列空
+              且没有 job 卡在 queued/running），PersonFaceGate 节点（Gate1/2）
+              在这一步的 ComfyUI 图里回调 POST /gate_verdict。
+    STTN 阶段：耗尽 sttn_pending（跑 STTN，完成后跑 Gate3 残留字幕检测）。
+  两阶段互斥由代码结构保证，不存在"猜时机"的等待逻辑，详见
+  STTN_SCHEDULER_REWRITE_PLAN.md。
   无字幕 → i2v 完成即 success；有字幕 → STTN 全部完成后 success。
 """
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import json
 import os
 import queue
+import random
+import re
 import shutil
 import subprocess
 import tempfile
@@ -45,17 +53,134 @@ for _bin in ("/root/miniconda3/bin", "/usr/local/ffmpeg/bin"):
     if _bin not in os.environ.get("PATH", ""):
         os.environ["PATH"] = f"{_bin}:{os.environ.get('PATH', '')}"
 
+# ─── 画面质检 Gate 配置（Gate1/2/3 共用同一个多模态模型，重试阈值各自独立）─────
+VISION_BASE_URL   = "https://zenmux.ai/api/anthropic"
+VISION_API_KEY    = "xxxxx"
+
+# 以下三项可在 dashboard 页面上改，持久化到 GATE_CONFIG_PATH，重启进程不丢、改完立即生效：
+#   - VISION_MODEL：comfy_person_face_gate_node.py（Gate1/2）每次调用前会来 GET /vision_model 取值；
+#     Gate3（本进程内）调用 call_vision_llm 时直接读这个全局变量，天然实时生效。
+#   - GATE12_RETRY_LIMIT / GATE3_RETRY_LIMIT：gate_decide() 每次调用时读全局变量判断，无需重启。
+GATE_CONFIG_PATH   = Path("/root/gate_config.json")
+_DEFAULT_VISION_MODEL       = "stepfun/step-3.7-flash"
+_DEFAULT_GATE12_RETRY_LIMIT = 5
+_DEFAULT_GATE3_RETRY_LIMIT  = 5
+_gate_config_lock = threading.Lock()
+
+
+def _load_gate_config() -> dict:
+    try:
+        return json.loads(GATE_CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_gate_config() -> None:
+    GATE_CONFIG_PATH.write_text(json.dumps({
+        "vision_model":       VISION_MODEL,
+        "gate12_retry_limit": GATE12_RETRY_LIMIT,
+        "gate3_retry_limit":  GATE3_RETRY_LIMIT,
+    }, ensure_ascii=False), encoding="utf-8")
+
+
+_loaded_cfg        = _load_gate_config()
+VISION_MODEL       = _loaded_cfg.get("vision_model") or _DEFAULT_VISION_MODEL
+GATE12_RETRY_LIMIT = int(_loaded_cfg.get("gate12_retry_limit") or _DEFAULT_GATE12_RETRY_LIMIT)
+GATE3_RETRY_LIMIT  = int(_loaded_cfg.get("gate3_retry_limit")  or _DEFAULT_GATE3_RETRY_LIMIT)
+
+
+def set_vision_model(model: str) -> None:
+    global VISION_MODEL
+    with _gate_config_lock:
+        VISION_MODEL = model
+        _save_gate_config()
+
+
+def set_gate_retry_limits(gate12: int, gate3: int) -> None:
+    global GATE12_RETRY_LIMIT, GATE3_RETRY_LIMIT
+    with _gate_config_lock:
+        GATE12_RETRY_LIMIT = gate12
+        GATE3_RETRY_LIMIT  = gate3
+        _save_gate_config()
+
+SUBTITLE_RESIDUAL_PROMPT = """这三张图片是同一段视频去字幕处理后的画面（已排除首尾帧）。请判断这三张图里有没有任意一张仍残留字幕文字，或者有浮动的水印状文字（不限于画面底部，可能出现在画面任意位置）。
+只输出如下 JSON：
+{"has_residual_subtitle": true/false, "which_frame": 1/2/3/null, "reason": "一句话说明"}"""
+
+# STTN 阶段并发度：每个 STTN 任务都会独立开子进程加载 EasyOCR+LaMa，并发数直接
+# 乘在显存占用上，且没实测过 STTN 阶段（ComfyUI 空闲但权重可能仍常驻显存）到底
+# 还剩多少余量，先固定为 1（串行），以后有把握了再调大。
+STTN_CONCURRENCY = 1
+
 # ─── 状态 ──────────────────────────────────────────────────────────────────────
 # status: "queued" | "running" | "queued_sttn" | "sttn" | "success" | "error"
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
-_sttn_q: queue.Queue = queue.Queue()
+# 双队列：i2v_pending 存"已接单等提交给 ComfyUI"的 prompt_id，sttn_pending 存
+# "i2v 已完成等跑 STTN"的 prompt_id。调度循环保证两个队列互斥消费，见 _scheduler_loop。
+i2v_pending: queue.Queue = queue.Queue()
+sttn_pending: queue.Queue = queue.Queue()
 
 _comfy_ready_flag = False
 _comfy_ready_lock = threading.Lock()
 
 _history_lock = threading.Lock()
+
+# (job_key, gate) -> 该 gate 自己的连续失败次数。Gate1/2（gate="person_face"）和
+# Gate3（gate="subtitle"）分开计数、互不影响——同一条视频重试时 Gate1/2 通常一直通过，
+# 如果共用一个计数器，Gate1/2 每次"通过"都会把计数器清零，导致 Gate3 的失败永远
+# 攒不到阈值、无限重试（曾经踩过这个坑）。分开后各自独立累积到自己的阈值才放行。
+_gate_attempts: dict[tuple[str, str], int] = {}
+_gate_lock = threading.Lock()
+
+
+def gate_decide(job_key: str, gate: str, passed: bool) -> str:
+    """返回 'continue'（通过）| 'reject'（未达上限，拦下重来）| 'accept_anyway'（达到上限，放行）"""
+    limit = GATE12_RETRY_LIMIT if gate == "person_face" else GATE3_RETRY_LIMIT
+    key = (job_key, gate)
+    with _gate_lock:
+        if passed:
+            _gate_attempts.pop(key, None)
+            return "continue"
+        attempts = _gate_attempts.get(key, 0) + 1
+        if attempts >= limit:
+            _gate_attempts.pop(key, None)
+            return "accept_anyway"
+        _gate_attempts[key] = attempts
+        return "reject"
+
+
+def call_vision_llm(images_png: list[bytes], prompt: str) -> dict | None:
+    content = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                      "data": base64.b64encode(p).decode()}}
+        for p in images_png
+    ] + [{"type": "text", "text": prompt}]
+    body = json.dumps({
+        "model": VISION_MODEL, "max_tokens": 2048,
+        "messages": [{"role": "user", "content": content}],
+    }).encode()
+    req = urllib.request.Request(
+        f"{VISION_BASE_URL}/v1/messages", data=body,
+        headers={"x-api-key": VISION_API_KEY, "anthropic-version": "2023-06-01",
+                 "Content-Type": "application/json"},
+        method="POST",
+    )
+    t0 = time.time()
+    try:
+        resp = json.loads(urllib.request.urlopen(req, timeout=30).read())
+        # 推理模型 content 里第一块常是 thinking，要找 type=="text" 的那块
+        text = next((b["text"] for b in resp["content"] if b.get("type") == "text"), "")
+        m = re.search(r"\{.*\}", text, re.S)
+        verdict = json.loads(m.group(0)) if m else None
+        elapsed = round(time.time() - t0, 1)
+        log(f"[vision_llm] {elapsed}s → {verdict}")
+        return verdict
+    except Exception as e:
+        elapsed = round(time.time() - t0, 1)
+        log(f"[vision_llm] {elapsed}s 调用/解析失败: {e}")
+        return None
 
 
 def log(msg: str) -> None:
@@ -158,13 +283,22 @@ def build_and_submit_i2v(cfg: dict) -> str:
     wf["320:299"]["inputs"]["value"]         = H
     wf["320:295"]["inputs"]["length"]        = frames
     wf["320:305"]["inputs"]["frames_number"] = frames
-    wf["320:276"]["inputs"]["noise_seed"]    = int(cfg["base_seed"])
-    wf["320:277"]["inputs"]["noise_seed"]    = int(cfg["refine_seed"])
+    # 种子由服务器随机生成，不用客户端传来的固定值——render.ts 每次提交（含 gate/OOM
+    # 触发的重试）都用同一份 workflow 模板，种子若不变，参考图+prompt+种子完全相同，
+    # LTX 扩散大概率复现一模一样的缺陷（多余人物/编造正脸等），重试等于白跑。
+    cfg["base_seed"]   = random.randint(1, 2**48)
+    cfg["refine_seed"] = random.randint(1, 2**48)
+    wf["320:276"]["inputs"]["noise_seed"]    = cfg["base_seed"]
+    wf["320:277"]["inputs"]["noise_seed"]    = cfg["refine_seed"]
     wf["75"]["inputs"]["filename_prefix"]    = f"pipeline/{cfg['output_name']}_i2v"
     # 注入 job_id 到 SubtitleDetector 节点
     if "sub_det" in wf:
         wf["sub_det"]["inputs"]["job_id"]  = cfg["output_name"]
         wf["sub_det"]["inputs"]["enabled"] = True
+    # 注入 job_key 到 PersonFaceGate 节点（Gate1/2）
+    if "gate12" in wf:
+        wf["gate12"]["inputs"]["job_key"] = cfg["job_key"]
+        wf["gate12"]["inputs"]["enabled"] = True
     log(f"  i2v {W}x{H} {frames}f dur={cfg['duration']}s seeds=({cfg['base_seed']},{cfg['refine_seed']})")
     prompt_preview = cfg['prompt'][:80].replace('\n', ' ')
     log(f"  prompt: {prompt_preview}...")
@@ -248,59 +382,54 @@ def _ensure_comfy_ready() -> None:
         _comfy_ready_flag = True
 
 
-# ─── 轮询线程（每个 job 一个）─────────────────────────────────────────────────
-def _poll_comfy(prompt_id: str, comfy_pid: str, cfg: dict) -> None:
-    while True:
-        time.sleep(5)
-        try:
-            entry = poll_comfy_history(comfy_pid)
-        except RuntimeError as e:
-            _mark_error(prompt_id, str(e), cfg)
-            _cleanup_image(cfg)
-            return
-        if entry is None:
-            continue
-
-        # ComfyUI 执行完成
-        with _jobs_lock:
-            job          = _jobs[prompt_id]
-            had_subtitle = job.get("had_subtitle", False)
-            t_i2v        = round(time.time() - job.get("started_at", time.time()), 1)
-
-        # ComfyUI 完成后统一走 STTN 检测（auto 模式：gate 无字幕则秒过，有字幕才 STTN）
-        try:
-            abs_path = video_path_from_outputs(entry["outputs"])
-        except Exception as e:
-            _mark_error(prompt_id, f"完成后处理失败: {e}", cfg)
-            _cleanup_image(cfg)
-            return
-        with _jobs_lock:
-            _jobs[prompt_id]["video_path"]  = abs_path
-            _jobs[prompt_id]["status"]      = "queued_sttn"
-            _jobs[prompt_id]["t_i2v"]       = t_i2v
-        _sttn_q.put(prompt_id)
-        log(f"job {prompt_id[:8]} ComfyUI done → STTN gate")
+# ─── i2v 阶段（调度循环消费 i2v_pending）───────────────────────────────────────
+def _submit_and_wait_i2v(prompt_id: str) -> None:
+    """提交单个 i2v 到 ComfyUI，同步轮询直到跑完/报错才返回（阶段内串行，见 STTN_SCHEDULER_REWRITE_PLAN.md）。"""
+    with _jobs_lock:
+        job = _jobs.get(prompt_id)
+    if job is None:                      # /clear 之后 job 已被删掉
         return
-
-
-def _start_job(prompt_id: str, cfg: dict) -> None:
-    """提交 i2v 到 ComfyUI 并启动轮询线程。"""
-    _ensure_comfy_ready()
+    cfg = job["_cfg"]
     with _jobs_lock:
         _jobs[prompt_id]["status"] = "running"
     try:
-        comfy_pid = build_and_submit_i2v(cfg)
+        comfy_pid = build_and_submit_i2v(cfg)   # 含随机种子、job_key 注入，跟之前完全一样
         log(f"job {prompt_id[:8]} → ComfyUI {comfy_pid[:8]}")
         with _jobs_lock:
             _jobs[prompt_id]["comfy_pid"] = comfy_pid
-        threading.Thread(
-            target=_poll_comfy,
-            args=(prompt_id, comfy_pid, cfg),
-            daemon=True,
-        ).start()
+
+        entry = None
+        while entry is None:
+            time.sleep(5)
+            entry = poll_comfy_history(comfy_pid)   # ComfyUI 报错（含 Gate1/2 raise）这里会抛异常
+
+        with _jobs_lock:
+            t_i2v = round(time.time() - _jobs[prompt_id].get("started_at", time.time()), 1)
+        abs_path = video_path_from_outputs(entry["outputs"])
+        with _jobs_lock:
+            _jobs[prompt_id]["video_path"] = abs_path
+            _jobs[prompt_id]["status"]     = "queued_sttn"
+            _jobs[prompt_id]["t_i2v"]      = t_i2v
+        sttn_pending.put(prompt_id)
+        log(f"job {prompt_id[:8]} ComfyUI done → STTN gate")
     except Exception as e:
         _mark_error(prompt_id, str(e), cfg)
         _cleanup_image(cfg)
+
+
+def _run_i2v_phase() -> None:
+    """耗尽 i2v_pending：一个提交、等它跑完、再提交下一个，直到队列空且没有 job 卡在 queued/running。"""
+    while True:
+        try:
+            prompt_id = i2v_pending.get_nowait()
+        except queue.Empty:
+            with _jobs_lock:
+                active = [p for p, j in _jobs.items() if j.get("status") in ("queued", "running")]
+            if not active:
+                return
+            time.sleep(2)
+            continue
+        _submit_and_wait_i2v(prompt_id)
 
 
 # ─── STTN 工具函数 ─────────────────────────────────────────────────────────────
@@ -394,55 +523,159 @@ def run_sttn(video_path: str, output_name: str) -> str:
         shutil.rmtree(out_dir, ignore_errors=True)
 
 
-# ─── STTN 串行 runner ──────────────────────────────────────────────────────────
-def _sttn_runner() -> None:
-    log("STTN runner 启动")
-    while True:
-        prompt_id = _sttn_q.get()
-        with _jobs_lock:
-            job = _jobs.get(prompt_id)
-        if not job:
-            log(f"STTN runner: prompt_id={prompt_id[:8]} 不存在，跳过")
-            continue
-        if job.get("status") == "error":
-            log(f"STTN runner: job {prompt_id[:8]} 已错误，跳过")
-            continue
+def _extract_middle_frames(video_path: str, n: int = 3) -> list[bytes]:
+    """从视频中间部分（排除首尾帧）均匀抽 n 帧，返回 PNG bytes 列表。"""
+    dur = float(subprocess.run(
+        [VSR_FFPROBE, "-v", "error", "-show_entries",
+         "format=duration", "-of", "csv=p=0", video_path],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip())
+    fps = _get_video_fps(video_path)
+    frame_dur = 1.0 / fps
+    lo, hi = frame_dur, max(frame_dur, dur - frame_dur)  # 排除首尾各一帧
+    out: list[bytes] = []
+    with tempfile.TemporaryDirectory(prefix="gate3_") as tmp:
+        for i in range(n):
+            t = lo + (hi - lo) * (i + 1) / (n + 1)
+            png_path = os.path.join(tmp, f"{i}.png")
+            subprocess.run([
+                VSR_FFMPEG, "-y", "-loglevel", "error",
+                "-ss", f"{t:.3f}", "-i", video_path, "-frames:v", "1", png_path,
+            ], check=True)
+            with open(png_path, "rb") as f:
+                out.append(f.read())
+    return out
 
-        cfg         = job.get("_cfg", {})
-        video_path  = job.get("video_path", "")
-        output_name = job.get("output_name", "")
-        t_i2v       = job.get("t_i2v", 0)
 
-        # 等所有 i2v 任务跑完再占用 GPU 跑 LaMa
-        # 同时检查 queued（新提交还没变 running）和 running，避免竞态
-        while True:
-            with _jobs_lock:
-                if prompt_id not in _jobs:          # /clear 后 job 已被删除
-                    break
-                active_i2v = [p for p, j in _jobs.items()
-                              if j.get("status") in ("queued", "running") and p != prompt_id]
-            if not active_i2v:
-                break
-            log(f"job {prompt_id[:8]} 等待 {len(active_i2v)} 个 i2v 完成再运行 LaMa...")
-            time.sleep(5)
+def check_gate3(sttn_out: str) -> tuple[bool, str]:
+    """Gate3：去字幕后中间抽 3 帧，判断有没有残留字幕/水印。返回 (passed, reason)。"""
+    try:
+        frames_png = _extract_middle_frames(sttn_out, n=3)
+    except Exception as e:
+        log(f"[Gate3] 抽帧失败，视为通过: {e}")
+        return True, "抽帧失败"
+    verdict = call_vision_llm(frames_png, SUBTITLE_RESIDUAL_PROMPT)
+    if verdict is None:
+        return True, "LLM 调用失败，视为通过"
+    has_residual = bool(verdict.get("has_residual_subtitle", False))
+    return (not has_residual), verdict.get("reason", "")
 
-        with _jobs_lock:
-            if prompt_id not in _jobs:              # /clear 后跳过
-                log(f"STTN runner: job {prompt_id[:8]} 已被 clear，跳过")
-                continue
-            _jobs[prompt_id]["status"] = "sttn"
-        log(f"job {prompt_id[:8]} [STTN gate] {video_path}")
 
-        t = time.time()
-        try:
-            sttn_out, had_sub = run_sttn(video_path, output_name)
+# ─── STTN 阶段（调度循环消费 sttn_pending）─────────────────────────────────────
+def _run_sttn_and_gate3(prompt_id: str) -> None:
+    with _jobs_lock:
+        job = _jobs.get(prompt_id)
+    if not job:
+        return
+    if job.get("status") == "error":
+        return
+
+    cfg         = job.get("_cfg", {})
+    video_path  = job.get("video_path", "")
+    output_name = job.get("output_name", "")
+    t_i2v       = job.get("t_i2v", 0)
+
+    with _jobs_lock:
+        if prompt_id not in _jobs:              # /clear 后跳过
+            return
+        _jobs[prompt_id]["status"] = "sttn"
+    log(f"job {prompt_id[:8]} [STTN gate] {video_path}")
+
+    t = time.time()
+    try:
+        sttn_out, had_sub = run_sttn(video_path, output_name)
+        passed, reason = check_gate3(sttn_out)
+        action = gate_decide(cfg.get("job_key", prompt_id), "subtitle", passed)
+        log(f"job {prompt_id[:8]} gate3 passed={passed} action={action} ({reason})")
+        if action == "reject":
+            _mark_error(prompt_id, f"Gate3 残留字幕检测未通过: {reason}", cfg)
+        else:
             _mark_success(prompt_id, sttn_out, had_sub,
                           {"i2v": t_i2v, "sttn": round(time.time() - t, 1)},
                           cfg)
-        except Exception as e:
-            _mark_error(prompt_id, f"STTN 失败: {e}", cfg)
-        finally:
-            _cleanup_image(cfg)
+    except Exception as e:
+        _mark_error(prompt_id, f"STTN 失败: {e}", cfg)
+    finally:
+        _cleanup_image(cfg)
+
+
+def _run_sttn_phase() -> None:
+    """耗尽 sttn_pending。STTN_CONCURRENCY 个 worker 一起抢队列，默认 1 等于串行。"""
+    def worker() -> None:
+        while True:
+            try:
+                prompt_id = sttn_pending.get_nowait()
+            except queue.Empty:
+                return
+            _run_sttn_and_gate3(prompt_id)
+
+    n = max(1, STTN_CONCURRENCY)
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+
+# ─── STTN 前腾显存 ──────────────────────────────────────────────────────────────
+STTN_MIN_FREE_VRAM_MB = 3000  # STTN（EasyOCR+LaMa）所需显存的安全余量
+STTN_FREE_WAIT_MAX_S  = 60    # 轮询等待上限，超时就不再等（fail-open，避免卡死调度器）
+STTN_FREE_POLL_S      = 2
+
+
+def _get_comfy_vram_free_mb() -> float | None:
+    try:
+        stats = json.loads(urllib.request.urlopen(f"{COMFY_BASE}/system_stats", timeout=8).read())
+        return stats["devices"][0]["vram_free"] / (1024 * 1024)
+    except Exception as e:
+        log(f"查询 ComfyUI 显存失败: {e}")
+        return None
+
+
+def _free_comfy_vram() -> None:
+    """i2v 阶段排空、STTN 阶段开始前调用：让 ComfyUI 主动卸载模型权重腾出显存，
+    给 STTN 的 EasyOCR+LaMa 子进程留出空间（否则常驻显存的 ComfyUI 会把它挤到 OOM）。
+    此时 ComfyUI 处于空闲态，卸载不会打断正在跑的生成任务；代价是下一轮 i2v 第一个
+    任务要重新加载模型、多花点冷启动时间，比 OOM 后 render.ts 整段重跑（分钟级）划算。
+
+    /free 触发的是异步卸载，调用返回不代表显存已经真的空出来，所以这里轮询
+    ComfyUI 自己的 /system_stats 直到 vram_free 达标或超时，超时/查询失败都
+    直接放行（fail-open），不让调度器卡死。"""
+    try:
+        req = urllib.request.Request(
+            f"{COMFY_BASE}/free",
+            data=json.dumps({"unload_models": True, "free_memory": True}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=15).read()
+    except Exception as e:
+        log(f"ComfyUI /free 调用失败（不影响流程）: {e}")
+        return
+
+    deadline = time.time() + STTN_FREE_WAIT_MAX_S
+    while time.time() < deadline:
+        free_mb = _get_comfy_vram_free_mb()
+        if free_mb is None:
+            return
+        if free_mb >= STTN_MIN_FREE_VRAM_MB:
+            log(f"ComfyUI 显存已释放（空闲 {free_mb:.0f}MB），进入 STTN 阶段")
+            return
+        time.sleep(STTN_FREE_POLL_S)
+    log(f"等待 ComfyUI 释放显存超时（{STTN_FREE_WAIT_MAX_S}s），直接进入 STTN 阶段")
+
+
+# ─── 调度循环：i2v 阶段和 STTN 阶段互斥轮转，取代之前"猜时机"的等待逻辑 ─────────
+def _scheduler_loop() -> None:
+    _ensure_comfy_ready()
+    log("调度器启动（双队列互斥轮转：i2v_pending ⇄ sttn_pending）")
+    while True:
+        _run_i2v_phase()
+        if not sttn_pending.empty():
+            _free_comfy_vram()
+        _run_sttn_phase()
+        if i2v_pending.empty() and sttn_pending.empty():
+            time.sleep(1)
 
 
 # ─── 参数解析 ──────────────────────────────────────────────────────────────────
@@ -460,6 +693,11 @@ def extract_panel_params(wf: dict, prompt_id: str) -> dict:
     img_path   = IMAGE_TMP_DIR / f"{prompt_id}.png"
     img_path.write_bytes(base64.b64decode(img_b64))
     output_name = f"wrap_{prompt_id[:8]}"
+    # job_key：同一条视频每次重试时参考图/prompt/时长/宽高比字节级不变，用哈希
+    # 识别"这是第几次重试同一条视频"，驱动 Gate1/2/3 共享的重试上限，不用改 render.ts。
+    job_key = hashlib.sha256(
+        (img_b64 + "|" + prompt + "|" + str(duration) + "|" + aspect).encode()
+    ).hexdigest()[:16]
     return {
         "image":        str(img_path),
         "prompt":       prompt,
@@ -468,6 +706,7 @@ def extract_panel_params(wf: dict, prompt_id: str) -> dict:
         "base_seed":    base_seed,
         "refine_seed":  refine_seed,
         "output_name":  output_name,
+        "job_key":      job_key,
     }
 
 
@@ -532,13 +771,14 @@ def render_dashboard() -> str:
     s      = compute_stats(rows)
     recent = sorted(rows, key=lambda r: r.get("started_at", 0), reverse=True)[:30]
 
-    running  = sum(1 for j in _jobs.values() if j.get("status") == "running")
-    sttn_dep = _sttn_q.qsize()
+    running   = sum(1 for j in _jobs.values() if j.get("status") == "running")
+    i2v_dep   = i2v_pending.qsize()
+    sttn_dep  = sttn_pending.qsize()
 
-    if running > 0:
-        phase_html = f'<span style="color:#d97706">● i2v 生成中 ×{running}</span>'
+    if running > 0 or i2v_dep > 0:
+        phase_html = f'<span style="color:#d97706">● i2v 阶段（运行中 {running} / 排队 {i2v_dep}）</span>'
     elif sttn_dep > 0:
-        phase_html = f'<span style="color:#7c3aed">● STTN 队列 ({sttn_dep})</span>'
+        phase_html = f'<span style="color:#7c3aed">● STTN 阶段（排队 {sttn_dep}）</span>'
     else:
         phase_html = '<span style="color:#16a34a">● 空闲</span>'
 
@@ -630,20 +870,71 @@ def render_dashboard() -> str:
     function clearJobs(){{
       if(!confirm('清空所有任务？（ComfyUI 队列不受影响）'))return;
       fetch('/clear',{{method:'POST'}}).then(r=>r.json()).then(d=>{{
-        alert('已清空 '+d.cleared_jobs+' 个任务，'+d.cleared_sttn_queue+' 个 STTN 队列项');
+        alert('已清空 '+d.cleared_jobs+' 个任务，'+d.cleared_pending+' 个排队项（i2v+STTN）');
         location.reload();
       }});
+    }}
+    function saveVisionModel(){{
+      const v = document.getElementById('visionModelInput').value.trim();
+      const msg = document.getElementById('visionModelMsg');
+      if(!v) return;
+      fetch('/vision_model', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{model: v}}),
+      }}).then(r=>r.json()).then(d=>{{
+        msg.style.color = d.ok ? '#16a34a' : '#dc2626';
+        msg.textContent = d.ok ? ('已保存 → ' + d.model) : ('保存失败：' + (d.error || ''));
+        setTimeout(()=>{{msg.textContent='';}}, 4000);
+      }}).catch(e=>{{ msg.style.color = '#dc2626'; msg.textContent = '请求失败：' + e; }});
+    }}
+    function saveGateRetryLimit(){{
+      const gate12 = parseInt(document.getElementById('gate12LimitInput').value, 10);
+      const gate3  = parseInt(document.getElementById('gate3LimitInput').value, 10);
+      const msg = document.getElementById('gateLimitMsg');
+      if(!gate12 || !gate3 || gate12 < 1 || gate3 < 1) {{
+        msg.style.color = '#dc2626'; msg.textContent = '阈值必须是 >=1 的整数';
+        return;
+      }}
+      fetch('/gate_retry_limit', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{gate12: gate12, gate3: gate3}}),
+      }}).then(r=>r.json()).then(d=>{{
+        msg.style.color = d.ok ? '#16a34a' : '#dc2626';
+        msg.textContent = d.ok ? ('已保存 → Gate1/2='+d.gate12+' Gate3='+d.gate3) : ('保存失败：' + (d.error || ''));
+        setTimeout(()=>{{msg.textContent='';}}, 4000);
+      }}).catch(e=>{{ msg.style.color = '#dc2626'; msg.textContent = '请求失败：' + e; }});
     }}
   </script>
 </head>
 <body>
   <h1>Story Claw 视频生成统计</h1>
-  <div class="sub">pipeline_wrapper v4 (STTN) · :8190 · 每 10s 刷新</div>
+  <div class="sub">pipeline_wrapper v5（双队列调度） · :8190 · 每 10s 刷新</div>
   <div class="card">
     <h3>调度器状态</h3>
-    {phase_html} &nbsp;·&nbsp; i2v 并发：{running} &nbsp;·&nbsp; STTN 队列：{sttn_dep}
+    {phase_html} &nbsp;·&nbsp; i2v 排队：{i2v_dep} &nbsp;·&nbsp; STTN 排队：{sttn_dep}
     &nbsp;&nbsp;
     <button onclick="clearJobs()" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">清空任务</button>
+  </div>
+  <div class="card">
+    <h3>Gate 视觉模型（Gate1/2/3 共用）</h3>
+    <input type="text" id="visionModelInput" value="{html.escape(VISION_MODEL)}"
+      placeholder="例如 stepfun/step-3.7-flash"
+      style="width:320px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+    <button onclick="saveVisionModel()" style="background:#1d4ed8;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;margin-left:8px">保存</button>
+    <span id="visionModelMsg" style="margin-left:10px;font-size:12px"></span>
+  </div>
+  <div class="card">
+    <h3>Gate 重试阈值（Gate1/2、Gate3 各自独立计数，互不影响）</h3>
+    Gate1/2（人物一致性）：
+    <input type="number" id="gate12LimitInput" value="{GATE12_RETRY_LIMIT}" min="1"
+      style="width:70px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+    &nbsp;&nbsp;Gate3（残留字幕）：
+    <input type="number" id="gate3LimitInput" value="{GATE3_RETRY_LIMIT}" min="1"
+      style="width:70px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+    <button onclick="saveGateRetryLimit()" style="background:#1d4ed8;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;margin-left:8px">保存</button>
+    <span id="gateLimitMsg" style="margin-left:10px;font-size:12px"></span>
   </div>
   <div class="card">
     <h3>总览</h3>
@@ -733,12 +1024,27 @@ class Handler(BaseHTTPRequestHandler):
                         break
 
             if found:
-                _sttn_q.put(found)
-                log(f"subtitle_record job_id={job_id} pid={found[:8]} → _sttn_q")
+                sttn_pending.put(found)
+                log(f"subtitle_record job_id={job_id} pid={found[:8]} → sttn_pending")
                 return self._json(200, {"ok": True})
             else:
                 log(f"subtitle_record job_id={job_id} 未找到对应 job")
                 return self._json(404, {"error": "job not found"})
+
+        # ── /gate_verdict —— PersonFaceGate 节点回调（Gate1/2）──────────────────
+        if path == "/gate_verdict":
+            try:
+                data     = json.loads(body)
+                job_key  = str(data["job_key"])
+                gate     = str(data.get("gate", ""))
+                passed   = bool(data["passed"])
+                reason   = str(data.get("reason", ""))
+            except Exception:
+                return self._json(400, {"error": "bad json"})
+
+            action = gate_decide(job_key, gate, passed)
+            log(f"gate_verdict job_key={job_key[:8]} gate={gate} passed={passed} → {action} ({reason[:120]})")
+            return self._json(200, {"action": action})
 
         # ── /prompt —— render.ts 提交视频生成任务 ──────────────────────────────
         if path == "/prompt":
@@ -762,24 +1068,52 @@ class Handler(BaseHTTPRequestHandler):
                     "had_subtitle": False,
                     "_cfg":         cfg,
                 }
-            threading.Thread(target=_start_job, args=(prompt_id, cfg), daemon=True).start()
+            i2v_pending.put(prompt_id)   # 只登记+排队，真正提交给 ComfyUI 由调度循环决定时机
             log(f"job {prompt_id[:8]} queued")
             return self._json(200, {"prompt_id": prompt_id, "number": 0, "node_errors": {}})
 
-        # ── /clear —— 清空所有内存任务和 STTN 队列 ────────────────────────────
+        # ── /vision_model —— 更新 Gate1/2/3 共用的视觉模型 id ──────────────────
+        if path == "/vision_model":
+            try:
+                data  = json.loads(body)
+                model = str(data["model"]).strip()
+                if not model:
+                    raise ValueError("model 不能为空")
+            except Exception as e:
+                return self._json(400, {"error": f"bad request: {e}"})
+            set_vision_model(model)
+            log(f"/vision_model 更新为 {model}")
+            return self._json(200, {"ok": True, "model": model})
+
+        # ── /gate_retry_limit —— 更新 Gate1/2、Gate3 各自独立的重试阈值 ─────────
+        if path == "/gate_retry_limit":
+            try:
+                data   = json.loads(body)
+                gate12 = int(data["gate12"])
+                gate3  = int(data["gate3"])
+                if gate12 < 1 or gate3 < 1:
+                    raise ValueError("阈值必须 >= 1")
+            except Exception as e:
+                return self._json(400, {"error": f"bad request: {e}"})
+            set_gate_retry_limits(gate12, gate3)
+            log(f"/gate_retry_limit 更新为 gate12={gate12} gate3={gate3}")
+            return self._json(200, {"ok": True, "gate12": gate12, "gate3": gate3})
+
+        # ── /clear —— 清空所有内存任务和两个队列 ──────────────────────────────
         if path == "/clear":
             with _jobs_lock:
                 count = len(_jobs)
                 _jobs.clear()
             drained = 0
-            while not _sttn_q.empty():
-                try:
-                    _sttn_q.get_nowait()
-                    drained += 1
-                except Exception:
-                    break
-            log(f"/clear: 清空 {count} 个 job，{drained} 个 STTN 队列项")
-            return self._json(200, {"cleared_jobs": count, "cleared_sttn_queue": drained})
+            for q in (i2v_pending, sttn_pending):
+                while not q.empty():
+                    try:
+                        q.get_nowait()
+                        drained += 1
+                    except Exception:
+                        break
+            log(f"/clear: 清空 {count} 个 job，{drained} 个排队项（i2v+STTN）")
+            return self._json(200, {"cleared_jobs": count, "cleared_pending": drained})
 
         return self._json(404, {"error": "not found"})
 
@@ -834,13 +1168,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._json(502, {"error": f"upstream: {e}"})
 
+        if parsed.path == "/vision_model":
+            return self._json(200, {"model": VISION_MODEL})
+
         if parsed.path == "/health":
             running  = sum(1 for j in _jobs.values() if j.get("status") == "running")
             return self._json(200, {
-                "status":     "ok",
-                "jobs":       len(_jobs),
-                "running":    running,
-                "sttn_queue": _sttn_q.qsize(),
+                "status":      "ok",
+                "jobs":        len(_jobs),
+                "running":     running,
+                "i2v_pending": i2v_pending.qsize(),
+                "sttn_queue":  sttn_pending.qsize(),
             })
 
         if parsed.path in ("/", "/index.html", "/dashboard"):
@@ -881,8 +1219,8 @@ class Handler(BaseHTTPRequestHandler):
 
 # ─── 启动 ──────────────────────────────────────────────────────────────────────
 def main() -> None:
-    threading.Thread(target=_sttn_runner, daemon=True).start()
-    log(f"pipeline_wrapper v4 (STTN) listening on 0.0.0.0:{PORT}")
+    threading.Thread(target=_scheduler_loop, daemon=True).start()
+    log(f"pipeline_wrapper v5（双队列调度） listening on 0.0.0.0:{PORT}")
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.serve_forever()
 
