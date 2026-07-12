@@ -70,6 +70,10 @@ const ttsCfg = loadConfig("tts_config.json");
 const IMAGE_CONCURRENCY = (imgCfg.concurrency ?? 4) as number;
 const IMAGE_MAX_RETRIES = 3;
 const IMAGE_RETRY_SLEEP = 3000; // ms
+
+// 资源选择器（selectResources，LLM 偶发返回非 JSON 需要重试兜底）
+const SELECT_MAX_RETRIES = 3;
+const SELECT_RETRY_SLEEP = 2000; // ms
 const SOFTEN_MAX = 2; // 被内容安全系统拒绝时，提示词递进软化的最大档数
 
 // 视频生成（ComfyUI）
@@ -136,6 +140,7 @@ const DOUBAO_VOICES      = (ttsCfg.voices ?? {
 }) as Record<string, string>;
 const DOUBAO_NARRATOR    = (ttsCfg.narrator_voice ?? "zh_male_changtianyi_mars_bigtts") as string;
 const TTS_CONCURRENCY    = (ttsCfg.concurrency ?? 4) as number;
+const TTS_MAX_RETRIES    = 5; // 限流/临时错误时的最大重试次数
 // 是否启用角色音色：关闭时音色照常分配，但 TTS 合成时全部强制用旁白音
 const ASSIGN_CHARACTER_VOICE = (ttsCfg.assign_character_voice ?? true) as boolean;
 
@@ -179,6 +184,19 @@ async function getMediaDuration(filePath: string): Promise<number> {
     "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", filePath,
   ]);
   return parseFloat(stdout.trim());
+}
+
+interface VideoDims { width: number; height: number; fps: number }
+
+async function probeVideoDims(filePath: string): Promise<VideoDims> {
+  const { stdout } = await execFileAsync("ffprobe", [
+    "-v", "error", "-select_streams", "v:0",
+    "-show_entries", "stream=width,height,r_frame_rate",
+    "-of", "csv=s=x:p=0", filePath,
+  ]);
+  const [w, h, fr] = stdout.trim().split("x");
+  const [num, den] = fr.split("/").map(Number);
+  return { width: Number(w), height: Number(h), fps: den ? num / den : num };
 }
 
 // ── 音效库（全局，扫 ~/.story-claw/sfx/）─────────────────────────────────────
@@ -411,33 +429,48 @@ async function selectResources(
   }
   parts.push(`\n${catalog.text}`);
 
-  let resp: any;
-  try {
-    resp = await client.chat.completions.create({
-      model: LLM_MODEL,
-      max_tokens: LLM_MAX_TOKENS,
-      messages: [
-        { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
-        { role: "user",   content: parts.join("\n") },
-      ],
-    });
-  } catch (e: any) {
-    console.error(
-      `[selectResources] LLM 调用失败`,
-      `type=${e?.constructor?.name}`,
-      `status=${e?.status ?? "-"}`,
-      `cause=${e?.cause?.code ?? e?.cause?.message ?? "-"}`,
-      `msg=${e?.message}`,
-    );
-    throw e;
-  }
+  let result: any;
+  let lastErr: any;
+  for (let attempt = 1; attempt <= SELECT_MAX_RETRIES; attempt++) {
+    let resp: any;
+    try {
+      resp = await client.chat.completions.create({
+        model: LLM_MODEL,
+        max_tokens: LLM_MAX_TOKENS,
+        messages: [
+          { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
+          { role: "user",   content: parts.join("\n") },
+        ],
+      });
+    } catch (e: any) {
+      lastErr = e;
+      console.error(
+        `[selectResources] [${attempt}/${SELECT_MAX_RETRIES}] LLM 调用失败`,
+        `type=${e?.constructor?.name}`,
+        `status=${e?.status ?? "-"}`,
+        `cause=${e?.cause?.code ?? e?.cause?.message ?? "-"}`,
+        `msg=${e?.message}`,
+      );
+      if (attempt < SELECT_MAX_RETRIES) await sleep(SELECT_RETRY_SLEEP);
+      continue;
+    }
 
-  let raw = resp.choices[0].message.content?.trim() ?? "{}";
-  if (raw.includes("```")) {
-    raw = raw.split("```")[1];
-    if (raw.startsWith("json")) raw = raw.slice(4);
+    let raw = resp.choices[0].message.content?.trim() ?? "{}";
+    if (raw.includes("```")) {
+      raw = raw.split("```")[1];
+      if (raw.startsWith("json")) raw = raw.slice(4);
+    }
+    try {
+      result = JSON.parse(raw.trim());
+      break;
+    } catch (e: any) {
+      lastErr = e;
+      console.log(`    [selectResources] [${attempt}/${SELECT_MAX_RETRIES}] 返回非 JSON: ${e}`);
+      if (attempt < SELECT_MAX_RETRIES) await sleep(SELECT_RETRY_SLEEP);
+    }
   }
-  const result = JSON.parse(raw.trim());
+  if (result === undefined) throw lastErr;
+
   const refsRaw: any[] = result.reference_images ?? [];
   const refPaths = refsRaw
     .map((item) => (typeof item === "object" ? item.path : item) as string)
@@ -1020,8 +1053,8 @@ async function runGroupTtsPipeline(
       let words: TtsWord[] = [];
       await ttsSem.acquire();
       try {
-        // TTS 重试机制：限流或临时错误时等待 3 秒后重试，最多重试 3 次
-        for (let retry = 0; retry <= 3; retry++) {
+        // TTS 重试机制：限流或临时错误时等待 3 秒后重试，最多重试 TTS_MAX_RETRIES 次
+        for (let retry = 0; retry <= TTS_MAX_RETRIES; retry++) {
           try {
             const r = await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p, wantTs ? { timestamp: true } : undefined);
             words = r.words;
@@ -1031,8 +1064,8 @@ async function runGroupTtsPipeline(
                                err.message?.includes("HTTP 403") ||
                                err.message?.includes("HTTP 429") ||
                                err.message?.includes("HTTP 500");
-            if (isRetryable && retry < 3) {
-              console.warn(`[TTS] 临时错误，${3}秒后重试 (${retry + 1}/3): ${err.message?.slice(0, 100)}`);
+            if (isRetryable && retry < TTS_MAX_RETRIES) {
+              console.warn(`[TTS] 临时错误，${3}秒后重试 (${retry + 1}/${TTS_MAX_RETRIES}): ${err.message?.slice(0, 100)}`);
               await new Promise(r => setTimeout(r, 3000));
             } else {
               throw err; // 非重试错误或重试次数用尽，抛出异常
@@ -1635,17 +1668,33 @@ export async function globalAlignAndMerge(
 
   console.log(`[全局对齐] 共 ${validGroups.length} 个有效 group`);
 
-  // ── 量取时长 ──
+  // ── 量取时长 + 分辨率/帧率（ComfyUI 偶发对某个 panel 生成异常尺寸的视频，
+  //    若不统一，最终 -c:v copy 拼接会在该分段附近花屏/卡死，见 g04 静止画面事故）──
   console.log("\n[全局对齐] 量取各 group 时长...");
   let totalVideo = 0;
   let totalAudio = 0;
+  const videoDims: VideoDims[] = [];
   for (const group of validGroups) {
     totalVideo += await getMediaDuration(group.videoPath);
     totalAudio += await getMediaDuration(group.ttsPath);
+    videoDims.push(await probeVideoDims(group.videoPath));
   }
 
   console.log(`[全局对齐] 视频总时长: ${totalVideo.toFixed(1)}s`);
   console.log(`[全局对齐] 音频总时长: ${totalAudio.toFixed(1)}s`);
+
+  // 目标分辨率/帧率：取众数，个别偏离的 group 统一缩放对齐，保证拼接时所有分段同规格
+  const dimKey = (d: VideoDims) => `${d.width}x${d.height}@${d.fps}`;
+  const dimFreq = new Map<string, number>();
+  for (const d of videoDims) dimFreq.set(dimKey(d), (dimFreq.get(dimKey(d)) ?? 0) + 1);
+  const [targetKey] = [...dimFreq.entries()].sort((a, b) => b[1] - a[1])[0];
+  const [targetWH, targetFpsStr] = targetKey.split("@");
+  const [targetW, targetH] = targetWH.split("x").map(Number);
+  const targetFps = Number(targetFpsStr);
+  const mismatchCount = videoDims.filter((d) => dimKey(d) !== targetKey).length;
+  if (mismatchCount > 0) {
+    console.log(`[全局对齐] 检测到 ${mismatchCount} 个 group 分辨率/帧率异常（主流规格 ${targetKey}），已统一缩放对齐`);
+  }
 
   // ── 计算目标速度 ──
   const { T, videoSpeed, audioSpeed, note } = computeAlignTarget(totalVideo, totalAudio);
@@ -1664,11 +1713,14 @@ export async function globalAlignAndMerge(
     const adjVid = path.join(tmpDir, `v${idx}.mp4`);
     const adjAud = path.join(tmpDir, `a${idx}.mp3`);
 
-    // 视频调速：setpts=(1/speed)*PTS
+    // 视频调速 + 统一分辨率/帧率：setpts=(1/speed)*PTS；scale(增大填满)+crop+fps 保证所有分段同规格，
+    // 否则最终 -c:v copy 拼接遇到尺寸/帧率突变会在该分段花屏/卡死。用 increase+crop 而非 decrease+pad，
+    // 避免黑边（代价是偏离主流规格的 group 会被裁掉少量边缘，而不是补黑边）
     const ptsExpr = `${(1 / videoSpeed).toFixed(6)}*PTS`;
+    const vf = `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase,crop=${targetW}:${targetH},fps=${targetFps},setpts=${ptsExpr}`;
     await execFileAsync("ffmpeg", [
       "-y", "-i", group.videoPath,
-      "-filter:v", `setpts=${ptsExpr}`,
+      "-filter:v", vf,
       "-c:v", "libx264", "-preset", "fast", "-crf", "18",
       "-an",
       adjVid,
