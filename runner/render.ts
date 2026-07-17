@@ -141,6 +141,10 @@ const DOUBAO_VOICES      = (ttsCfg.voices ?? {
 const DOUBAO_NARRATOR    = (ttsCfg.narrator_voice ?? "zh_male_changtianyi_mars_bigtts") as string;
 const TTS_CONCURRENCY    = (ttsCfg.concurrency ?? 4) as number;
 const TTS_MAX_RETRIES    = 5; // 限流/临时错误时的最大重试次数
+// 豆包 TTS 偶发返回"一小段正常语音 + 一大坨静音尾巴"的畸形音频（实测约 3% 概率）。
+// 正常语速普遍在 2.5~4.7 字/秒，故障样本 0.34/0.7 字/秒，中间取值留安全余量。
+const TTS_MIN_CHARS_PER_SECOND = 1.2;
+const TTS_QUALITY_RETRY_MAX    = 2; // 语速异常时的额外重试次数（与网络错误重试分开计）
 // 是否启用角色音色：关闭时音色照常分配，但 TTS 合成时全部强制用旁白音
 const ASSIGN_CHARACTER_VOICE = (ttsCfg.assign_character_voice ?? true) as boolean;
 
@@ -1055,26 +1059,43 @@ async function runGroupTtsPipeline(
         : DOUBAO_NARRATOR;
       usedVoices[j] = voice;
       let words: TtsWord[] = [];
+      const segText = String(s.text ?? "").replace(/\s/g, "");
       await ttsSem.acquire();
       try {
-        // TTS 重试机制：限流或临时错误时等待 3 秒后重试，最多重试 TTS_MAX_RETRIES 次
-        for (let retry = 0; retry <= TTS_MAX_RETRIES; retry++) {
-          try {
-            const r = await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p, wantTs ? { timestamp: true } : undefined);
-            words = r.words;
-            break; // 成功则跳出重试循环
-          } catch (err: any) {
-            const isRetryable = err.message?.includes("quota exceeded") ||
-                               err.message?.includes("HTTP 403") ||
-                               err.message?.includes("HTTP 429") ||
-                               err.message?.includes("HTTP 500");
-            if (isRetryable && retry < TTS_MAX_RETRIES) {
-              console.warn(`[TTS] 临时错误，${3}秒后重试 (${retry + 1}/${TTS_MAX_RETRIES}): ${err.message?.slice(0, 100)}`);
-              await new Promise(r => setTimeout(r, 3000));
-            } else {
-              throw err; // 非重试错误或重试次数用尽，抛出异常
+        qualityLoop:
+        for (let qAttempt = 0; qAttempt <= TTS_QUALITY_RETRY_MAX; qAttempt++) {
+          // TTS 重试机制：限流或临时错误时等待 3 秒后重试，最多重试 TTS_MAX_RETRIES 次
+          for (let retry = 0; retry <= TTS_MAX_RETRIES; retry++) {
+            try {
+              const r = await ttsExecApi(String(s.text ?? ""), voice, String(s.style ?? ""), p, wantTs ? { timestamp: true } : undefined);
+              words = r.words;
+              break; // 成功则跳出重试循环
+            } catch (err: any) {
+              const isRetryable = err.message?.includes("quota exceeded") ||
+                                 err.message?.includes("HTTP 403") ||
+                                 err.message?.includes("HTTP 429") ||
+                                 err.message?.includes("HTTP 500");
+              if (isRetryable && retry < TTS_MAX_RETRIES) {
+                console.warn(`[TTS] 临时错误，${3}秒后重试 (${retry + 1}/${TTS_MAX_RETRIES}): ${err.message?.slice(0, 100)}`);
+                await new Promise(r => setTimeout(r, 3000));
+              } else {
+                throw err; // 非重试错误或重试次数用尽，抛出异常
+              }
             }
           }
+
+          // 质检：豆包 TTS 偶发返回"一小段正常语音 + 一大坨静音尾巴"的畸形音频，
+          // 语速远低于正常范围（2.5~4.7 字/秒）即视为故障，重新合成
+          if (!segText.length) break qualityLoop;
+          const segDur = await getMediaDuration(p);
+          const rate = segText.length / segDur;
+          if (rate >= TTS_MIN_CHARS_PER_SECOND) break qualityLoop;
+          const tag = `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}`;
+          if (qAttempt === TTS_QUALITY_RETRY_MAX) {
+            console.warn(`[TTS] ${tag} 语速异常（${rate.toFixed(2)}字/秒），已重试 ${TTS_QUALITY_RETRY_MAX} 次仍未恢复，保留当前结果`);
+            break qualityLoop;
+          }
+          console.warn(`[TTS] ${tag} 语速异常（${rate.toFixed(2)}字/秒，疑似静音尾巴故障），重新合成 (${qAttempt + 1}/${TTS_QUALITY_RETRY_MAX})`);
         }
       } finally {
         ttsSem.release();
