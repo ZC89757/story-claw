@@ -455,17 +455,21 @@ async function selectResources(
       continue;
     }
 
-    let raw = resp.choices[0].message.content?.trim() ?? "{}";
+    const rawOriginal = resp.choices[0].message.content ?? "";
+    let raw = rawOriginal.trim() || "{}";
     if (raw.includes("```")) {
       raw = raw.split("```")[1];
       if (raw.startsWith("json")) raw = raw.slice(4);
     }
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) raw = m[0];
     try {
       result = JSON.parse(raw.trim());
       break;
     } catch (e: any) {
       lastErr = e;
       console.log(`    [selectResources] [${attempt}/${SELECT_MAX_RETRIES}] 返回非 JSON: ${e}`);
+      console.log(`    [selectResources] 原始返回:\n${rawOriginal}`);
       if (attempt < SELECT_MAX_RETRIES) await sleep(SELECT_RETRY_SLEEP);
     }
   }
@@ -1631,11 +1635,13 @@ function computeAlignTarget(totalVideo: number, totalAudio: number): {
  * 步骤：
  *   1. 收集所有场景的 group（已按 globalOrder 排序）
  *   2. 量取所有 group 的视频/音频总时长
- *   3. 用 computeAlignTarget 计算全局目标速度
- *   4. 对每个 group：用 ffmpeg 调整视频 setpts 和音频 atempo，输出临时文件
- *   5. ffmpeg concat 所有调整后的视频 → 合成视频
- *   6. ffmpeg concat 所有调整后的音频 → 合成音频
- *   7. ffmpeg mux 合成视频 + 合成音频 → 集最终 mp4
+ *   3. 用 computeAlignTarget 估算视频调速比例
+ *   4. 调整每个 group 视频 setpts → 拼接 → ffprobe 量出真实总时长（LTX 帧栅格 +
+ *      fps 重采样会引入量化误差，实际时长无法在编码前精确预测）
+ *   5. 用真实视频时长反推精确的音频速度（而非用理论目标时长），调整每个 group
+ *      音频 atempo → 拼接
+ *   6. ffmpeg mux 合成视频 + 合成音频 → 集最终 mp4（此时两者时长已精确对齐，
+ *      -shortest 仅作安全网，不会再产生可感知的截断）
  */
 export async function globalAlignAndMerge(
   results: SceneRenderResult[],
@@ -1696,22 +1702,21 @@ export async function globalAlignAndMerge(
     console.log(`[全局对齐] 检测到 ${mismatchCount} 个 group 分辨率/帧率异常（主流规格 ${targetKey}），已统一缩放对齐`);
   }
 
-  // ── 计算目标速度 ──
-  const { T, videoSpeed, audioSpeed, note } = computeAlignTarget(totalVideo, totalAudio);
-  console.log(`[全局对齐] 目标时长: ${T.toFixed(1)}s  视频速度: ×${videoSpeed.toFixed(3)}  音频速度: ×${audioSpeed.toFixed(3)}`);
+  // ── 估算视频调速比例（仅决定视频侧调多快，音频侧留到阶段二按真实视频时长精确计算）──
+  const { T, videoSpeed, note } = computeAlignTarget(totalVideo, totalAudio);
+  console.log(`[全局对齐] 理论目标时长: ${T.toFixed(1)}s  视频速度: ×${videoSpeed.toFixed(3)}`);
   console.log(`[全局对齐] ${note}`);
 
   const tmpDir = path.join(epDir, "_align_tmp");
   await fs.mkdir(tmpDir, { recursive: true });
 
-  // ── 调整每个 group 的视频和音频 ──
+  // ── 阶段一：只调视频。LTX 帧栅格 + 这里的 fps 重采样都会引入量化误差，
+  //    实际产出时长在编码前无法精确预测，拼接后用 ffprobe 量出真实值，
+  //    取代"理论 T"作为阶段二音频对齐的精确目标 ──
   const adjustedVideos: string[] = [];
-  const adjustedAudios: string[] = [];
-
   await Promise.all(validGroups.map(async (group, i) => {
     const idx    = String(i).padStart(3, "0");
     const adjVid = path.join(tmpDir, `v${idx}.mp4`);
-    const adjAud = path.join(tmpDir, `a${idx}.mp3`);
 
     // 视频调速 + 统一分辨率/帧率：setpts=(1/speed)*PTS；scale(增大填满)+crop+fps 保证所有分段同规格，
     // 否则最终 -c:v copy 拼接遇到尺寸/帧率突变会在该分段花屏/卡死。用 increase+crop 而非 decrease+pad，
@@ -1726,28 +1731,13 @@ export async function globalAlignAndMerge(
       adjVid,
     ]);
 
-    // 音频调速：atempo（范围 0.5~2.0，本方案约束在 0.7~1.6 内，单个滤镜够用）
-    await execFileAsync("ffmpeg", [
-      "-y", "-i", group.ttsPath,
-      "-filter:a", `atempo=${audioSpeed.toFixed(6)}`,
-      "-c:a", "libmp3lame", "-q:a", "2",
-      adjAud,
-    ]);
-
     adjustedVideos[i] = adjVid;
-    adjustedAudios[i] = adjAud;
-    console.log(`  [对齐] group ${idx} (order=${group.globalOrder}) 完成`);
+    console.log(`  [对齐] group ${idx} (order=${group.globalOrder}) 视频完成`);
   }));
 
-  // ── concat 所有调整后的视频 ──
   const mergedVideo = path.join(tmpDir, "_merged_video.mp4");
-  const mergedAudio = path.join(tmpDir, "_merged_audio.mp3");
-
   const vidListPath = path.join(tmpDir, "_vid_list.txt");
-  const audListPath = path.join(tmpDir, "_aud_list.txt");
-
   await fs.writeFile(vidListPath, adjustedVideos.map((p) => `file '${p.replace(/\\/g, "/")}'`).join("\n"), "utf-8");
-  await fs.writeFile(audListPath, adjustedAudios.map((p) => `file '${p.replace(/\\/g, "/")}'`).join("\n"), "utf-8");
 
   console.log("[全局对齐] 拼接视频...");
   await execFileAsync("ffmpeg", [
@@ -1757,6 +1747,37 @@ export async function globalAlignAndMerge(
     mergedVideo,
   ]);
 
+  // ── 阶段二：量出视频真实时长，反推精确的音频速度，让音频严格贴合视频的
+  //    真实（已量化）长度，避免最终 mux 时 -shortest 把音频尾部多余的部分切掉 ──
+  const videoActual    = await getMediaDuration(mergedVideo);
+  const audioSpeedRaw   = totalAudio / videoActual;
+  const audioSpeed      = Math.min(Math.max(audioSpeedRaw, GLOBAL_AUDIO_SPEED_MIN), GLOBAL_AUDIO_SPEED_MAX);
+  console.log(`[全局对齐] 视频真实时长: ${videoActual.toFixed(3)}s（理论目标 ${T.toFixed(3)}s，量化误差 ${(videoActual - T).toFixed(3)}s）`);
+  if (audioSpeed !== audioSpeedRaw) {
+    console.log(`[全局对齐] 精确音频速度 ×${audioSpeedRaw.toFixed(3)} 超出范围 [${GLOBAL_AUDIO_SPEED_MIN}, ${GLOBAL_AUDIO_SPEED_MAX}]，已夹到 ×${audioSpeed.toFixed(3)}`);
+  }
+  console.log(`[全局对齐] 音频速度: ×${audioSpeed.toFixed(3)}（按视频真实时长精确对齐，非理论估算）`);
+
+  const adjustedAudios: string[] = [];
+  await Promise.all(validGroups.map(async (group, i) => {
+    const idx    = String(i).padStart(3, "0");
+    const adjAud = path.join(tmpDir, `a${idx}.mp3`);
+
+    // 音频调速：atempo（范围 0.5~2.0，本方案约束在 0.7~1.6 内，单个滤镜够用）
+    await execFileAsync("ffmpeg", [
+      "-y", "-i", group.ttsPath,
+      "-filter:a", `atempo=${audioSpeed.toFixed(6)}`,
+      "-c:a", "libmp3lame", "-q:a", "2",
+      adjAud,
+    ]);
+
+    adjustedAudios[i] = adjAud;
+  }));
+
+  const mergedAudio = path.join(tmpDir, "_merged_audio.mp3");
+  const audListPath = path.join(tmpDir, "_aud_list.txt");
+  await fs.writeFile(audListPath, adjustedAudios.map((p) => `file '${p.replace(/\\/g, "/")}'`).join("\n"), "utf-8");
+
   console.log("[全局对齐] 拼接音频...");
   await execFileAsync("ffmpeg", [
     "-y", "-f", "concat", "-safe", "0",
@@ -1765,7 +1786,8 @@ export async function globalAlignAndMerge(
     mergedAudio,
   ]);
 
-  // ── mux 合并 ──
+  // ── mux 合并（此时视频/音频时长已精确对齐，-shortest 仅作安全网，
+  //    实际差距应在毫秒级，不会再产生可感知的截断）──
   console.log("[全局对齐] mux 合并视频+音频...");
   await execFileAsync("ffmpeg", [
     "-y",
@@ -1781,7 +1803,7 @@ export async function globalAlignAndMerge(
   await fs.rm(tmpDir, { recursive: true, force: true });
 
   console.log(`[全局对齐] 完成 → ${path.basename(episodeVideoPath)}`);
-  console.log(`  视频总: ${totalVideo.toFixed(1)}s → 目标: ${T.toFixed(1)}s  视频×${videoSpeed.toFixed(3)} 音频×${audioSpeed.toFixed(3)}`);
+  console.log(`  视频总: ${totalVideo.toFixed(1)}s → 实际: ${videoActual.toFixed(3)}s  视频×${videoSpeed.toFixed(3)} 音频×${audioSpeed.toFixed(3)}`);
 }
 
 // ── JSONL 解析（带容错）──────────────────────────────────────────────────────
