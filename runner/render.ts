@@ -1059,7 +1059,17 @@ async function runGroupTtsPipeline(
         : DOUBAO_NARRATOR;
       usedVoices[j] = voice;
       let words: TtsWord[] = [];
-      const segText = String(s.text ?? "").replace(/\s/g, "");
+      // 纯原文（去【】标注 + 空白），用于质检语速：含标注会高估字数，
+      // 让"前段语音+长静音尾巴"的畸形音频平均语速落在正常区间而漏判
+      // （实测 36 字纯原文被返回 60s 音频、末尾 55s 静音，若按含标注的 149 字算
+      //  得 2.48 字/秒骗过 1.2 阈值，按纯原文 36 字算得 0.6 字/秒才触发重试）。
+      const segText = String(s.text ?? "").replace(/【[^】]*】/g, "").replace(/\s/g, "");
+      // 溯源：把传给豆包的原始 segment.text 落盘，故障时可直接核对传参（含标注？
+      // 含空格？LLM 是否按指令去标注），不用再靠推断。文件名与音频子片段同名。
+      try {
+        await fs.writeFile(path.join(tmpDir, `g${String(gi).padStart(2, "0")}_s${String(j).padStart(2, "0")}.txt`),
+          String(s.text ?? ""), "utf-8");
+      } catch { /* 落盘失败不影响合成 */ }
       await ttsSem.acquire();
       try {
         qualityLoop:
