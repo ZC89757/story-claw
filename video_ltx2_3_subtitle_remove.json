@@ -1,0 +1,718 @@
+{
+  "1241": {
+    "inputs": {
+      "frame_rate": 24,
+      "positive": [
+        "2483",
+        0
+      ],
+      "negative": [
+        "2612",
+        0
+      ]
+    },
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXV条件"
+    }
+  },
+  "2483": {
+    "inputs": {
+      "text": [
+        "5131",
+        0
+      ],
+      "clip": [
+        "5023",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "2612": {
+    "inputs": {
+      "text": "pc game, console game, video game, ugly, 3d render, photo, still, static, slow",
+      "clip": [
+        "5023",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "3159": {
+    "inputs": {
+      "strength": 0.7,
+      "bypass": false,
+      "vae": [
+        "3940",
+        2
+      ],
+      "image": [
+        "3336",
+        0
+      ],
+      "latent": [
+        "5126",
+        0
+      ]
+    },
+    "class_type": "LTXVImgToVideoConditionOnly",
+    "_meta": {
+      "title": "🅛🅣🅧 LTXV Img To Video Condition Only"
+    }
+  },
+  "3336": {
+    "inputs": {
+      "img_compression": 33,
+      "image": [
+        "5129",
+        0
+      ]
+    },
+    "class_type": "LTXVPreprocess",
+    "_meta": {
+      "title": "LTXV预处理"
+    }
+  },
+  "3940": {
+    "inputs": {
+      "ckpt_name": "ltx2.3/ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Checkpoint加载器（简易）"
+    }
+  },
+  "3980": {
+    "inputs": {
+      "frames_number": [
+        "5099",
+        1
+      ],
+      "frame_rate": [
+        "5100",
+        0
+      ],
+      "batch_size": 1,
+      "audio_vae": [
+        "4010",
+        0
+      ]
+    },
+    "class_type": "LTXVEmptyLatentAudio",
+    "_meta": {
+      "title": "LTXV 空音频潜空间"
+    }
+  },
+  "4010": {
+    "inputs": {
+      "ckpt_name": "ltx2.3/ltx-2.3-22b-dev-fp8.safetensors"
+    },
+    "class_type": "LTXVAudioVAELoader",
+    "_meta": {
+      "title": "LTXV音频VAE加载器"
+    }
+  },
+  "4528": {
+    "inputs": {
+      "video_latent": [
+        "5012",
+        2
+      ],
+      "audio_latent": [
+        "3980",
+        0
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "5012": {
+    "inputs": {
+      "frame_idx": 0,
+      "strength": 0.8,
+      "latent_downscale_factor": 1,
+      "crop": "disabled",
+      "use_tiled_encode": false,
+      "tile_size": 256,
+      "tile_overlap": 64,
+      "positive": [
+        "1241",
+        0
+      ],
+      "negative": [
+        "1241",
+        1
+      ],
+      "vae": [
+        "3940",
+        2
+      ],
+      "latent": [
+        "3159",
+        0
+      ],
+      "image": [
+        "5085",
+        0
+      ]
+    },
+    "class_type": "LTXAddVideoICLoRAGuide",
+    "_meta": {
+      "title": "🅛🅣🅧 Add Video IC-LoRA Guide"
+    }
+  },
+  "5023": {
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+      "ckpt_name": "ltx2.3/ltx-2.3-22b-dev-fp8.safetensors",
+      "device": "default"
+    },
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": {
+      "title": "LTXV音频文本编码器加载器"
+    }
+  },
+  "5026": {
+    "inputs": {
+      "resize_type": "scale by multiplier",
+      "resize_type.multiplier": 1,
+      "scale_method": "area",
+      "input": [
+        "5120",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "调整图像/掩码大小"
+    }
+  },
+  "5069": {
+    "inputs": {
+      "frame_rate": [
+        "5100",
+        1
+      ],
+      "loop_count": 0,
+      "filename_prefix": "LTX-2",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "5142",
+        0
+      ],
+      "audio": [
+        "5099",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "5085": {
+    "inputs": {
+      "resize_type": "scale to multiple",
+      "resize_type.multiple": 8,
+      "scale_method": "area",
+      "input": [
+        "5026",
+        0
+      ]
+    },
+    "class_type": "ResizeImageMaskNode",
+    "_meta": {
+      "title": "调整图像/掩码大小"
+    }
+  },
+  "5094": {
+    "inputs": {
+      "preview_rate": 8,
+      "model": [
+        "5097",
+        0
+      ]
+    },
+    "class_type": "LTX2SamplingPreviewOverride",
+    "_meta": {
+      "title": "LTX2 Sampling Preview Override"
+    }
+  },
+  "5097": {
+    "inputs": {
+      "sage_attention": "disabled",
+      "allow_compile": false,
+      "model": [
+        "5140",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "5099": {
+    "inputs": {
+      "video": "vace_input_A.mp4",
+      "force_rate": 24,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "5100": {
+    "inputs": {
+      "value": "a",
+      "a": [
+        "5119",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "🔧 Simple Math"
+    }
+  },
+  "5102": {
+    "inputs": {
+      "noise": [
+        "5106",
+        0
+      ],
+      "guider": [
+        "5107",
+        0
+      ],
+      "sampler": [
+        "5108",
+        0
+      ],
+      "sigmas": [
+        "5109",
+        0
+      ],
+      "latent_image": [
+        "4528",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "自定义采样器（高级）"
+    }
+  },
+  "5104": {
+    "inputs": {
+      "seed": 373684881970111
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "5106": {
+    "inputs": {
+      "noise_seed": [
+        "5104",
+        0
+      ]
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "随机噪波"
+    }
+  },
+  "5107": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "5094",
+        0
+      ],
+      "positive": [
+        "5012",
+        0
+      ],
+      "negative": [
+        "5012",
+        1
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFG引导器"
+    }
+  },
+  "5108": {
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "K采样器选择"
+    }
+  },
+  "5109": {
+    "inputs": {
+      "sigmas": "1.0, 0.9375, 0.8125, 0.5625, 0.25, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "自定义Sigmas"
+    }
+  },
+  "5110": {
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "自定义Sigmas"
+    }
+  },
+  "5111": {
+    "inputs": {
+      "positive": [
+        "5012",
+        0
+      ],
+      "negative": [
+        "5012",
+        1
+      ],
+      "latent": [
+        "5112",
+        0
+      ]
+    },
+    "class_type": "LTXVCropGuides",
+    "_meta": {
+      "title": "LTXV裁剪指导"
+    }
+  },
+  "5112": {
+    "inputs": {
+      "av_latent": [
+        "5102",
+        0
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXV分离音视频潜空间"
+    }
+  },
+  "5113": {
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 512,
+      "temporal_overlap": 4,
+      "samples": [
+        "5111",
+        2
+      ],
+      "vae": [
+        "3940",
+        2
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE解码（分块）"
+    }
+  },
+  "5119": {
+    "inputs": {
+      "video_info": [
+        "5099",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfoLoaded",
+    "_meta": {
+      "title": "Video Info (Loaded) 🎥🅥🅗🅢"
+    }
+  },
+  "5120": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "letterbox",
+      "method": "lanczos",
+      "round_to_multiple": "32",
+      "scale_to_side": "longest",
+      "scale_to_length": [
+        "5156",
+        0
+      ],
+      "background_color": "#000000",
+      "image": [
+        "5099",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "图层工具：按宽高比缩放 V2"
+    }
+  },
+  "5123": {
+    "inputs": {
+      "width": [
+        "5128",
+        0
+      ],
+      "height": [
+        "5128",
+        1
+      ],
+      "color": "#FFFFFF"
+    },
+    "class_type": "LayerUtility: ColorImage",
+    "_meta": {
+      "title": "图层工具：纯色图像"
+    }
+  },
+  "5124": {
+    "inputs": {
+      "amount": [
+        "5119",
+        1
+      ],
+      "image": [
+        "5123",
+        0
+      ]
+    },
+    "class_type": "RepeatImageBatch",
+    "_meta": {
+      "title": "复制图像批次"
+    }
+  },
+  "5125": {
+    "inputs": {
+      "method": "intensity",
+      "image": [
+        "5124",
+        0
+      ]
+    },
+    "class_type": "Image To Mask",
+    "_meta": {
+      "title": "图像到遮罩"
+    }
+  },
+  "5126": {
+    "inputs": {
+      "grow_mask_by": 6,
+      "pixels": [
+        "5085",
+        0
+      ],
+      "vae": [
+        "3940",
+        2
+      ],
+      "mask": [
+        "5125",
+        0
+      ]
+    },
+    "class_type": "VAEEncodeForInpaint",
+    "_meta": {
+      "title": "VAE编码（局部重绘）"
+    }
+  },
+  "5128": {
+    "inputs": {
+      "image": [
+        "5120",
+        0
+      ]
+    },
+    "class_type": "easy imageSize",
+    "_meta": {
+      "title": "图像尺寸"
+    }
+  },
+  "5129": {
+    "inputs": {
+      "start_index": 0,
+      "num_frames": 1,
+      "images": [
+        "5120",
+        0
+      ]
+    },
+    "class_type": "GetImageRangeFromBatch",
+    "_meta": {
+      "title": "Get Image Range From Batch (Swwan)"
+    }
+  },
+  "5131": {
+    "inputs": {
+      "prompt": "去除视频画面中的短视频平台水印与字幕相关遮挡痕迹，恢复干净、清晰、自然的原始画面；保持人物、场景、动作、镜头运动、时序和整体风格一致，不改变原视频内容，只进行水印去除与细节修复。"
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "⚙️ CR Prompt Text"
+    }
+  },
+  "5132": {
+    "inputs": {
+      "prompt": "将视频转换为超高清画质，在消除伪影的同时重建高频细节，显著提升画面清晰度"
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "⚙️ CR Prompt Text"
+    }
+  },
+  "5138": {
+    "inputs": {
+      "lora_name": "ltx2.3/ltx-2.3-22b-distilled-lora-384.safetensors",
+      "strength_model": 0.5,
+      "model": [
+        "3940",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "5139": {
+    "inputs": {
+      "lora_name": "ltx2.3/ltx2.3-ic-watermark-remove-general.safetensors",
+      "strength_model": 1,
+      "model": [
+        "5138",
+        0
+      ]
+    },
+    "class_type": "LTXICLoRALoaderModelOnly",
+    "_meta": {
+      "title": "🅛🅣🅧 LTXIC Lo RA Loader Model Only 去水印lora"
+    }
+  },
+  "5140": {
+    "inputs": {
+      "lora_name": "ltx2.3/ltx2.3-ic-subtitles-remove-general.safetensors",
+      "strength_model": 1,
+      "model": [
+        "5139",
+        0
+      ]
+    },
+    "class_type": "LTXICLoRALoaderModelOnly",
+    "_meta": {
+      "title": "🅛🅣🅧 LTXIC Lo RA Loader Model Only  去字幕lora"
+    }
+  },
+  "5142": {
+    "inputs": {
+      "aspect_ratio": "9:16",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "crop",
+      "method": "lanczos",
+      "round_to_multiple": "8",
+      "scale_to_side": "longest",
+      "scale_to_length": [
+        "5156",
+        0
+      ],
+      "background_color": "#000000",
+      "image": [
+        "5113",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "图层工具：按宽高比缩放 V2"
+    }
+  },
+  "5146": {
+    "inputs": {
+      "inputcount": 2,
+      "direction": "right",
+      "match_image_size": false,
+      "image_1": [
+        "5099",
+        0
+      ],
+      "image_2": [
+        "5142",
+        0
+      ]
+    },
+    "class_type": "ImageConcatMulti",
+    "_meta": {
+      "title": "Image Concat Multi (Swwan)"
+    }
+  },
+  "5147": {
+    "inputs": {
+      "frame_rate": [
+        "5100",
+        1
+      ],
+      "loop_count": 0,
+      "filename_prefix": "LTX-2",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "5146",
+        0
+      ],
+      "audio": [
+        "5099",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "5156": {
+    "inputs": {
+      "Number": 1280
+    },
+    "class_type": "Int",
+    "_meta": {
+      "title": "整数"
+    }
+  }
+}
