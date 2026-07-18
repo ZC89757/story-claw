@@ -1,7 +1,7 @@
 {
   "1241": {
     "inputs": {
-      "frame_rate": 24,
+      "frame_rate": 25,
       "positive": [
         "2483",
         0
@@ -270,7 +270,7 @@
   "5099": {
     "inputs": {
       "video": "vace_input_A.mp4",
-      "force_rate": 24,
+      "force_rate": 0,
       "custom_width": 0,
       "custom_height": 0,
       "frame_load_cap": 0,
