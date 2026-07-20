@@ -416,13 +416,17 @@ const RESOURCE_SELECTOR_SYSTEM = `你是分镜资源选择专员。根据 panel 
    - 把场景/背景的文字描述替换为 "the background in image N"（N 与场景参考图对应）
    - N 从 1 开始，与 reference_images 顺序一致；其余动作、姿态、情绪、景别、光影描述全部保留，不大幅改写
 3. 选图策略（所有景别都必须配场景图，没有例外）：
-   - 所有 panel 一律选一张场景图作为背景参考，并把背景文字替换为 "the background in image N"
-   - 特写 / 近景：场景图 + 角色图（面部细节为主，但背景必须有场景图）
-   - 中景：角色图 + 场景图
-   - 全景 / 远景：场景图为主，角色图可选
+   - 所有 panel 一律选一张场景图作为背景参考
+   - 特写 / 近景：场景图 + 角色图（面部细节为主，但背景必须有场景图）。背景文字替换为 "a close-up cropped slice of the background in image N"（只取场景图的局部一小块作背景，不画全景）
+   - 中景：角色图 + 场景图，背景文字替换为 "the background in image N"
+   - 全景 / 远景：场景图为主，角色图可选，背景文字替换为 "the background in image N"
 4. 若某 [角色名·阶段] 在资源目录里找不到对应角色，则把该标签替换为不带方括号的简短英文描述（如"the boy"），不要把方括号留在提示词里；切勿保留中文人名在 image_prompt 里
-5. 若整个 panel 无合适角色资源，reference_images 只含场景图，把 image_prompt 里的所有 [..] 角色方括号去掉（背景文字替换为 the background in image N）
-6. 若有上一 panel 上下文：根据其信息，确保空间布局、人物位置、动作方向自然衔接
+5. 画外人物剥离：image_prompt 中可能出现未加方括号的中文人名。说明该角色为画外、不入画，故未标方括号、也未为其选参考图。对这类裸中文人名：
+   - 视为画外人物，把人名连同其朝向/位置描述删掉，对画外人物的行为改成对镜头的行为
+   - 绝不可让裸中文人名留在改写后的 image_prompt 里，否则生图模型会试图画出该第二人物，而参考图里没有他，导致构图错乱或崩画面
+   - 这是对人名的局部清理，不受规则2"不大幅改写"约束
+6. 若整个 panel 无合适角色资源，reference_images 只含场景图，把 image_prompt 里的所有 [..] 角色方括号去掉（背景文字替换为 the background in image N）
+7. 若有上一 panel 上下文：根据其信息，确保空间布局、人物位置、动作方向自然衔接
 
 reference_images 中每项必须包含资源目录里"路径:"后面的完整路径字符串（不得修改）和 role 字段。
 
@@ -446,6 +450,7 @@ async function selectResources(
   currentText: string,
   prevContext: any | null,
   fullSceneText: string,
+  prevGroupEndPositions: string | null,
 ): Promise<SelectResult> {
   const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
   const parts = [
@@ -460,6 +465,10 @@ async function selectResources(
     parts.push(`shot_type: ${prevContext.shot_type ?? ""}`);
     parts.push(`image_prompt: ${prevContext.image_prompt ?? ""}`);
     parts.push(`video_prompt: ${prevContext.video_prompt ?? ""}`);
+  }
+  if (prevGroupEndPositions) {
+    parts.push("\n== 生图参考的人物姿态或相对位置 (end_positions) ==");
+    parts.push(prevGroupEndPositions);
   }
   parts.push(`\n${catalog.text}`);
 
@@ -1514,7 +1523,8 @@ export async function renderScene(
               console.log(`  [${sceneName}][${prefix}] 图片已存在，跳过生图`);
               actualImg = imgPath;
             } else {
-              const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, getPrevCtx(gi, pi), fullSceneText);
+              const prevEndPos = gi > 0 ? (groups[gi - 1].end_positions ?? null) : null;
+              const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, getPrevCtx(gi, pi), fullSceneText, prevEndPos);
               // 兜底：选择器若漏剥离 [角色名·阶段] 身份标签，避免中文身份词污染生图
               const cleanPrompt = imagePrompt.replace(/\[[^\]]*\]/g, refPaths.length ? "the person in image 1" : "the person");
               console.log(`  [${sceneName}][${prefix}] 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
