@@ -63,18 +63,16 @@ for _bin in ("/root/miniconda3/bin", "/usr/local/ffmpeg/bin"):
     if _bin not in os.environ.get("PATH", ""):
         os.environ["PATH"] = f"{_bin}:{os.environ.get('PATH', '')}"
 
-# ─── 画面质检 Gate 配置（Gate1/2/3 共用同一个多模态模型，重试阈值各自独立）─────
+# ─── 视觉模型与人物一致性质检配置 ──────────────────────────────────────────────
 VISION_BASE_URL   = "https://zenmux.ai/api/anthropic"
 VISION_API_KEY    = "xxxxx"
 
-# 以下三项可在 dashboard 页面上改，持久化到 GATE_CONFIG_PATH，重启进程不丢、改完立即生效：
-#   - VISION_MODEL：comfy_person_face_gate_node.py（Gate1/2）每次调用前会来 GET /vision_model 取值；
-#     Gate3（本进程内）调用 call_vision_llm 时直接读这个全局变量，天然实时生效。
-#   - GATE12_RETRY_LIMIT / GATE3_RETRY_LIMIT：gate_decide() 每次调用时读全局变量判断，无需重启。
+# 以下两项可在 dashboard 页面上改，持久化到 GATE_CONFIG_PATH，重启进程不丢、改完立即生效：
+#   - VISION_MODEL：人物一致性 Gate1/2 和去字幕前置探测共用；
+#   - GATE12_RETRY_LIMIT：gate_decide() 每次调用时读取，无需重启。
 GATE_CONFIG_PATH   = Path("/root/gate_config.json")
 _DEFAULT_VISION_MODEL       = "stepfun/step-3.7-flash"
 _DEFAULT_GATE12_RETRY_LIMIT = 5
-_DEFAULT_GATE3_RETRY_LIMIT  = 5
 _gate_config_lock = threading.Lock()
 
 
@@ -89,14 +87,12 @@ def _save_gate_config() -> None:
     GATE_CONFIG_PATH.write_text(json.dumps({
         "vision_model":       VISION_MODEL,
         "gate12_retry_limit": GATE12_RETRY_LIMIT,
-        "gate3_retry_limit":  GATE3_RETRY_LIMIT,
     }, ensure_ascii=False), encoding="utf-8")
 
 
 _loaded_cfg        = _load_gate_config()
 VISION_MODEL       = _loaded_cfg.get("vision_model") or _DEFAULT_VISION_MODEL
 GATE12_RETRY_LIMIT = int(_loaded_cfg.get("gate12_retry_limit") or _DEFAULT_GATE12_RETRY_LIMIT)
-GATE3_RETRY_LIMIT  = int(_loaded_cfg.get("gate3_retry_limit")  or _DEFAULT_GATE3_RETRY_LIMIT)
 
 
 def set_vision_model(model: str) -> None:
@@ -106,11 +102,10 @@ def set_vision_model(model: str) -> None:
         _save_gate_config()
 
 
-def set_gate_retry_limits(gate12: int, gate3: int) -> None:
-    global GATE12_RETRY_LIMIT, GATE3_RETRY_LIMIT
+def set_gate_retry_limit(gate12: int) -> None:
+    global GATE12_RETRY_LIMIT
     with _gate_config_lock:
         GATE12_RETRY_LIMIT = gate12
-        GATE3_RETRY_LIMIT  = gate3
         _save_gate_config()
 
 # 去字幕前置探测用的 prompt：共用同一套"抽中间3帧
@@ -141,18 +136,15 @@ _comfy_ready_lock = threading.Lock()
 
 _history_lock = threading.Lock()
 
-# (job_key, gate) -> 该 gate 自己的连续失败次数。Gate1/2（gate="person_face"）和
-# Gate3（gate="subtitle"）分开计数、互不影响——同一条视频重试时 Gate1/2 通常一直通过，
-# 如果共用一个计数器，Gate1/2 每次"通过"都会把计数器清零，导致 Gate3 的失败永远
-# 攒不到阈值、无限重试（曾经踩过这个坑）。分开后各自独立累积到自己的阈值才放行。
-_gate_attempts: dict[tuple[str, str], int] = {}
+# job_key -> 人物一致性 Gate1/2 的连续失败次数。
+_gate_attempts: dict[str, int] = {}
 _gate_lock = threading.Lock()
 
 
-def gate_decide(job_key: str, gate: str, passed: bool) -> str:
+def gate_decide(job_key: str, passed: bool) -> str:
     """返回 'continue'（通过）| 'reject'（未达上限，拦下重来）| 'accept_anyway'（达到上限，放行）"""
-    limit = GATE12_RETRY_LIMIT if gate == "person_face" else GATE3_RETRY_LIMIT
-    key = (job_key, gate)
+    key = job_key
+    limit = GATE12_RETRY_LIMIT
     with _gate_lock:
         if passed:
             _gate_attempts.pop(key, None)
@@ -444,7 +436,7 @@ def _run_i2v_phase() -> None:
         _submit_and_wait_i2v(prompt_id)
 
 
-# ─── 抽帧工具（去字幕前置探测 + Gate3 残留检测共用）────────────────────────────
+# ─── 去字幕前置探测的抽帧工具 ─────────────────────────────────────────────────
 VSR_FFPROBE = "/usr/local/ffmpeg/bin/ffprobe"
 
 
@@ -468,8 +460,7 @@ def run_ltx_subtitle_removal(video_path: str, output_name: str) -> tuple[str, bo
     像旧流程那样在阶段之间调 /free 腾显存。
 
     走到这里说明 check_subtitle_presence 前置探测已经判定有字幕，一定会做一次
-    真实生成，第二个返回值恒为 True（保留 run_sttn 原来 (path, had_sub) 的
-    返回约定，方便 _run_sttn_and_gate3 无缝调用）。
+    真实生成，第二个返回值恒为 True（保留 (path, had_sub) 返回约定，供字幕阶段调用）。
     返回输出视频绝对路径（在 COMFY_OUTPUT/pipeline/ 下）。
     """
     wf = json.loads(Path(WF_SUBTITLE_REMOVE).read_text(encoding="utf-8"))
@@ -508,7 +499,7 @@ def _extract_middle_frames(video_path: str, n: int = 3) -> list[bytes]:
     frame_dur = 1.0 / fps
     lo, hi = frame_dur, max(frame_dur, dur - frame_dur)  # 排除首尾各一帧
     out: list[bytes] = []
-    with tempfile.TemporaryDirectory(prefix="gate3_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="subtitle_probe_") as tmp:
         for i in range(n):
             t = lo + (hi - lo) * (i + 1) / (n + 1)
             png_path = os.path.join(tmp, f"{i}.png")
@@ -542,7 +533,7 @@ def check_subtitle_presence(video_path: str) -> tuple[bool, str]:
 
 
 # ─── STTN 阶段（调度循环消费 sttn_pending）─────────────────────────────────────
-def _run_sttn_and_gate3(prompt_id: str) -> None:
+def _run_subtitle_stage(prompt_id: str) -> None:
     with _jobs_lock:
         job = _jobs.get(prompt_id)
     if not job:
@@ -591,7 +582,7 @@ def _run_sttn_phase() -> None:
                 prompt_id = sttn_pending.get_nowait()
             except queue.Empty:
                 return
-            _run_sttn_and_gate3(prompt_id)
+            _run_subtitle_stage(prompt_id)
 
     n = max(1, STTN_CONCURRENCY)
     threads = [threading.Thread(target=worker, daemon=True) for _ in range(n)]
@@ -632,7 +623,7 @@ def extract_panel_params(wf: dict, prompt_id: str) -> dict:
     img_path.write_bytes(base64.b64decode(img_b64))
     output_name = f"wrap_{prompt_id[:8]}"
     # job_key：同一条视频每次重试时参考图/prompt/时长/宽高比字节级不变，用哈希
-    # 识别"这是第几次重试同一条视频"，驱动 Gate1/2/3 共享的重试上限，不用改 render.ts。
+    # 识别"这是第几次重试同一条视频"，驱动人物一致性 Gate1/2 的重试上限，不用改 render.ts。
     job_key = hashlib.sha256(
         (img_b64 + "|" + prompt + "|" + str(duration) + "|" + aspect).encode()
     ).hexdigest()[:16]
@@ -828,19 +819,18 @@ def render_dashboard() -> str:
     }}
     function saveGateRetryLimit(){{
       const gate12 = parseInt(document.getElementById('gate12LimitInput').value, 10);
-      const gate3  = parseInt(document.getElementById('gate3LimitInput').value, 10);
       const msg = document.getElementById('gateLimitMsg');
-      if(!gate12 || !gate3 || gate12 < 1 || gate3 < 1) {{
+      if(!gate12 || gate12 < 1) {{
         msg.style.color = '#dc2626'; msg.textContent = '阈值必须是 >=1 的整数';
         return;
       }}
       fetch('/gate_retry_limit', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{gate12: gate12, gate3: gate3}}),
+        body: JSON.stringify({{gate12: gate12}}),
       }}).then(r=>r.json()).then(d=>{{
         msg.style.color = d.ok ? '#16a34a' : '#dc2626';
-        msg.textContent = d.ok ? ('已保存 → Gate1/2='+d.gate12+' Gate3='+d.gate3) : ('保存失败：' + (d.error || ''));
+        msg.textContent = d.ok ? ('已保存 → 人物一致性='+d.gate12) : ('保存失败：' + (d.error || ''));
         setTimeout(()=>{{msg.textContent='';}}, 4000);
       }}).catch(e=>{{ msg.style.color = '#dc2626'; msg.textContent = '请求失败：' + e; }});
     }}
@@ -856,7 +846,7 @@ def render_dashboard() -> str:
     <button onclick="clearJobs()" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">清空任务</button>
   </div>
   <div class="card">
-    <h3>Gate 视觉模型（Gate1/2/3 共用）</h3>
+    <h3>视觉模型（人物一致性 + 去字幕前置检测共用）</h3>
     <input type="text" id="visionModelInput" value="{html.escape(VISION_MODEL)}"
       placeholder="例如 stepfun/step-3.7-flash"
       style="width:320px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
@@ -864,12 +854,9 @@ def render_dashboard() -> str:
     <span id="visionModelMsg" style="margin-left:10px;font-size:12px"></span>
   </div>
   <div class="card">
-    <h3>Gate 重试阈值（Gate1/2、Gate3 各自独立计数，互不影响）</h3>
-    Gate1/2（人物一致性）：
+    <h3>人物一致性重试阈值</h3>
+    Gate1/2：
     <input type="number" id="gate12LimitInput" value="{GATE12_RETRY_LIMIT}" min="1"
-      style="width:70px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
-    &nbsp;&nbsp;Gate3（残留字幕）：
-    <input type="number" id="gate3LimitInput" value="{GATE3_RETRY_LIMIT}" min="1"
       style="width:70px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
     <button onclick="saveGateRetryLimit()" style="background:#1d4ed8;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;margin-left:8px">保存</button>
     <span id="gateLimitMsg" style="margin-left:10px;font-size:12px"></span>
@@ -954,7 +941,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self._json(400, {"error": "bad json"})
 
-            action = gate_decide(job_key, gate, passed)
+            action = gate_decide(job_key, passed)
             log(f"gate_verdict job_key={job_key[:8]} gate={gate} passed={passed} → {action} ({reason[:120]})")
             return self._json(200, {"action": action})
 
@@ -984,7 +971,7 @@ class Handler(BaseHTTPRequestHandler):
             log(f"job {prompt_id[:8]} queued")
             return self._json(200, {"prompt_id": prompt_id, "number": 0, "node_errors": {}})
 
-        # ── /vision_model —— 更新 Gate1/2/3 共用的视觉模型 id ──────────────────
+        # ── /vision_model —— 更新人物一致性与去字幕前置检测共用的视觉模型 id ──
         if path == "/vision_model":
             try:
                 data  = json.loads(body)
@@ -997,19 +984,18 @@ class Handler(BaseHTTPRequestHandler):
             log(f"/vision_model 更新为 {model}")
             return self._json(200, {"ok": True, "model": model})
 
-        # ── /gate_retry_limit —— 更新 Gate1/2、Gate3 各自独立的重试阈值 ─────────
+        # ── /gate_retry_limit —— 更新人物一致性 Gate1/2 的重试阈值 ─────────────
         if path == "/gate_retry_limit":
             try:
                 data   = json.loads(body)
                 gate12 = int(data["gate12"])
-                gate3  = int(data["gate3"])
-                if gate12 < 1 or gate3 < 1:
+                if gate12 < 1:
                     raise ValueError("阈值必须 >= 1")
             except Exception as e:
                 return self._json(400, {"error": f"bad request: {e}"})
-            set_gate_retry_limits(gate12, gate3)
-            log(f"/gate_retry_limit 更新为 gate12={gate12} gate3={gate3}")
-            return self._json(200, {"ok": True, "gate12": gate12, "gate3": gate3})
+            set_gate_retry_limit(gate12)
+            log(f"/gate_retry_limit 更新为 gate12={gate12}")
+            return self._json(200, {"ok": True, "gate12": gate12})
 
         # ── /clear —— 清空所有内存任务和两个队列 ──────────────────────────────
         if path == "/clear":
