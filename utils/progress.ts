@@ -21,6 +21,7 @@ import { novelPaths } from "./paths.js";
 
 export type StageName = "clean" | "visualPreset" | "archive" | "segment" | "storyboard" | "render";
 export type StageStatus = "done" | "images_only";
+export type ArticleType = "essay" | "story";
 
 export interface EpisodeRecord {
   chapter?: number;

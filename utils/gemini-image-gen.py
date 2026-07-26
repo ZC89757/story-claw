@@ -13,9 +13,14 @@ gemini-image-gen.py — Gemini 图像生成 helper（供 Node.js 通过 child_pr
 import json, os, sys
 from pathlib import Path
 
-# 禁用系统代理（避免 httpx 经代理时 TLS 握手失败）
-os.environ["NO_PROXY"] = "*"
-os.environ["no_proxy"] = "*"
+# 走本地 Clash HTTP 代理（zenmux.ai 等需代理才能连通）
+# 清掉系统残留的 ALL_PROXY=socks5://...（httpx 会优先用且因缺 socksio 崩）
+for _k in ["ALL_PROXY", "all_proxy"]:
+    os.environ.pop(_k, None)
+os.environ["HTTP_PROXY"]  = "http://127.0.0.1:7890"
+os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7890"
+os.environ["http_proxy"]  = "http://127.0.0.1:7890"
+os.environ["https_proxy"] = "http://127.0.0.1:7890"
 
 from google import genai
 from google.genai import types

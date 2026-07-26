@@ -45,6 +45,7 @@ import urllib.parse
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Callable
 
 # ─── 配置 ──────────────────────────────────────────────────────────────────────
 PORT           = 8191
@@ -253,6 +254,87 @@ def poll_comfy_history(comfy_pid: str) -> dict | None:
     return None
 
 
+COMFY_MISSING_GRACE_SEC = 20
+COMFY_RESUBMIT_LIMIT = 3
+
+
+def _query_comfy_prompt(comfy_pid: str) -> tuple[str, dict | None]:
+    """返回 (状态, history entry)。
+
+    状态：completed / active / missing / unavailable。只有 ComfyUI 可访问，且 prompt_id
+    同时不在 history、运行队列和等待队列中时，才返回 missing。
+    """
+    try:
+        hist = json.loads(urllib.request.urlopen(
+            f"{COMFY_BASE}/history/{comfy_pid}", timeout=15).read())
+        entry = hist.get(comfy_pid)
+        if entry:
+            st = entry.get("status", {})
+            if st.get("status_str") == "error":
+                raise RuntimeError(f"ComfyUI 执行失败: {json.dumps(st)[:300]}")
+            if st.get("status_str") == "success" or st.get("completed"):
+                return "completed", entry
+            return "active", None
+
+        queue_state = json.loads(urllib.request.urlopen(
+            f"{COMFY_BASE}/queue", timeout=15).read())
+        queued_ids = {
+            str(item[1])
+            for key in ("queue_running", "queue_pending")
+            for item in queue_state.get(key, [])
+            if isinstance(item, list) and len(item) > 1
+        }
+        return ("active", None) if comfy_pid in queued_ids else ("missing", None)
+    except RuntimeError:
+        raise
+    except Exception:
+        return "unavailable", None
+
+
+def _submit_and_wait_with_recovery(
+    submit: Callable[[], str],
+    label: str,
+    on_submit: Callable[[str], None] | None = None,
+) -> dict:
+    """提交并等待 ComfyUI；内部 ID 因 ComfyUI 重启丢失时自动重新提交。"""
+    recoveries = 0
+    comfy_pid = submit()
+    if on_submit:
+        on_submit(comfy_pid)
+    log(f"{label} → ComfyUI {comfy_pid[:8]}")
+    missing_since: float | None = None
+
+    while True:
+        time.sleep(5)
+        state, entry = _query_comfy_prompt(comfy_pid)
+        if state == "completed":
+            return entry or {}
+        if state in ("active", "unavailable"):
+            missing_since = None
+            continue
+        if missing_since is None:
+            missing_since = time.time()
+            continue
+        if time.time() - missing_since < COMFY_MISSING_GRACE_SEC:
+            continue
+        if recoveries >= COMFY_RESUBMIT_LIMIT:
+            raise RuntimeError(
+                f"ComfyUI 任务连续丢失，自动恢复已达上限 {COMFY_RESUBMIT_LIMIT} 次"
+            )
+
+        old_pid = comfy_pid
+        recoveries += 1
+        _wait_for_comfy()
+        comfy_pid = submit()
+        if on_submit:
+            on_submit(comfy_pid)
+        missing_since = None
+        log(
+            f"{label} 的 ComfyUI ID {old_pid[:8]} 已消失，"
+            f"自动恢复 {recoveries}/{COMFY_RESUBMIT_LIMIT} → {comfy_pid[:8]}"
+        )
+
+
 def video_path_from_outputs(outputs: dict, node_id: str = "75") -> str:
     out    = outputs.get(node_id, {})
     # "gifs" 是 VHS_VideoCombine 节点的输出键（去字幕工作流用的是它，i2v 用的
@@ -397,15 +479,16 @@ def _submit_and_wait_i2v(prompt_id: str) -> None:
     with _jobs_lock:
         _jobs[prompt_id]["status"] = "running"
     try:
-        comfy_pid = build_and_submit_i2v(cfg)   # 含随机种子、job_key 注入，跟之前完全一样
-        log(f"job {prompt_id[:8]} → ComfyUI {comfy_pid[:8]}")
-        with _jobs_lock:
-            _jobs[prompt_id]["comfy_pid"] = comfy_pid
+        def remember_comfy_pid(comfy_pid: str) -> None:
+            with _jobs_lock:
+                if prompt_id in _jobs:
+                    _jobs[prompt_id]["comfy_pid"] = comfy_pid
 
-        entry = None
-        while entry is None:
-            time.sleep(5)
-            entry = poll_comfy_history(comfy_pid)   # ComfyUI 报错（含 Gate1/2 raise）这里会抛异常
+        entry = _submit_and_wait_with_recovery(
+            lambda: build_and_submit_i2v(cfg),
+            f"job {prompt_id[:8]}",
+            remember_comfy_pid,
+        )
 
         with _jobs_lock:
             t_i2v = round(time.time() - _jobs[prompt_id].get("started_at", time.time()), 1)
@@ -471,14 +554,10 @@ def run_ltx_subtitle_removal(video_path: str, output_name: str) -> tuple[str, bo
     wf["5069"]["inputs"]["filename_prefix"]   = f"pipeline/{output_name}_desub"
 
     try:
-        comfy_pid = submit_to_comfy(wf)
-        log(f"  去字幕(LTX2.3) → ComfyUI {comfy_pid[:8]}")
-
-        entry = None
-        while entry is None:
-            time.sleep(5)
-            entry = poll_comfy_history(comfy_pid)   # ComfyUI 报错这里会抛异常
-
+        entry = _submit_and_wait_with_recovery(
+            lambda: submit_to_comfy(wf),
+            "  去字幕(LTX2.3)",
+        )
         abs_path = video_path_from_outputs(entry["outputs"], node_id="5069")
         return abs_path, True
     finally:
@@ -820,8 +899,8 @@ def render_dashboard() -> str:
     function saveGateRetryLimit(){{
       const gate12 = parseInt(document.getElementById('gate12LimitInput').value, 10);
       const msg = document.getElementById('gateLimitMsg');
-      if(!gate12 || gate12 < 1) {{
-        msg.style.color = '#dc2626'; msg.textContent = '阈值必须是 >=1 的整数';
+      if(isNaN(gate12) || gate12 < 0) {{
+        msg.style.color = '#dc2626'; msg.textContent = '阈值必须是 >=0 的整数';
         return;
       }}
       fetch('/gate_retry_limit', {{
@@ -856,7 +935,7 @@ def render_dashboard() -> str:
   <div class="card">
     <h3>人物一致性重试阈值</h3>
     Gate1/2：
-    <input type="number" id="gate12LimitInput" value="{GATE12_RETRY_LIMIT}" min="1"
+    <input type="number" id="gate12LimitInput" value="{GATE12_RETRY_LIMIT}" min="0"
       style="width:70px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
     <button onclick="saveGateRetryLimit()" style="background:#1d4ed8;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;margin-left:8px">保存</button>
     <span id="gateLimitMsg" style="margin-left:10px;font-size:12px"></span>
@@ -989,8 +1068,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 data   = json.loads(body)
                 gate12 = int(data["gate12"])
-                if gate12 < 1:
-                    raise ValueError("阈值必须 >= 1")
+                if gate12 < 0:
+                    raise ValueError("阈值必须 >= 0")
             except Exception as e:
                 return self._json(400, {"error": f"bad request: {e}"})
             set_gate_retry_limit(gate12)

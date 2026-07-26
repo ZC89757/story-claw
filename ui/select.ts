@@ -15,11 +15,13 @@ export interface NovelSelection {
   ethnicity: string;
   aspectRatio: string;
   imagesOnly: boolean;  // 只生分镜图，跳过生视频/TTS/合并（ComfyUI 未就绪时先出图）
+  articleType: "essay" | "story";  // 文章类型：新建小说时选定，写进度顶层，之后不再问
 }
 
 interface Progress {
   novel_name: string;
   source_path?: string;
+  article_type?: "essay" | "story";
   adapted: Array<{ episode: number }>;
   next_chapter: number;
   episodes?: Record<string, { stages?: Record<string, string> }>;
@@ -59,6 +61,16 @@ async function selectImagesOnly(rl: readline.Interface): Promise<boolean> {
   console.log();
   const choice = await ask(rl, "  请选择（回车 = 完整渲染）: ");
   return choice === "2";
+}
+
+/** 交互选择文章类型（仅新建小说时调用一次，之后沿用进度里的值） */
+async function selectArticleType(rl: readline.Interface): Promise<"essay" | "story"> {
+  console.log("\n  文章类型：");
+  console.log("  [1] 叙事小说（有人物/场景/对话/情节，走完整故事工作流，默认）");
+  console.log("  [2] 议论文/科普文（无人物对话，概念画面+口播，跳过画面预设/资源建档/BGM）");
+  console.log();
+  const choice = await ask(rl, "  请选择（回车 = 叙事小说）: ");
+  return choice === "2" ? "essay" : "story";
 }
 
 /** 交互选择人物人种风格 */
@@ -161,6 +173,10 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
     const ethnicity = await selectEthnicity(rl);
     const aspectRatio = await selectAspectRatio(rl);
 
+    // 文章类型沿用进度里的值（新建小说时已选定，之后不再问）
+    const articleType: "essay" | "story" = novel.article_type === "essay" ? "essay" : "story";
+    console.log(`  文章类型: ${articleType === "essay" ? "议论文" : "叙事小说"}（沿用进度，不重新选择）`);
+
     // 若本集上次只生成了图片（render=images_only），优先询问是否补视频
     let imagesOnly: boolean;
     const renderStatus = novel.episodes?.[String(episode)]?.stages?.render;
@@ -180,6 +196,7 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
       ethnicity,
       aspectRatio,
       imagesOnly,
+      articleType,
     };
   }
 
@@ -207,6 +224,9 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
     const nameInput = await ask(rl, `  请输入小说名称（回车 = ${defaultName}）: `);
     const novelName = nameInput || defaultName;
 
+    const articleType = await selectArticleType(rl);
+    console.log(`  文章类型: ${articleType === "essay" ? "议论文" : "叙事小说"}`);
+
     // 初始化 workspace 和进度文件
     const novelDir = novelPaths.workspaceDir(novelName);
     await fs.mkdir(novelDir, { recursive: true });
@@ -214,6 +234,7 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
     const progress = {
       novel_name: novelName,
       source_path: folderPath,
+      article_type: articleType,  // novel 级类型，新建时选定，之后各集沿用
       adapted: [],
       next_chapter: 1,
       global_summary: "",
@@ -243,6 +264,7 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
       ethnicity,
       aspectRatio,
       imagesOnly,
+      articleType,
     };
   }
 

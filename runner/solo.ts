@@ -32,11 +32,16 @@ export async function runSolo(sel: NovelSelection) {
       await markStage(sel.novelName, ep, "clean", "done", { chapter: sel.nextChapter });
       p.done(0, title, "原文_clean.txt");
     }
+    // 文章类型由用户新建小说时选定，写进度顶层；之后各集沿用 sel.articleType
+    const articleType: "essay" | "story" = sel.articleType ?? "story";
+    const isEssay = articleType === "essay";
 
-    // 画面预设
+    // 画面预设（议论文跳过：无场景人物可标）
     p.start(1, title);
     let presetPath = novelPaths.visualPreset(sel.novelName, ep);
-    if (epRec.stages.visualPreset === "done") {
+    if (isEssay) {
+      p.done(1, title, "议论文，跳过画面预设");
+    } else if (epRec.stages.visualPreset === "done") {
       p.done(1, title, "已完成，跳过");
     } else {
       presetPath = await visualPreset(sel);
@@ -44,10 +49,13 @@ export async function runSolo(sel: NovelSelection) {
       p.done(1, title, "画面预设.txt");
     }
 
-    // 资源建档
+    // 资源建档（议论文跳过：无角色无场景）
     p.start(2, title);
     let archiveResult: { sceneNames: string[] };
-    if (epRec.stages.archive === "done") {
+    if (isEssay) {
+      archiveResult = { sceneNames: [] };
+      p.done(2, title, "议论文，跳过资源建档");
+    } else if (epRec.stages.archive === "done") {
       archiveResult = { sceneNames: epRec.sceneNames ?? [] };
       p.done(2, title, `已完成，跳过（场景${archiveResult.sceneNames.length}个）`);
     } else {
@@ -62,7 +70,7 @@ export async function runSolo(sel: NovelSelection) {
     if (epRec.stages.segment === "done") {
       p.done(3, title, "已完成，跳过");
     } else {
-      scriptsDir = await segment(sel, archiveResult, presetPath);
+      scriptsDir = await segment(sel, archiveResult, presetPath, articleType);
       await markStage(sel.novelName, ep, "segment", "done");
       p.done(3, title, "scripts/");
     }
@@ -76,13 +84,13 @@ export async function runSolo(sel: NovelSelection) {
         p.updateSubLines(4, title, [
           `分镜  ${progressBar(prog.done, prog.total)}`,
         ]);
-      });
+      }, articleType);
       await markStage(sel.novelName, ep, "storyboard", "done");
       p.done(4, title);
     }
 
     // ── 为 group 附上 global_order ──
-    await assignGlobalOrder(sel.novelName, ep, archiveResult.sceneNames);
+    await assignGlobalOrder(sel.novelName, ep, archiveResult.sceneNames, articleType);
 
     // 整集已完整渲染过，无需再跑
     if (epRec.stages.render === "done") {
@@ -122,7 +130,7 @@ export async function runSolo(sel: NovelSelection) {
         renderScene(sel, sceneName, (rp) => {
           renderProgress[sceneName] = rp;
           updateRenderSubLines();
-        }),
+        }, isEssay),
       ),
     );
     p.done(5, title, `${jsonlFiles.length} 个场景`);
@@ -150,14 +158,17 @@ export async function runSolo(sel: NovelSelection) {
 
     // ── 生成集尾 BGM（独立脚本，失败不影响整集完成；必须在下面 finally 关 GPU 之前跑，
     //   因为 ACE-Step 服务跟 ComfyUI 在同一台被 grab/shutdown 的 GPU 实例上）──
-    try {
-      const cleanTextPath = novelPaths.cleanedText(sel.novelName, ep);
-      await fs.access(cleanTextPath);
-      console.log(`\n  正在生成 BGM...`);
-      const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "utils", "generate-bgm.ts");
-      execFileSync(process.execPath, ["--import", "tsx", scriptPath, cleanTextPath], { stdio: "inherit" });
-    } catch (err) {
-      console.warn(`  [BGM] 生成失败或跳过: ${err}`);
+    //   议论文不加 BGM，跳过。
+    if (!isEssay) {
+      try {
+        const cleanTextPath = novelPaths.cleanedText(sel.novelName, ep);
+        await fs.access(cleanTextPath);
+        console.log(`\n  正在生成 BGM...`);
+        const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "utils", "generate-bgm.ts");
+        execFileSync(process.execPath, ["--import", "tsx", scriptPath, cleanTextPath], { stdio: "inherit" });
+      } catch (err) {
+        console.warn(`  [BGM] 生成失败或跳过: ${err}`);
+      }
     }
 
     console.log(`\n  ${"=".repeat(50)}`);

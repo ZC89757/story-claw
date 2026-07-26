@@ -13,6 +13,7 @@ import fsSync from "node:fs";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { runSubAgent } from "../agent.js";
+import type { ArticleType } from "../utils/progress.js";
 import { writeTool } from "@mariozechner/pi-coding-agent";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { novelPaths } from "../utils/paths.js";
@@ -60,16 +61,12 @@ const ARCHIVE_SYSTEM = `你是资源建档专员。根据小说原文和已有�
 硬场景：指这个地点本身的样子——建筑结构、家具陈设、空间布局等，基本不会随剧情变动。
 软场景：指某个具体剧情时刻里，场景里会随时变化的东西——光线、天气、散落的物体、临时道具等。
 原型图：角色穿着符合小说时代背景的普通便服时的样子，记录基础体貌，每角色只生成一次。
-造型：角色在某段剧情里出现的、服装或随身道具发生显著变化的外观状态。
-      「外观」只包含：服装、随身道具。以下一律不算外观变化，不产生新造型：
+造型图：角色处于某造型时的参考图，基于原型图图生图生成。当角色在某段剧情里出现的服装或需要**长时间**维持的外形变化（比如受伤或者伴随剧情的道具）。
+      判定方法：只问「他穿的衣服和外形是否发生了改变且会维持较长时间或者有可能会到下一集」。以下的变化不产生新造型图：
         - 情绪、表情、神情（如沉迷、专注、愤怒、哭泣）
         - 动作、姿态（如奔跑、坐下、低头）
         - 所处场景、地点（如在地下室、在教室）
-        - 光线、时间、氛围（如昏暗、冷光、夜晚）
-      判定方法：只问「他穿的、带的东西变了吗」。变了才是造型；只是换了地方/心情/在做某事，不是造型。
-      例：开学报到=背包拉行李箱；受伤后=坐轮椅；打架后=衣服脏破狼狈。
-      反例（不生成）：热情推销、被吓跑、愤怒、哭泣、沉迷地玩电脑、在昏暗灯光下专注工作——这些只是情绪/动作/场景，外观未变。
-造型图：角色处于某造型时的参考图，基于原型图图生图生成，只在造型显著变化时生成。
+        - 光线、时间、氛围（如昏暗、冷光、夜晚）。
 
 角色名会作为图片资源的文件名跨章节共享（如 characters/{name}_原型.png）。若本章某角色只以代称、外貌或身份描述出现、尚未点明真实姓名，**在按下面的定语命名规则临时命名之前**，先调用 read_later_chapter_text 工具查看后续章节（从下一章开始，找不到可继续往后查更多章）：
 - 若后续某章揭晓了这个角色的真实姓名，建档时必须直接用真实姓名，不要用代称或描述性词语当作 name——否则后续章节会因为名字对不上被判定为「不在已有列表」，重复建一次角色、生成重复的图片资源，还会打乱音色分配
@@ -90,7 +87,7 @@ const ARCHIVE_SYSTEM = `你是资源建档专员。根据小说原文和已有�
 
 1. 对原文中每一个角色：
    - 不在已有列表中：记入 new_characters
-   - 已在列表中：用 resource_detail 检查是否有符合上述造型定义的新阶段（服装或随身道具发生显著变化），有则记入 existing_character_stages，无则跳过
+   - 已在列表中：用 resource_detail 检查是否需要符合上述造型图定义的新阶段，有则记入 existing_character_stages，无则跳过
    - 参考「已有资源」中的「角色现有图片」列表：若该角色已有能覆盖当前剧情的图片（含用户手动提供的参考图，如「少年时期」「青年时期」），则不要再生成意思相近的造型
 
 2. 对原文中每一个场景：
@@ -108,7 +105,7 @@ const ARCHIVE_SYSTEM = `你是资源建档专员。根据小说原文和已有�
       "gender": "男 或 女",
       "prompt": "基础体貌描述：年龄、身形、面部特征、发型等",
       "stages": [
-        { "stage": "造型阶段名", "prompt": "本阶段服装与随身道具的变化，仅此而已" }
+        { "stage": "造型阶段名", "prompt": "本阶段需长期维持的服装、外形变化或伴随剧情的道具" }
       ]
     }
   ],
@@ -124,7 +121,7 @@ const ARCHIVE_SYSTEM = `你是资源建档专员。根据小说原文和已有�
     {
       "name": "已有角色名",
       "stages": [
-        { "stage": "新造型阶段名", "prompt": "本阶段服装与随身道具的变化，仅此而已" }
+        { "stage": "新造型阶段名", "prompt": "本阶段需长期维持的服装、外形变化或伴随剧情的道具" }
       ]
     }
   ],
@@ -141,7 +138,7 @@ const ARCHIVE_SYSTEM = `你是资源建档专员。根据小说原文和已有�
 
 场景名必须与写入的场景 JSON 文件名完全一致。new_characters 只包含本章新出现的角色，existing_character_stages / existing_scene_stages 只包含有新内容的已有资源（无新内容则为空数组）。
 
-造型 stages[].prompt 的硬约束：只允许写服装与随身道具（如「白衬衫、戴黑框眼镜」）。禁止出现：具体年龄数字（如「16岁」，年龄已由原型图体现）、情绪/神情（如「专注」「沉迷」）、动作姿态、所处场景地点、光线时间氛围。若某角色本阶段服装与道具相比原型并无变化，则不要为其生成任何 stage。`;
+stages[].prompt 的硬约束：只允许写需要长期维持的服装、外形变化或伴随剧情的道具（如「白色长袖睡衣」「左臂包扎并持续数日」「始终携带黑色手杖」）。禁止出现：仅用于重复原型身份的年龄数字、短暂情绪/神情、瞬时动作姿态、所处场景地点、光线时间氛围。若某角色相比现有参考图没有需要长期维持的服装、外形或伴随剧情的道具变化，则不要生成任何 stage。`;
 
 const SEGMENT_SYSTEM = `你是剧本分场专员。任务：将章节原文按场景切分，原文逐字保留，不改写。
 
@@ -158,6 +155,22 @@ const SEGMENT_SYSTEM = `你是剧本分场专员。任务：将章节原文按�
 2. write 工具的 path 参数只写文件名「{场景名}.md」，不要带任何目录前缀（工作目录已设为剧本目录）
 3. 文件名中的场景名必须与 task「场景列表」中的名称逐字完全一致，禁止自创、改写、编号或合并场景名
 4. 在最终回复末行写明：剧本目录已写入
+
+完成后直接结束，不要询问用户任何问题。`;
+
+const ESSAY_SEGMENT_SYSTEM = `你是议论文分场专员。任务：将议论文/科普文按论述段落切分，原文逐字保留，不改写。
+
+切分规则：
+- 每个自然段（论述单元）保存为单独的 .md 文件
+- 文件名按段落顺序编号：01.md、02.md、03.md……（两位数，从 01 起）
+- 原文逐字保留，不得改写、删减或添加任何内容
+- 一个自然段即一个 group 单元，不要跨段合并、也不要在同段内再拆
+- 段落之间的空行不计；若某段极短（如单句过渡），并入语义最连贯的相邻段
+
+步骤：
+1. 将原文按自然段切分，用内置 write 工具将每段保存为 {nn}.md
+2. write 工具的 path 参数只写文件名（如 01.md），不要带目录前缀（工作目录已设为剧本目录）
+3. 在最终回复末行写明：剧本目录已写入
 
 完成后直接结束，不要询问用户任何问题。`;
 
@@ -217,14 +230,16 @@ append_group 会校验 panel 的拆分是否合理，字数与 panel 数不匹�
 - 若【独白】有内容：video_prompt 注明为画外音，人物嘴部不动，通过细微表情或无意识肢体动作体现内心状态
 - 若【语言】和【独白】均为"无"：在 video_prompt 末尾明确注明"No dialogue or voiceover."
 
-== image_prompt 中的人物身份内联标注 ==
+== image_prompt 中的人物参考图内联标注 ==
 
-image_prompt 描述人物时，凡出现在「角色名单」中的角色，必须用 [角色名·阶段] 内联标注身份，紧贴该人物的外貌/姿态描述：
-- 角色名：与角色名单中的名称完全一致；第一人称"我"按剧情对应到名单中的主角
-- 阶段：你根据剧情上下文对该角色当前人生阶段的简短概括（如「少年时期」「童年」「青年」「受伤后」）。无需精确，不必与任何文件名一致——它只是给后续选图环节的提示
-- 示例：特写[黄仁勋·少年时期]的手紧握乒乓球拍，手指肌肉线条清晰，暖黄回忆光线…
-- 不在名单中的人物（无参考图）正常文字描述，不要加方括号
-- 方括号只标身份，动作/景别/光线/氛围等照常写在 image_prompt 里
+image_prompt 描述人物时，凡出现在「角色名单」中的角色，必须直接用该人物参考图的文件名（去掉 .png 扩展名）作为方括号标签，紧贴人物的位置与姿态描述：
+- 标签格式固定为 [图片文件名去掉.png]，例如参考图是「康斯坦汀医生_出诊便服.png」，只能标注为「[康斯坦汀医生_出诊便服]」
+- 标签必须从下方「角色名单与可用参考图」中逐字复制，禁止概括、缩写、改写或自创
+- 第一人称"我"须先按剧情确定到名单中的真实角色，再使用该角色对应的参考图文件名标签
+- 若原文没有明确写出换装、持续性外形变化或伴随剧情的道具变化，同一角色必须沿用此前 panel 已使用的同一个参考图标签，不得自行改变；只有原文明示发生上述变化时，才可切换到名单中的另一张已有参考图
+- 使用参考图标签的人物，image_prompt 中禁止重复描写其年龄、身高、身形、脸型、五官、肤色、发型、发色、胡须及服装外观；这些信息已经由参考图提供。只描述该人物在当前画面中的位置、朝向、姿态、动作、表情和与其他对象的关系
+- 不在名单中的人物（无参考图）正常文字描述，不加方括号；这类人物可以描写必要的外貌
+- 方括号只标参考图身份，景别、动作、位置、表情、光线和氛围照常写在 image_prompt 里
 
 == 人物身份不确定时 ==
 
@@ -276,7 +291,7 @@ image_prompt 描述人物时，凡出现在「角色名单」中的角色，必�
         {
           "shot_type": "景别",
           "is_continuation": false,
-          "image_prompt": "完整生图描述：场景背景细节 + 人物位置与姿态（依据 end_positions 精准描述人物位置；名单角色用[角色名·阶段]标注身份）+ 景别角度 + 光线氛围",
+          "image_prompt": "完整生图描述：场景背景细节 + 人物参考图标签及位置姿态（依据 end_positions 精准描述人物位置；名单角色用[图片文件名去掉.png]标注，禁止重复描写其外貌和服装）+ 景别角度 + 光线氛围",
           "video_prompt": "基于已生成图片的动态描述：镜头运动 + 人物动作变化 + 情绪节奏（含台词/独白对应的说话或表情动作）"
         }
 
@@ -304,6 +319,72 @@ is_continuation 规则：
 - 每句必须处理完立即调用 append_group，不要等全部处理完再统一调用
 - append_group 的 content 参数是单个 group 的 JSON 字符串，格式（sfx 可选，无合适音效时整个字段省略）：
   {"text":"...","end_positions":"含人物位置、朝向及人物与环境事物/彼此的相对位置关系","sfx":[{"anchor":"纯中文子串","sound":"音效标签"}],"panels":[{"shot_type":"...","is_continuation":false,"image_prompt":"...","video_prompt":"..."}]}
+
+完成后直接结束，不要询问用户任何问题。`;
+
+const ESSAY_STORYBOARD_SYSTEM = `你是议论文概念画面分镜导演。任务：把一段论述按句拆成若干概念可视化画面，输出可直接用于生图和生视频的 prompt。议论文无人物、无场景、无对白，不要强行造人物剧情。
+
+== 基本概念 ==
+
+**一个 .md 文件包含一个自然段的多句论述。每个句终标点（。！？…）对应一个 group**——与叙事文一样按句切 group，不要把整段当成一个 group。若某句去掉标点后不超过 4 个字，并入相邻句（同叙事文规则）。
+每个 group 内有 1~N 个 panel（分镜），每个 panel 是该句论述在时间线上的一个概念画面。
+
+== 概念画面映射 ==
+
+一、核心原则
+议论文是抽象论述，分镜的职责是把每句论述映射成具象可视化画面。
+风格总基调：现实、具体、有材质感。不要玄幻。
+
+二、风格优先级（按顺序选择，前者能用就绝不退到后者）
+1. 现实场景 / 真实截图优先
+   论述里只要提到具体产品、平台、品牌、人物、事件，就直接生成对应的现实画面或仿真截图。
+   - 提到 推特/X → X 网页或 App 截图（真实界面布局、推文流、蓝勾认证标）
+   - 提到 Claude Code → Claude Code 终端界面截图
+   - 提到某企业家 → 该真人肖像或其在发布会的真实场景
+   生图模型具备完整还原 UI 与真人形象的能力，不要回避。
+3. 简约图示兜底
+   只有当论述既无对应产品、也无对应实物时，才用扁平信息图：
+   排行榜、对比柱状图、价格表、流程图，用真实数据填内容，不要加星云、光晕、粒子等装饰。
+
+三、禁止元素
+禁止生成：
+- 悬浮的发光球体 / 神经网络节点
+- 蓝色 / 紫色的科技光晕
+- 粒子特效
+- 赛博空间、抽象数据流可视化
+- "宏伟""宏大""震撼"等空泛氛围
+
+四、人物 / 品牌规则
+- 知名品牌标志、知名产品外观、真实公众人物 / 名人（企业家、政治家、学者）→ 直接写名称，生图模型能还原其形象与品牌标识
+- 虚构角色名 / 虚构人名 → 不要写
+- 泛指人群（如"程序员""普通人"）→ 用泛指即可
+
+同一句论述可用多个 panel 从不同角度可视化。
+
+== panel 字段 ==
+
+每个 panel 输出 4 个字段：
+- shot_type：远景/全景/中景/近景/特写 之一
+- is_continuation：固定 false（议论文不使用续帧机制）
+- image_prompt：概念可视化画面的完整描述，具象、可生图，中文、完整自足。必须严格遵守上面「概念画面映射」节的全部规则（风格优先级、禁止项、逐层描写背景/中景/前景、禁止叠加大面积说明性文字、人物品牌规则等）
+- video_prompt：基于 image_prompt 画面的意象动态，英文，一律固定镜头，以 "Fixed camera," 起头（不使用推镜/拉镜等任何运镜）。不要重复 image_prompt 的静态描述，只补画面内意象的细微动态。例外：当 image_prompt 属于图表/统计/截图类（信息图、排行榜、对比柱状图、价格表、流程图、UI 截图、文档/界面截图等静态信息载体）时，**不输出 video_prompt 字段**——这类画面无动态，render 侧会用静态图填满时长，无需生成视频。
+
+== group 字段 ==
+
+- text：本句论述原文，逐字保留
+- panels：上述 panel 数组
+
+== 步骤 ==
+
+1. 通读本段论述，按句终标点切 group
+2. 每句处理完，立即调用 append_group 工具传入该句的 group JSON（一个 group = 一句 + 该句的若干 panel）
+3. 所有句子处理完毕后结束
+
+注意：
+- append_group 的 content 参数是单个 group 的 JSON 字符串，格式：
+  {"text":"本句原文","panels":[{"shot_type":"...","is_continuation":false,"image_prompt":"...","video_prompt":"..."}]}
+- 不需要 end_positions（无人物空间关系），不要 sfx（议论文不配音效）
+- image_prompt 必须输出；video_prompt 除"图表/统计/截图类画面不输出"外都必须输出
 
 完成后直接结束，不要询问用户任何问题。`;
 
@@ -588,21 +669,28 @@ export async function archive(sel: NovelSelection, visualPresetPath: string): Pr
 
 // ── Segment：剧本分场 ─────────────────────────────────────────
 
-export async function segment(sel: NovelSelection, archiveResult: ArchiveResult, visualPresetPath: string): Promise<string> {
+export async function segment(sel: NovelSelection, archiveResult: ArchiveResult, visualPresetPath: string, articleType: ArticleType = "story"): Promise<string> {
   const expectedDir = novelPaths.scriptsDir(sel.novelName, sel.episode);
   await fs.mkdir(expectedDir, { recursive: true });  // cwd 必须先存在
 
-  const loadText = await loadSegmentData(sel.novelName, sel.episode, archiveResult.sceneNames, visualPresetPath);
+  const isEssay = articleType === "essay";
+  const systemPrompt = isEssay ? ESSAY_SEGMENT_SYSTEM : SEGMENT_SYSTEM;
+  // 议论文无画面预设、无场景列表，直接读 clean 文本按段切
+  const loadText = isEssay
+    ? await fs.readFile(novelPaths.cleanedText(sel.novelName, sel.episode), "utf-8")
+    : await loadSegmentData(sel.novelName, sel.episode, archiveResult.sceneNames, visualPresetPath);
 
   await runSubAgent(
     [],
-    SEGMENT_SYSTEM,
+    systemPrompt,
     [
-      `请为小说「${sel.novelName}」第${sel.episode}集切分剧本。`,
+      isEssay
+        ? `请为议论文「${sel.novelName}」第${sel.episode}集按论述段落切分。`
+        : `请为小说「${sel.novelName}」第${sel.episode}集切分剧本。`,
       ``,
       loadText,
     ].join("\n"),
-    "[剧本分场]",
+    isEssay ? "[议论文分场]" : "[剧本分场]",
     [writeTool],  // 只需要写文件，禁用 read
     expectedDir,  // 工作目录设为剧本目录，agent 写裸文件名即落入此处
   );
@@ -638,30 +726,52 @@ export async function storyboard(
   sel: NovelSelection,
   scriptsDir: string,
   onProgress?: (p: StoryboardProgress) => void,
+  articleType: ArticleType = "story",
 ): Promise<void> {
+  const isEssay = articleType === "essay";
   const files = (await fs.readdir(scriptsDir)).filter((f) => f.endsWith(".md"));
 
-  // 构建角色名单（所有场景共用）：列出有参考图的角色，供分镜 agent 内联标注身份
-  const charsDir = novelPaths.charactersDir(sel.novelName);
-  const allCharFiles = await fs.readdir(charsDir).catch(() => []);
-  const charPngs = allCharFiles.filter((f) => f.endsWith(".png"));
-  const rosterLines: string[] = [];
-  for (const cf of allCharFiles.filter((f) => f.endsWith(".json"))) {
-    try {
-      const data = JSON.parse(await fs.readFile(path.join(charsDir, cf), "utf-8"));
-      const name = data.name ?? path.basename(cf, ".json");
-      if (charPngs.some((f) => f.startsWith(`${name}_`))) {
-        rosterLines.push(`- ${name}：${data.base_prompt ?? ""}`);
-      }
-    } catch { /* 跳过解析失败 */ }
-  }
-  const rosterText = rosterLines.length ? rosterLines.join("\n") : "（无）";
+  // 议论文无角色名单、无音效库，跳过这些注入，直接用 ESSAY_STORYBOARD_SYSTEM
+  let rosterText = "（无）";
+  let sfxCatalogText = "（音效库为空，请勿输出 sfx 字段）";
+  if (!isEssay) {
+    // 构建角色名单（所有场景共用）：同时列出每个角色实际存在的阶段图片。
+    // 分镜 agent 的 [图片文件名去掉.png] 必须精确引用这里的参考图，避免自创模糊阶段导致选错图。
+    const charsDir = novelPaths.charactersDir(sel.novelName);
+    const allCharFiles = await fs.readdir(charsDir).catch(() => []);
+    const charPngs = allCharFiles.filter((f) => f.endsWith(".png")).sort();
+    const rosterLines: string[] = [];
+    for (const cf of allCharFiles.filter((f) => f.endsWith(".json")).sort()) {
+      try {
+        const data = JSON.parse(await fs.readFile(path.join(charsDir, cf), "utf-8"));
+        const name = data.name ?? path.basename(cf, ".json");
+        const prefix = `${name}_`;
+        const images = charPngs.filter((f) => f.startsWith(prefix));
+        if (images.length === 0) continue;
 
-  // 音效库清单（所有场景共用）：注入分镜 agent，sound 只能从这些标签里选
-  const sfxTags = [...loadSfxCatalog().keys()];
-  const sfxCatalogText = sfxTags.length
-    ? sfxTags.map((t) => `- ${t}`).join("\n")
-    : "（音效库为空，请勿输出 sfx 字段）";
+        const stagePrompts = new Map<string, string>(
+          (Array.isArray(data.stages) ? data.stages : [])
+            .map((s: any) => [String(s?.stage ?? ""), String(s?.prompt ?? "")] as [string, string])
+            .filter(([stage]: [string, string]) => stage.length > 0),
+        );
+        rosterLines.push(`- ${name}：${data.base_prompt ?? ""}`);
+        for (const filename of images) {
+          const stage = filename.slice(prefix.length, -".png".length);
+          const description = stage === "原型"
+            ? "角色原型"
+            : (stagePrompts.get(stage) || "用户提供的参考阶段");
+          rosterLines.push(`  - [${path.basename(filename, ".png")}] -> ${filename}：${description}`);
+        }
+      } catch { /* 跳过解析失败 */ }
+    }
+    rosterText = rosterLines.length ? rosterLines.join("\n") : "（无）";
+
+    // 音效库清单（所有场景共用）：注入分镜 agent，sound 只能从这些标签里选
+    const sfxTags = [...loadSfxCatalog().keys()];
+    sfxCatalogText = sfxTags.length
+      ? sfxTags.map((t) => `- ${t}`).join("\n")
+      : "（音效库为空，请勿输出 sfx 字段）";
+  }
 
   const progress: StoryboardProgress = { done: 0, total: files.length };
   onProgress?.(progress);
@@ -762,20 +872,28 @@ export async function storyboard(
 
       await runSubAgent(
         [appendGroupTool, readPriorEpisodeTool],
-        STORYBOARD_SYSTEM,
-        [
-          `场景名：${sceneName}`,
-          ``,
-          `== 本剧角色名单（这些角色都有参考图，画面中出现时须用 [角色名·阶段] 内联标注）==`,
-          rosterText,
-          ``,
-          `== 可用音效库（sfx 的 sound 只能填下面这些标签，没合适的就不写 sfx）==`,
-          sfxCatalogText,
-          ``,
-          `== 场景剧本 ==`,
-          scriptContent,
-        ].join("\n"),
-        `[分镜:${sceneName}]`,
+        isEssay ? ESSAY_STORYBOARD_SYSTEM : STORYBOARD_SYSTEM,
+        (isEssay
+          ? [
+              `段落名：${sceneName}`,
+              ``,
+              `== 本段论述原文 ==`,
+              scriptContent,
+            ]
+          : [
+              `场景名：${sceneName}`,
+              ``,
+              `== 本剧角色名单与可用参考图（画面中出现时须使用下列精确的 [图片文件名去掉.png] 标注）==`,
+              rosterText,
+              ``,
+              `== 可用音效库（sfx 的 sound 只能填下面这些标签，没合适的就不写 sfx）==`,
+              sfxCatalogText,
+              ``,
+              `== 场景剧本 ==`,
+              scriptContent,
+            ]
+        ).join("\n"),
+        isEssay ? `[议论文分镜:${sceneName}]` : `[分镜:${sceneName}]`,
         [],  // 不给内置 write/read，只用 append_group 和 read_prior_episode_text
       );
 
@@ -836,12 +954,21 @@ function lcsLen(a: string, b: string): number {
 /**
  * 遍历所有 JSONL 文件中的 text 字段，按照画面预设的顺序给 group 附上 global_order。
  * 在 storyboard 完成后、renderScene 之前调用。
+ *
+ * 议论文分支（articleType === "essay"）：无画面预设、无人物、无对白，分场阶段已按段
+ * 编号（01.md、02.md……）切好，渲染只需按段文件名数值升序、段内按 JSONL 行序依次执行。
+ * 因此跳过画面预设读取与文本/sfx 去重，直接给每个 group 写入「段序*100000 + 段内 gi」
+ * 作为全局唯一递增的 global_order，保证跨场景排序正确（globalAlignAndMerge 按此排序）。
  */
 export async function assignGlobalOrder(
   novelName: string,
   episode: number,
   sceneNames: string[],
+  articleType: ArticleType = "story",
 ): Promise<void> {
+  if (articleType === "essay") {
+    return assignEssayGlobalOrder(novelName, episode, sceneNames);
+  }
   const visualPresetPath = novelPaths.visualPreset(novelName, episode);
   const storyboardsDir = novelPaths.storyboardsDir(novelName, episode);
 
@@ -1006,6 +1133,53 @@ export async function assignGlobalOrder(
   }
 
   console.log(`[assignGlobalOrder] 已写回 JSONL 文件`);
+}
+
+/**
+ * 议论文专用：不读画面预设、不做文本/sfx 去重，按段文件名数值升序 + 段内 JSONL 行序
+ * 给每个 group 写入全局唯一递增的 global_order。议论文分场用 01.md/02.md 编号，
+ * storyboard 产出 storyboard_01.jsonl 等；sceneNames 可能来自进度记录（可能为空），
+ * 这里直接扫 storyboards 目录兜底，按段号数值排序，保证跨段拼接顺序正确。
+ */
+async function assignEssayGlobalOrder(novelName: string, episode: number, sceneNames: string[]): Promise<void> {
+  const storyboardsDir = novelPaths.storyboardsDir(novelName, episode);
+
+  // 兜底：议论文 archive 跳过，sceneNames 可能为空，直接扫目录
+  let names = sceneNames.filter(Boolean);
+  if (names.length === 0) {
+    const files = await fs.readdir(storyboardsDir).catch(() => []);
+    names = files
+      .filter((f) => f.startsWith("storyboard_") && f.endsWith(".jsonl"))
+      .map((f) => f.replace(/^storyboard_/, "").replace(/\.jsonl$/, ""));
+  }
+
+  // 按段号数值升序（"01" < "02" < "10"），非数字段名退回字符串序
+  const numeric = (s: string) => /^\d+$/.test(s);
+  const sorted = [...names].sort((a, b) =>
+    numeric(a) && numeric(b) ? Number(a) - Number(b) : a.localeCompare(b),
+  );
+
+  let total = 0;
+  for (let si = 0; si < sorted.length; si++) {
+    const sceneName = sorted[si];
+    const jsonlPath = novelPaths.storyboardJsonl(novelName, episode, sceneName);
+    if (!fsSync.existsSync(jsonlPath)) continue;
+    const lines = (await fs.readFile(jsonlPath, "utf-8")).split("\n").filter((l) => l.trim());
+    const base = si * 100000;
+    const updatedLines: string[] = [];
+    for (let gi = 0; gi < lines.length; gi++) {
+      try {
+        const data = JSON.parse(lines[gi]);
+        data.global_order = base + gi;
+        updatedLines.push(JSON.stringify(data));
+      } catch {
+        updatedLines.push(lines[gi]);
+      }
+    }
+    await fs.writeFile(jsonlPath, updatedLines.join("\n") + "\n", "utf-8");
+    total += lines.length;
+  }
+  console.log(`[assignGlobalOrder] 议论文：${sorted.length} 段、共 ${total} 个 group，按段号顺序写入 global_order`);
 }
 
 // ── Render：分镜渲染 ──────────────────────────────────────────────

@@ -293,6 +293,20 @@ async function concatVideos(videoPaths: string[], output: string): Promise<void>
   await fs.unlink(listFile).catch(() => {});
 }
 
+/** 议论文静帧：把单张图做成定长静帧 mp4，不调 LTX。帧数走 durationToFrames，与 LTX panel 同 8k+1 栅格，便于 -c:v copy 拼接。 */
+async function generateStillVideo(imagePath: string, outputPath: string, duration: number): Promise<void> {
+  const fps = getVideoFps();
+  const frames = durationToFrames(duration, fps);
+  await execFileAsync("ffmpeg", [
+    "-y", "-loop", "1", "-i", path.basename(imagePath),
+    "-frames:v", String(frames),
+    "-r", String(fps),
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+    "-pix_fmt", "yuv420p",
+    path.basename(outputPath),
+  ], { cwd: path.dirname(outputPath) });
+}
+
 /** ffmpeg 提取视频最后一帧 */
 async function extractLastFrame(videoPath: string, outputPng: string): Promise<boolean> {
   try {
@@ -408,11 +422,11 @@ async function buildResourceCatalog(workspaceDir: string): Promise<ResourceCatal
 const RESOURCE_SELECTOR_SYSTEM = `你是分镜资源选择专员。根据 panel 信息和可用资源，选出最合适的参考图列表，并微调生图提示词。
 
 规则：
-1. image_prompt 中的 [角色名·阶段] 是分镜阶段给的人物身份提示：
-   - 角色名是确定的：直接在资源目录里找到该角色，选它的图作参考
-   - 阶段是提示（不必精确）：从该角色现有的图（原型 / 各造型 / 用户参考图）里，挑最贴合这个阶段提示的一张；拿不准时结合「完整场景上下文」判断。造型图/用户参考图优先于原型图
+1. image_prompt 中的 [图片文件名去掉.png] 是分镜阶段给出的精确人物参考图标签：
+   - 例如 [康斯坦汀医生_出诊便服] 必须选择资源目录中的 康斯坦汀医生_出诊便服.png，不得改选原型图、其他阶段图或其他人物图
+   - 标签是精确文件名，不需要也不允许根据上下文重新推测人物阶段；只有精确图片不存在时才报告找不到，不得用近似资源替代
 2. 改写 image_prompt：
-   - 把每个 [角色名·阶段] 整体（连同方括号）替换为 "the person in image N"
+   - 把每个 [图片文件名去掉.png] 整体（连同方括号）替换为 "the person in image N"
    - 把场景/背景的文字描述替换为 "the background in image N"（N 与场景参考图对应）
    - N 从 1 开始，与 reference_images 顺序一致；其余动作、姿态、情绪、景别、光影描述全部保留，不大幅改写
 3. 选图策略（所有景别都必须配场景图，没有例外）：
@@ -420,7 +434,7 @@ const RESOURCE_SELECTOR_SYSTEM = `你是分镜资源选择专员。根据 panel 
    - 特写 / 近景：场景图 + 角色图（面部细节为主，但背景必须有场景图）。背景文字替换为 "a close-up cropped slice of the background in image N"（只取场景图的局部一小块作背景，不画全景）
    - 中景：角色图 + 场景图，背景文字替换为 "the background in image N"
    - 全景 / 远景：场景图为主，角色图可选，背景文字替换为 "the background in image N"
-4. 若某 [角色名·阶段] 在资源目录里找不到对应角色，则把该标签替换为不带方括号的简短英文描述（如"the boy"），不要把方括号留在提示词里；切勿保留中文人名在 image_prompt 里
+4. 若某 [图片文件名去掉.png] 在资源目录里找不到精确图片，则不要猜测或替换成其他人物资源；从 reference_images 中省略该人物，并把标签替换为不带方括号的简短英文描述（如"the person"），切勿保留中文文件名在 image_prompt 里
 5. 画外人物剥离：image_prompt 中可能出现未加方括号的中文人名。说明该角色为画外、不入画，故未标方括号、也未为其选参考图。对这类裸中文人名：
    - 视为画外人物，把人名连同其朝向/位置描述删掉，对画外人物的行为改成对镜头的行为
    - 绝不可让裸中文人名留在改写后的 image_prompt 里，否则生图模型会试图画出该第二人物，而参考图里没有他，导致构图错乱或崩画面
@@ -1418,6 +1432,7 @@ export async function renderScene(
   sel: NovelSelection,
   sceneName: string,
   onProgress?: (p: RenderProgress) => void,
+  isEssay: boolean = false,
 ): Promise<SceneRenderResult> {
   const ep           = sel.episode;
   const jsonlPath    = novelPaths.storyboardJsonl(sel.novelName, ep, sceneName);
@@ -1436,9 +1451,9 @@ export async function renderScene(
 
   onProgress?.({ scene: sceneName, done: 0, total: groups.length });
 
-  // 资源目录
-  const catalog = await buildResourceCatalog(workspaceDir);
-  console.log(`资源目录已构建，共 ${catalog.pathMap.size} 个资源`);
+  // 资源目录（议论文跳过：无参考图，纯文生图，不建 catalog）
+  const catalog = isEssay ? null : await buildResourceCatalog(workspaceDir);
+  if (!isEssay) console.log(`资源目录已构建，共 ${catalog!.pathMap.size} 个资源`);
 
   // 全局共享，跨场景统一限并发（不再 per-scene 各 new 一把）
   const imgSem     = _globalImgSem;
@@ -1522,10 +1537,17 @@ export async function renderScene(
             } else if (fsSync.existsSync(imgPath)) {
               console.log(`  [${sceneName}][${prefix}] 图片已存在，跳过生图`);
               actualImg = imgPath;
+            } else if (isEssay) {
+              // 议论文：纯文生图，不走 selectResources，不选参考图
+              const cleanPrompt = (panel.image_prompt as string) ?? "";
+              console.log(`  [${sceneName}][${prefix}] 议论文纯文生图，无参考图`);
+              console.log(`  [${sceneName}][${prefix}] image_prompt: ${cleanPrompt}`);
+              await generateImage(imgSem, cleanPrompt, [], imgPath, sel.aspectRatio);
+              actualImg = imgPath;
             } else {
               const prevEndPos = gi > 0 ? (groups[gi - 1].end_positions ?? null) : null;
-              const { refPaths, imagePrompt } = await selectResources(panel, catalog, currentText, getPrevCtx(gi, pi), fullSceneText, prevEndPos);
-              // 兜底：选择器若漏剥离 [角色名·阶段] 身份标签，避免中文身份词污染生图
+              const { refPaths, imagePrompt } = await selectResources(panel, catalog!, currentText, getPrevCtx(gi, pi), fullSceneText, prevEndPos);
+              // 兜底：选择器若漏剥离 [图片文件名去掉.png] 参考图标签，避免中文文件名污染生图
               const cleanPrompt = imagePrompt.replace(/\[[^\]]*\]/g, refPaths.length ? "the person in image 1" : "the person");
               console.log(`  [${sceneName}][${prefix}] 参考图: ${refPaths.map((p) => path.basename(p)).join(", ") || "无"}`);
               console.log(`  [${sceneName}][${prefix}] image_prompt: ${cleanPrompt}`);
@@ -1539,6 +1561,17 @@ export async function renderScene(
             // ── 生视频阶段 ──
             if (fsSync.existsSync(panelVidPath)) {
               console.log(`    [视频] ${prefix}.mp4 已存在，跳过`);
+              return;
+            }
+
+            // 议论文静帧：无 video_prompt 的 panel（图表/统计/截图类）用静态图填满时长，不调 LTX
+            if (isEssay && !((panel.video_prompt ?? "").trim())) {
+              if (!actualImg || !fsSync.existsSync(actualImg)) {
+                console.log(`    [${prefix}] 议论文静帧：无参考图，跳过`);
+                return;
+              }
+              await generateStillVideo(actualImg, panelVidPath, duration);
+              console.log(`    [${prefix}] 议论文静帧视频: ${path.basename(panelVidPath)}（${duration.toFixed(2)}s，不调 LTX）`);
               return;
             }
 
@@ -1585,9 +1618,34 @@ export async function renderScene(
       }),
     );
 
+    // ── 完整性闸门：所有预期 panel 产物必须齐全，禁止残缺 group 继续拼接 ──
+    const findMissingPanels = (extension: "png" | "mp4"): string[] => {
+      const missing: string[] = [];
+      for (let gi = 0; gi < groups.length; gi++) {
+        const panels = groups[gi].panels ?? [];
+        for (let pi = 0; pi < panels.length; pi++) {
+          // continuation panel 按设计跳过静态图，直接用前一视频尾帧生成视频。
+          if (extension === "png" && panels[pi].is_continuation === true) continue;
+          const filename = `g${String(gi).padStart(2, "0")}_p${String(pi).padStart(2, "0")}.${extension}`;
+          if (!fsSync.existsSync(path.join(outputDir, filename))) missing.push(filename);
+        }
+      }
+      return missing;
+    };
+
+    const missingImages = findMissingPanels("png");
+    if (missingImages.length > 0) {
+      throw new Error(`[${sceneName}] panel 图片不完整，停止渲染：${missingImages.join(", ")}`);
+    }
+
     if (sel.imagesOnly) {
       console.log(`\n[${sceneName}] images-only：所有分镜图已生成，跳过视频拼接/TTS/合并`);
       return "";
+    }
+
+    const missingVideos = findMissingPanels("mp4");
+    if (missingVideos.length > 0) {
+      throw new Error(`[${sceneName}] panel 视频不完整，停止最终合并：${missingVideos.join(", ")}`);
     }
 
     // ── 按 group 顺序拼接 panel 视频 → group 视频 ──

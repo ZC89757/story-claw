@@ -25,9 +25,16 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-# 禁用系统代理（避免 requests 经代理时 TLS 握手失败，与 utils/gpt-image-gen.py 一致）
-os.environ["NO_PROXY"] = "*"
-os.environ["no_proxy"] = "*"
+# ZenMux 相关请求统一走本地 Clash HTTP 代理。
+# 清掉可能残留的 SOCKS 代理，避免环境缺少 socksio 时连接失败。
+for _key in ("ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+    os.environ.pop(_key, None)
+PROXY_URL = "http://127.0.0.1:7890"
+os.environ["HTTP_PROXY"] = PROXY_URL
+os.environ["HTTPS_PROXY"] = PROXY_URL
+os.environ["http_proxy"] = PROXY_URL
+os.environ["https_proxy"] = PROXY_URL
+REQUEST_PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
 
 import numpy as np
 import requests
@@ -193,7 +200,7 @@ def infer_title_design(txt_path: str, log) -> str:
                     "messages": [{"role": "user", "content": DESIGN_PROMPT_TEMPLATE.format(content=content)}],
                 },
                 timeout=DESIGN_LLM_TIMEOUT,
-                proxies={"http": None, "https": None},
+                proxies=REQUEST_PROXIES,
             )
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"].strip()
@@ -254,7 +261,7 @@ def infer_intro_creative(txt_path: str, resource_names: list, log) -> dict:
                     ],
                 },
                 timeout=INTRO_LLM_TIMEOUT,
-                proxies={"http": None, "https": None},
+                proxies=REQUEST_PROXIES,
             )
             resp.raise_for_status()
             raw = resp.json()["choices"][0]["message"]["content"].strip()
@@ -422,7 +429,7 @@ def _try_generate_intro_video(model: str, image_path: str, video_prompt: str, ou
             video = generated[0].video
             data = video.video_bytes
             if not data and video.uri:
-                dl = requests.get(video.uri, timeout=60, proxies={"http": None, "https": None})
+                dl = requests.get(video.uri, timeout=60, proxies=REQUEST_PROXIES)
                 dl.raise_for_status()
                 data = dl.content
             if not data:

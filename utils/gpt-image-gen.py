@@ -18,9 +18,15 @@ import os
 import sys
 from pathlib import Path
 
-# 禁用系统代理（避免 httpx 经代理时 TLS 握手失败）
-os.environ["NO_PROXY"] = "*"
-os.environ["no_proxy"] = "*"
+# 走本地 Clash HTTP 代理（zenmux.ai 需代理才能连通）
+# 注意：系统环境里可能残留 ALL_PROXY=socks5://127.0.0.1:7890，httpx 会优先用它
+# 又因缺 socksio 库而崩；故显式清掉 ALL_PROXY，只用 HTTP/HTTPS 代理
+for _k in ["ALL_PROXY", "all_proxy"]:
+    os.environ.pop(_k, None)
+os.environ["HTTP_PROXY"]  = "http://127.0.0.1:7890"
+os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7890"
+os.environ["http_proxy"]  = "http://127.0.0.1:7890"
+os.environ["https_proxy"] = "http://127.0.0.1:7890"
 
 from google import genai
 from google.genai import types
