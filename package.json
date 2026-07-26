@@ -38,6 +38,7 @@
     "@mariozechner/pi-agent-core": "0.52.8",
     "@mariozechner/pi-ai": "0.52.8",
     "@mariozechner/pi-coding-agent": "0.52.8",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "undici": "^6.28.0"
   }
 }
