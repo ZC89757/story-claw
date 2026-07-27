@@ -636,7 +636,7 @@
   },
   "5142": {
     "inputs": {
-      "aspect_ratio": "9:16",
+      "aspect_ratio": "original",
       "proportional_width": 1,
       "proportional_height": 1,
       "fit": "crop",
@@ -662,7 +662,7 @@
     "inputs": {
       "inputcount": 2,
       "direction": "right",
-      "match_image_size": false,
+      "match_image_size": true,
       "image_1": [
         "5099",
         0
