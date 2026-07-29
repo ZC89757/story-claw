@@ -15,11 +15,11 @@ Point it at a folder of novel chapters. It hands back a finished short-drama epi
 
 <p align="center">
   <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4">
-    <img src="assets/demo-thumb.jpg" width="45%" alt="Demo 1: AI Hot News" />
+    <img src="assets/demo1-thumb.jpg" width="45%" alt="Demo 1: AI Hot News" />
   </a>
   &nbsp;&nbsp;
   <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4">
-    <img src="assets/demo-thumb.jpg" width="45%" alt="Demo 2: Murder on the Orient Express (Episode 6 with BGM)" />
+    <img src="assets/demo2-thumb.jpg" width="45%" alt="Demo 2: Murder on the Orient Express (Episode 6 with BGM)" />
   </a>
 </p>
 

@@ -15,11 +15,11 @@
 
 <p align="center">
   <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4">
-    <img src="assets/demo-thumb.jpg" width="45%" alt="示例 1：AI热点新闻" />
+    <img src="assets/demo1-thumb.jpg" width="45%" alt="示例 1：AI热点新闻" />
   </a>
   &nbsp;&nbsp;
   <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4">
-    <img src="assets/demo-thumb.jpg" width="45%" alt="示例 2：《东方快车谋杀案》第6集（带BGM）" />
+    <img src="assets/demo2-thumb.jpg" width="45%" alt="示例 2：《东方快车谋杀案》第6集（带BGM）" />
   </a>
 </p>
 
