@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4">
-    <img src="assets/demo-thumb.jpg" width="45%" alt="示例 1：《十日终焉》第6集" />
+    <img src="assets/demo-thumb.jpg" width="45%" alt="示例 1：AI热点新闻" />
   </a>
   &nbsp;&nbsp;
   <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4">
@@ -24,7 +24,7 @@
 </p>
 
 *点击播放成片。以上为 Story Claw 全自动生成的成片，未做任何手动剪辑：剧本改编 → 角色/场景生图 → 分镜构图 → 配音+BGM+音效 → 视频渲染。*
-- **示例 1**：《十日终焉》第 6 集 — [点击播放视频](https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4)
+- **示例 1**：AI热点新闻 — [点击播放视频](https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4)
 - **示例 2**：《东方快车谋杀案》第 6 集（含 BGM）— [点击播放视频](https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4)
 
 ---
