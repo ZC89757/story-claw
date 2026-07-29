@@ -72,8 +72,12 @@ def main():
         )
     )
 
+    candidates = getattr(resp, "candidates", None) or []
+    content = getattr(candidates[0], "content", None) if candidates else None
+    parts = getattr(content, "parts", None) or []
+
     saved = False
-    for part in resp.candidates[0].content.parts:
+    for part in parts:
         if part.inline_data is not None:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             Path(output_path).write_bytes(part.inline_data.data)
@@ -81,9 +85,11 @@ def main():
             break
 
     if not saved:
-        # 只有文字，没有图像
-        texts = [p.text for p in resp.candidates[0].content.parts if p.text]
-        print(f"no image in response: {' '.join(texts)[:200]}", file=sys.stderr)
+        # 安全拦截或仅返回文字时，明确报错而不是因空 content 抛 TypeError
+        texts = [p.text for p in parts if p.text]
+        feedback = getattr(resp, "prompt_feedback", None)
+        detail = " ".join(texts)[:200] or str(feedback or "empty candidates/content")
+        print(f"no image in response: {detail}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

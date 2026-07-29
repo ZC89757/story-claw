@@ -66,7 +66,7 @@ for _bin in ("/root/miniconda3/bin", "/usr/local/ffmpeg/bin"):
 
 # ─── 视觉模型与人物一致性质检配置 ──────────────────────────────────────────────
 VISION_BASE_URL   = "https://zenmux.ai/api/anthropic"
-VISION_API_KEY    = "xxxxx"
+VISION_API_KEY    = "xxx"
 
 # 以下两项可在 dashboard 页面上改，持久化到 GATE_CONFIG_PATH，重启进程不丢、改完立即生效：
 #   - VISION_MODEL：人物一致性 Gate1/2 和去字幕前置探测共用；

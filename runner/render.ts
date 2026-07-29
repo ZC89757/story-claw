@@ -219,17 +219,22 @@ async function getAudioDurationReal(filePath: string): Promise<number> {
   return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
 }
 
-interface VideoDims { width: number; height: number; fps: number }
+interface VideoDims { width: number; height: number; fps: number; sar: string }
 
 async function probeVideoDims(filePath: string): Promise<VideoDims> {
   const { stdout } = await execFileAsync("ffprobe", [
     "-v", "error", "-select_streams", "v:0",
-    "-show_entries", "stream=width,height,r_frame_rate",
-    "-of", "csv=s=x:p=0", filePath,
+    "-show_entries", "stream=width,height,r_frame_rate,sample_aspect_ratio",
+    "-of", "json", filePath,
   ]);
-  const [w, h, fr] = stdout.trim().split("x");
-  const [num, den] = fr.split("/").map(Number);
-  return { width: Number(w), height: Number(h), fps: den ? num / den : num };
+  const stream = JSON.parse(stdout).streams?.[0] ?? {};
+  const [num, den] = String(stream.r_frame_rate ?? "0/1").split("/").map(Number);
+  return {
+    width: Number(stream.width),
+    height: Number(stream.height),
+    fps: den ? num / den : num,
+    sar: String(stream.sample_aspect_ratio ?? "1:1"),
+  };
 }
 
 // ── 音效库（全局，扫 ~/.story-claw/sfx/）─────────────────────────────────────
@@ -1346,9 +1351,8 @@ function buildAss(
 }
 
 /**
- * panel 视频拼接 + 字幕烧录（原子操作）。
- * 有字幕数据：ffmpeg concat + -vf subtitles（libx264 重编码）。
- * 无字幕数据：走原来的 copy / concatVideos 快速路径（-c:v copy）。
+ * panel 视频先统一尺寸，再拼接并烧录字幕。
+ * 非标准比例等比放大后居中裁切，不加黑边；字幕在裁切完成后烧录，避免字幕被后续裁掉。
  */
 async function concatAndBurnSubs(
   panelVids: string[],
@@ -1361,6 +1365,16 @@ async function concatAndBurnSubs(
   const subsJson   = path.join(outputDir, `${gtag}_subtitles.json`);
   const assRelName = `${gtag}_subtitles.ass`;
   const assPath    = path.join(outputDir, assRelName);
+  const listName   = `_concat_${gtag}.txt`;
+  const listPath   = path.join(outputDir, listName);
+  const buildName  = `_building_${gtag}.mp4`;
+  const buildPath  = path.join(outputDir, buildName);
+  const backupPath = path.join(outputDir, `_backup_${gtag}.mp4`);
+  const [targetW, targetH] = videoSize(aspectRatio);
+  const targetFps = getVideoFps();
+  const normalizedVids = panelVids.map((_, pi) =>
+    path.join(outputDir, `_normalized_${gtag}_p${String(pi).padStart(2, "0")}.mp4`),
+  );
 
   let events: Array<{ start: number; end: number; text: string }> | null = null;
   if (SUBTITLES_ENABLED && fsSync.existsSync(subsJson)) {
@@ -1369,46 +1383,73 @@ async function concatAndBurnSubs(
     } catch { /* 解析失败则不烧字幕 */ }
   }
 
-  if (!events || events.length === 0) {
-    // 无字幕：快速路径
-    if (panelVids.length === 1) {
-      await fs.copyFile(panelVids[0], groupVidPath);
-    } else {
-      await concatVideos(panelVids, groupVidPath);
-    }
-    return;
-  }
-
-  // 写临时 ASS（basename 全 ASCII，绕过 ffmpeg filter 中文路径问题）
-  await fs.writeFile(assPath, buildAss(events, aspectRatio), "utf-8");
-
-  const outDir  = path.dirname(groupVidPath);
-  const outBase = path.basename(groupVidPath);
-  const vfExpr  = `subtitles=${assRelName}`;
+  const normalizeFilter = [
+    `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase`,
+    `crop=${targetW}:${targetH}:(iw-ow)/2:(ih-oh)/2`,
+    "setsar=1",
+  ].join(",");
 
   try {
-    if (panelVids.length === 1) {
+    await Promise.all(panelVids.map((panelVid, pi) => execFileAsync("ffmpeg", [
+      "-y", "-i", panelVid,
+      "-vf", normalizeFilter,
+      "-r", String(targetFps),
+      "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+      "-pix_fmt", "yuv420p", "-an",
+      normalizedVids[pi],
+    ])));
+
+    if (events && events.length > 0) {
+      // ASS 画布与标准化后的视频尺寸一致，且后续不再裁切字幕区域。
+      await fs.writeFile(assPath, buildAss(events, aspectRatio), "utf-8");
+    }
+
+    const vfArgs = events && events.length > 0
+      ? ["-vf", `subtitles=${assRelName}`]
+      : [];
+    const outDir = path.dirname(groupVidPath);
+
+    if (normalizedVids.length === 1) {
       await execFileAsync("ffmpeg", [
-        "-y", "-i", path.basename(panelVids[0]),
-        "-vf", vfExpr,
+        "-y", "-i", path.basename(normalizedVids[0]),
+        ...vfArgs,
         "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-        "-an", outBase,
+        "-pix_fmt", "yuv420p", "-an", buildName,
       ], { cwd: outDir });
     } else {
-      const listName = `_concat_${gtag}.txt`;
-      const listPath = path.join(outDir, listName);
-      await fs.writeFile(listPath, panelVids.map((p) => `file '${path.basename(p)}'`).join("\n"), "utf-8");
+      await fs.writeFile(
+        listPath,
+        normalizedVids.map((p) => `file '${path.basename(p)}'`).join("\n"),
+        "utf-8",
+      );
       await execFileAsync("ffmpeg", [
         "-y", "-f", "concat", "-safe", "0",
         "-i", listName,
-        "-vf", vfExpr,
+        ...vfArgs,
         "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-        "-an", outBase,
+        "-pix_fmt", "yuv420p", "-an", buildName,
       ], { cwd: outDir });
-      await fs.unlink(listPath).catch(() => {});
+    }
+
+    const hadExistingGroup = fsSync.existsSync(groupVidPath);
+    if (hadExistingGroup) {
+      await fs.rename(groupVidPath, backupPath);
+    }
+    try {
+      await fs.rename(buildPath, groupVidPath);
+      if (hadExistingGroup) await fs.unlink(backupPath).catch(() => {});
+    } catch (err) {
+      if (hadExistingGroup && fsSync.existsSync(backupPath)) {
+        await fs.rename(backupPath, groupVidPath).catch(() => {});
+      }
+      throw err;
     }
   } finally {
+    await fs.unlink(buildPath).catch(() => {});
+    if (fsSync.existsSync(groupVidPath)) await fs.unlink(backupPath).catch(() => {});
     await fs.unlink(assPath).catch(() => {});
+    await fs.unlink(listPath).catch(() => {});
+    await Promise.all(normalizedVids.map((p) => fs.unlink(p).catch(() => {})));
   }
 }
 
@@ -1655,10 +1696,18 @@ export async function renderScene(
       const groupVidPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}.mp4`);
 
       if (fsSync.existsSync(groupVidPath)) {
-        console.log(`\n[group ${String(gi).padStart(2, "0")}] 视频已存在，跳过`);
-        groupVideos.push(groupVidPath);
-        onProgress?.({ scene: sceneName, done: gi + 1, total: groups.length });
-        continue;
+        const [targetW, targetH] = videoSize(sel.aspectRatio);
+        const dims = await probeVideoDims(groupVidPath);
+        if (dims.width === targetW && dims.height === targetH && dims.sar === "1:1") {
+          console.log(`\n[group ${String(gi).padStart(2, "0")}] 视频已存在，跳过`);
+          groupVideos.push(groupVidPath);
+          onProgress?.({ scene: sceneName, done: gi + 1, total: groups.length });
+          continue;
+        }
+        console.log(
+          `\n[group ${String(gi).padStart(2, "0")}] 旧视频尺寸 ${dims.width}x${dims.height}，` +
+          `按 ${targetW}x${targetH} 重新拼接并烧录字幕`,
+        );
       }
 
       const panelVids = panels
@@ -1798,7 +1847,7 @@ export async function globalAlignAndMerge(
   const [targetWH, targetFpsStr] = targetKey.split("@");
   const [targetW, targetH] = targetWH.split("x").map(Number);
   const targetFps = Number(targetFpsStr);
-  const mismatchCount = videoDims.filter((d) => dimKey(d) !== targetKey).length;
+  const mismatchCount = videoDims.filter((d) => dimKey(d) !== targetKey || d.sar !== "1:1").length;
   if (mismatchCount > 0) {
     console.log(`[全局对齐] 检测到 ${mismatchCount} 个 group 分辨率/帧率异常（主流规格 ${targetKey}），已统一缩放对齐`);
   }
@@ -1819,11 +1868,11 @@ export async function globalAlignAndMerge(
     const idx    = String(i).padStart(3, "0");
     const adjVid = path.join(tmpDir, `v${idx}.mp4`);
     const dims   = await probeVideoDims(group.videoPath);
-    const needReencode = dims.width !== targetW || dims.height !== targetH;
+    const needReencode = dims.width !== targetW || dims.height !== targetH || dims.sar !== "1:1";
 
     if (needReencode) {
-      // 仅统一分辨率（increase+crop 填满裁边，避免黑边），不碰帧率/时间戳
-      const vf = `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase,crop=${targetW}:${targetH}`;
+      // 旧产物兜底：统一分辨率和 SAR；新产物已在字幕烧录前完成此步骤。
+      const vf = `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase,crop=${targetW}:${targetH},setsar=1`;
       await execFileAsync("ffmpeg", [
         "-y", "-i", group.videoPath,
         "-filter:v", vf,
