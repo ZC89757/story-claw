@@ -13,9 +13,19 @@ English | [中文](./README_CN.md)
 
 Point it at a folder of novel chapters. It hands back a finished short-drama episode — narrated, scored, sound-effected, rendered — with one command. If you want to turn a web novel into short-drama episodes without paying per second for video generation or babysitting character consistency by hand, this is built for exactly that.
 
-[![Demo](assets/demo-thumb.jpg)](https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4)
+<p align="center">
+  <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4">
+    <img src="assets/demo-thumb.jpg" width="45%" alt="Demo 1: Final Chapter (Episode 6)" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4">
+    <img src="assets/demo-thumb.jpg" width="45%" alt="Demo 2: Murder on the Orient Express (Episode 6 with BGM)" />
+  </a>
+</p>
 
-*Click to play. Generated end-to-end by Story Claw, zero manual editing: script adaptation → character/scene art → shot composition → voice + BGM + sfx → video render.*
+*Click to play full video. Generated end-to-end by Story Claw, zero manual editing: script adaptation → character/scene art → shot composition → voice + BGM + sfx → video render.*
+- **Demo 1**: *Final Chapter / 十日终焉 (Episode 6)* — [Play Video](https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4)
+- **Demo 2**: *Murder on the Orient Express / 东方快车谋杀案 (Episode 6 with BGM)* — [Play Video](https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4)
 
 ---
 

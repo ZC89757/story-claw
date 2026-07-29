@@ -13,9 +13,19 @@
 
 丢一个小说章节文件夹进去，一条命令拿回一集配好音、配好乐、加了音效的成片短剧。如果你想把网文改编成短剧，又不想为视频生成按秒付费、也不想自己盯着人物一致性手动纠错，这个工具就是照着这个需求做的。
 
-[![演示视频](assets/demo-thumb.jpg)](https://github.com/ZC89757/story-claw/raw/main/assets/demo.mp4)
+<p align="center">
+  <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4">
+    <img src="assets/demo-thumb.jpg" width="45%" alt="示例 1：《十日终焉》第6集" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4">
+    <img src="assets/demo-thumb.jpg" width="45%" alt="示例 2：《东方快车谋杀案》第6集（带BGM）" />
+  </a>
+</p>
 
-*点击播放。以上为 Story Claw 全自动生成的成片，未做任何手动剪辑：剧本改编 → 角色/场景生图 → 分镜构图 → 配音+BGM+音效 → 视频渲染。*
+*点击播放成片。以上为 Story Claw 全自动生成的成片，未做任何手动剪辑：剧本改编 → 角色/场景生图 → 分镜构图 → 配音+BGM+音效 → 视频渲染。*
+- **示例 1**：《十日终焉》第 6 集 — [点击播放视频](https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4)
+- **示例 2**：《东方快车谋杀案》第 6 集（含 BGM）— [点击播放视频](https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4)
 
 ---
 
