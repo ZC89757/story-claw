@@ -15,13 +15,20 @@ export interface NovelSelection {
   ethnicity: string;
   aspectRatio: string;
   imagesOnly: boolean;  // 只生分镜图，跳过生视频/TTS/合并（ComfyUI 未就绪时先出图）
-  articleType: "essay" | "story";  // 文章类型：新建小说时选定，写进度顶层，之后不再问
+  articleType: "essay" | "story";
 }
+
+export type RunScope = "solo" | "all";
+
+type RenderMode = "full" | "images_only";
 
 interface Progress {
   novel_name: string;
   source_path?: string;
+  ethnicity?: string;
   article_type?: "essay" | "story";
+  aspect_ratio?: "9:16" | "16:9";
+  render_mode?: RenderMode;
   adapted: Array<{ episode: number }>;
   next_chapter: number;
   episodes?: Record<string, { stages?: Record<string, string> }>;
@@ -98,8 +105,26 @@ async function countChapters(folder: string): Promise<number> {
   }
 }
 
+function renderModeLabel(mode: RenderMode): string {
+  return mode === "images_only" ? "只生分镜图" : "完整渲染";
+}
+
+function printProjectDefaults(progress: Progress): void {
+  const articleType = progress.article_type === "essay" ? "议论文" : "叙事小说";
+  console.log(`  人物人种、文章类型、画幅、渲染模式沿用该项目的默认配置（配置详情：${progress.ethnicity} / ${articleType} / ${progress.aspect_ratio} / ${renderModeLabel(progress.render_mode!)}），可在项目的改编进度中查看细节。\n`);
+}
+
+function hasProjectDefaults(progress: Progress): boolean {
+  return Boolean(
+    typeof progress.ethnicity === "string"
+    && (progress.article_type === "essay" || progress.article_type === "story")
+    && (progress.aspect_ratio === "9:16" || progress.aspect_ratio === "16:9")
+    && (progress.render_mode === "full" || progress.render_mode === "images_only")
+  );
+}
+
 /** 选择小说并确认，返回 NovelSelection 或 null（用户取消） */
-export async function selectNovel(rl: readline.Interface): Promise<NovelSelection | null> {
+export async function selectNovel(rl: readline.Interface, scope: RunScope = "solo"): Promise<NovelSelection | null> {
   // 扫描已有小说
   const workspace = PATHS.workspace;
   const novels: Progress[] = [];
@@ -166,37 +191,30 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
       }
     }
 
+    if (!hasProjectDefaults(novel)) {
+      console.log(`\n  x 项目「${novel.novel_name}」缺少默认配置。`);
+      console.log("  请先在改编进度.json 中补充 ethnicity、article_type、aspect_ratio、render_mode。\n");
+      return null;
+    }
+
     console.log(`\n  ${novel.novel_name} — 第${episode}集（从第${nextChapter}章开始）`);
+    if (scope === "all") {
+      console.log("  将连续改编该项目的全部剩余章节。");
+    }
     const confirm = await ask(rl, "  确认开始？(Y/n): ");
     if (confirm.toLowerCase() === "n") return null;
 
-    const ethnicity = await selectEthnicity(rl);
-    const aspectRatio = await selectAspectRatio(rl);
-
-    // 文章类型沿用进度里的值（新建小说时已选定，之后不再问）
-    const articleType: "essay" | "story" = novel.article_type === "essay" ? "essay" : "story";
-    console.log(`  文章类型: ${articleType === "essay" ? "议论文" : "叙事小说"}（沿用进度，不重新选择）`);
-
-    // 若本集上次只生成了图片（render=images_only），优先询问是否补视频
-    let imagesOnly: boolean;
-    const renderStatus = novel.episodes?.[String(episode)]?.stages?.render;
-    if (renderStatus === "images_only") {
-      console.log(`\n  检测到第${episode}集已生成分镜图（未生成视频）。`);
-      const ans = await ask(rl, "  是否补生成视频？(需已开启 ComfyUI)(Y/n): ");
-      imagesOnly = ans.toLowerCase() === "n";
-    } else {
-      imagesOnly = await selectImagesOnly(rl);
-    }
+    printProjectDefaults(novel);
 
     return {
       novelName: novel.novel_name,
       sourcePath: novel.source_path ?? "",
       episode,
       nextChapter,
-      ethnicity,
-      aspectRatio,
-      imagesOnly,
-      articleType,
+      ethnicity: novel.ethnicity!,
+      aspectRatio: novel.aspect_ratio!,
+      imagesOnly: novel.render_mode === "images_only",
+      articleType: novel.article_type!,
     };
   }
 
@@ -224,17 +242,35 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
     const nameInput = await ask(rl, `  请输入小说名称（回车 = ${defaultName}）: `);
     const novelName = nameInput || defaultName;
 
+    const ethnicity = await selectEthnicity(rl);
     const articleType = await selectArticleType(rl);
-    console.log(`  文章类型: ${articleType === "essay" ? "议论文" : "叙事小说"}`);
+    const aspectRatio = await selectAspectRatio(rl);
+    const imagesOnly = await selectImagesOnly(rl);
+    const renderMode: RenderMode = imagesOnly ? "images_only" : "full";
+    if (scope === "all" && imagesOnly) {
+      console.log("\n  x /all 不支持‘只生分镜图’模式，请选择完整渲染。\n");
+      return null;
+    }
 
-    // 初始化 workspace 和进度文件
+    console.log(`\n  ${novelName} — 第1集（从第1章开始）`);
+    if (scope === "all") {
+      console.log("  将连续改编该项目的全部章节。");
+    }
+    console.log(`  配置详情：${ethnicity} / ${articleType === "essay" ? "议论文" : "叙事小说"} / ${aspectRatio} / ${renderModeLabel(renderMode)}`);
+    const confirm = await ask(rl, "  确认开始？(Y/n): ");
+    if (confirm.toLowerCase() === "n") return null;
+
+    // 初始化 workspace 和进度文件，运行属性作为项目默认配置持久化
     const novelDir = novelPaths.workspaceDir(novelName);
     await fs.mkdir(novelDir, { recursive: true });
 
     const progress = {
       novel_name: novelName,
       source_path: folderPath,
-      article_type: articleType,  // novel 级类型，新建时选定，之后各集沿用
+      ethnicity,
+      article_type: articleType,
+      aspect_ratio: aspectRatio,
+      render_mode: renderMode,
       adapted: [],
       next_chapter: 1,
       global_summary: "",
@@ -247,14 +283,6 @@ export async function selectNovel(rl: readline.Interface): Promise<NovelSelectio
       JSON.stringify(progress, null, 4),
       "utf-8",
     );
-
-    console.log(`\n  ${novelName} — 第1集（从第1章开始）`);
-    const confirm = await ask(rl, "  确认开始？(Y/n): ");
-    if (confirm.toLowerCase() === "n") return null;
-
-    const ethnicity = await selectEthnicity(rl);
-    const aspectRatio = await selectAspectRatio(rl);
-    const imagesOnly = await selectImagesOnly(rl);
 
     return {
       novelName,

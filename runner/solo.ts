@@ -3,18 +3,20 @@
  */
 
 import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { execSync, execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
 import type { RenderProgress, SceneRenderResult } from "./pipeline.js";
 import { initRenderLog, globalAlignAndMerge } from "./render.js";
+import { generateEpisodeCovers } from "./cover.js";
+import { postprocessEpisodeVideo } from "./postprocess.js";
 import { novelPaths } from "../utils/paths.js";
 import { readProgress, getEpisodeRecord, markStage, finalizeEpisode } from "../utils/progress.js";
 
-export async function runSolo(sel: NovelSelection) {
+export type SoloRunResult = "done" | "images_only" | "already_done" | "failed";
+
+export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
   const title = `${sel.novelName} 第${sel.episode}集`;
   const ep = sel.episode;
   const p = createProgress();
@@ -95,8 +97,13 @@ export async function runSolo(sel: NovelSelection) {
     // 整集已完整渲染过，无需再跑
     if (epRec.stages.render === "done") {
       p.done(5, title, "已完成，跳过");
+      try {
+        await generateEpisodeCovers(sel);
+      } catch (err) {
+        console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
+      }
       console.log(`\n  本集已完整渲染完成，无需重跑。`);
-      return;
+      return "already_done";
     }
 
     // ── 开启 GPU 实例 ──
@@ -135,14 +142,21 @@ export async function runSolo(sel: NovelSelection) {
     );
     p.done(5, title, `${jsonlFiles.length} 个场景`);
 
+    // panel 静态图完成后即可生成横竖封面；失败只告警，不阻断本集。
+    try {
+      await generateEpisodeCovers(sel);
+    } catch (err) {
+      console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
+    }
+
     // images-only 模式：只出分镜图，记 render=images_only，不推进进度（等 ComfyUI 就绪后重跑补视频）
     if (sel.imagesOnly) {
       await markStage(sel.novelName, ep, "render", "images_only");
       console.log(`\n  ${"=".repeat(50)}`);
       console.log(`  只生图完成！分镜图目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
-      console.log(`  开启 ComfyUI 后，对同一集再跑一次 /solo 即可补生视频。`);
+      console.log(`  将项目默认渲染模式改为完整渲染后，对同一集再跑一次 /solo 即可补生视频。`);
       console.log();
-      return;
+      return "images_only";
     }
 
     // ── 全局对齐合并（音视频相向调速后拼为集视频）──
@@ -153,32 +167,89 @@ export async function runSolo(sel: NovelSelection) {
       await globalAlignAndMerge(sceneResults, episodeVideoPath, epDir);
     }
 
+    // ── 最终视频后处理：故事加标题并 1.1x；议论文 1.2x 并混入本地随机 BGM。
+    // 失败只告警，保留原始成片并照常完成本集。
+    try {
+      await postprocessEpisodeVideo(sel);
+    } catch (err) {
+      console.warn(`  [视频后处理] 失败，保留当前集视频: ${err}`);
+    }
+
     // 整集完成：render=done，追加 adapted、next_chapter +1
     await finalizeEpisode(sel.novelName, ep);
-
-    // ── 生成集尾 BGM（独立脚本，失败不影响整集完成；必须在下面 finally 关 GPU 之前跑，
-    //   因为 ACE-Step 服务跟 ComfyUI 在同一台被 grab/shutdown 的 GPU 实例上）──
-    //   议论文不加 BGM，跳过。
-    if (!isEssay) {
-      try {
-        const cleanTextPath = novelPaths.cleanedText(sel.novelName, ep);
-        await fs.access(cleanTextPath);
-        console.log(`\n  正在生成 BGM...`);
-        const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "utils", "generate-bgm.ts");
-        execFileSync(process.execPath, ["--import", "tsx", scriptPath, cleanTextPath], { stdio: "inherit" });
-      } catch (err) {
-        console.warn(`  [BGM] 生成失败或跳过: ${err}`);
-      }
-    }
 
     console.log(`\n  ${"=".repeat(50)}`);
     console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
     console.log();
+    return "done";
 
   } catch (err) {
     console.error(`\n  x 流水线出错: ${err}\n`);
+    return "failed";
   } finally {
     // ── 无论成功还是出错，都关闭 GPU 实例 ──
     execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
+  }
+}
+
+/** 从当前进度开始，串行跑完项目中所有连续章节。 */
+export async function runAllEpisodes(initialSel: NovelSelection): Promise<void> {
+  if (initialSel.imagesOnly) {
+    console.log("\n  x /all 不支持项目默认的‘只生分镜图’模式。\n  请先在改编进度.json 中将 render_mode 改为 full。\n");
+    return;
+  }
+
+  let completed = 0;
+
+  while (true) {
+    const progress = await readProgress(initialSel.novelName);
+    const nextChapter: number = progress.next_chapter ?? 1;
+    const episode = (progress.adapted?.length ?? 0) + 1;
+    const sourcePath: string = progress.source_path ?? initialSel.sourcePath;
+
+    let chapterNumbers: number[];
+    try {
+      chapterNumbers = (await fs.readdir(sourcePath))
+        .map((filename) => filename.match(/^第(\d+)章.*\.txt$/)?.[1])
+        .filter((chapter): chapter is string => chapter !== undefined)
+        .map(Number);
+    } catch (err) {
+      console.error(`\n  x 无法读取小说源目录: ${sourcePath}\n  ${err}\n`);
+      return;
+    }
+
+    if (!chapterNumbers.includes(nextChapter)) {
+      const higherChapter = chapterNumbers.some((chapter) => chapter > nextChapter);
+      if (higherChapter) {
+        console.error(`\n  x 章节断号：找不到第${nextChapter}章，但源目录中存在更高章号。`);
+        console.error("  /all 已停止，请补齐章节文件后重试。\n");
+      } else {
+        console.log(`\n  ${"=".repeat(50)}`);
+        console.log(`  全项目运行完成！本次完成 ${completed} 集。`);
+        console.log();
+      }
+      return;
+    }
+
+    console.log(`\n  [全项目] 开始第${episode}集（第${nextChapter}章）`);
+    const result = await runSolo({
+      ...initialSel,
+      sourcePath,
+      episode,
+      nextChapter,
+    });
+
+    if (result !== "done") {
+      console.error(`\n  /all 已在第${episode}集停止（状态：${result}），现有进度已保留。\n`);
+      return;
+    }
+
+    const updated = await readProgress(initialSel.novelName);
+    if ((updated.next_chapter ?? nextChapter) <= nextChapter) {
+      console.error(`\n  x 第${episode}集完成后章节进度未推进，/all 已停止。\n`);
+      return;
+    }
+
+    completed += 1;
   }
 }

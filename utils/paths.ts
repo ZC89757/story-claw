@@ -85,6 +85,10 @@ export const novelPaths = {
   scenesDir: (novelName: string) =>
     path.join(PATHS.workspace, novelName, "scenes"),
 
+  /** 议论文封面参考资源目录：workspace/{名}/resource/ */
+  resourceDir: (novelName: string) =>
+    path.join(PATHS.workspace, novelName, "resource"),
+
   /** 角色 JSON 路径：workspace/{名}/characters/{角色名}.json */
   characterJson: (novelName: string, charName: string) =>
     path.join(PATHS.workspace, novelName, "characters", `${charName}.json`),
@@ -133,9 +137,33 @@ export const novelPaths = {
   storyboardJsonl: (novelName: string, episodeNum: number, sceneName: string) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "storyboards", `storyboard_${sceneName}.jsonl`),
 
+  /** 每集封面目录：workspace/{名}/ep{XX}/covers/ */
+  coversDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "covers"),
+
+  /** 横版封面：workspace/{名}/ep{XX}/covers/cover_landscape.png */
+  coverLandscape: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "covers", "cover_landscape.png"),
+
+  /** 竖版封面：workspace/{名}/ep{XX}/covers/cover_portrait.png */
+  coverPortrait: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "covers", "cover_portrait.png"),
+
+  /** 封面策划记录：workspace/{名}/ep{XX}/covers/cover_plan.json */
+  coverPlan: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "covers", "cover_plan.json"),
+
   /** 集最终视频：workspace/{名}/ep{XX}/ep{XX}.mp4 */
   episodeVideo: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `ep${String(episodeNum).padStart(2, "0")}.mp4`),
+
+  /** 视频后处理临时输出：workspace/{名}/ep{XX}/.postprocess.mp4 */
+  postprocessTempVideo: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, ".postprocess.mp4"),
+
+  /** 视频后处理完成标记：workspace/{名}/ep{XX}/.postprocess_done.json */
+  postprocessMarker: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, ".postprocess_done.json"),
 
   /** 渲染输出目录：workspace/{名}/ep{XX}/render_{场景名}/ */
   renderDir: (novelName: string, episodeNum: number, sceneName: string) =>
@@ -144,6 +172,19 @@ export const novelPaths = {
   /** 场景最终视频（含TTS）：workspace/{名}/ep{XX}/render_{场景名}/final.mp4 */
   sceneFinalVideo: (novelName: string, episodeNum: number, sceneName: string) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `render_${sceneName}`, "final.mp4"),
+
+  /** 字幕重建测试目录：workspace/{名}/ep{XX}/subtitle_rebuild/ */
+  subtitleRebuildDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "subtitle_rebuild"),
+
+  /** 字幕重建测试成片（无 BGM） */
+  subtitleRebuildVideo: (novelName: string, episodeNum: number) =>
+    path.join(
+      PATHS.workspace,
+      novelName,
+      `ep${String(episodeNum).padStart(2, "0")}`,
+      `ep${String(episodeNum).padStart(2, "0")}_subtitle_fixed_no_bgm.mp4`,
+    ),
 
   /** voice_map：workspace/{名}/voice_map.json（跨集共享） */
   voiceMap: (novelName: string) =>

@@ -21,6 +21,12 @@ import { fileURLToPath } from "node:url";
 import { CONFIG_DIR } from "../utils/run-python.js";
 import { novelPaths } from "../utils/paths.js";
 import type { NovelSelection } from "../ui/select.js";
+import {
+  findSubtitleBoundaryWords,
+  splitSubtitleText,
+  stripTrailingPunct,
+  wrapSubtitleLines,
+} from "./subtitles.js";
 
 const RENDER_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -196,7 +202,7 @@ function distributePanelDurations(groupDur: number, panels: any[]): number[] {
 }
 
 /** ffprobe 获取媒体时长（秒） */
-async function getMediaDuration(filePath: string): Promise<number> {
+export async function getMediaDuration(filePath: string): Promise<number> {
   const { stdout } = await execFileAsync("ffprobe", [
     "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", filePath,
   ]);
@@ -837,7 +843,7 @@ const _globalVidSem = new Semaphore(VIDEO_CONCURRENCY);
 
 interface TtsWord { word: string; startTime: number; endTime: number; }
 
-async function ttsExecApi(
+export async function ttsExecApi(
   text: string,
   voice: string,
   _stylePrompt: string,
@@ -901,7 +907,7 @@ async function ttsExecApi(
   return { words };
 }
 
-async function ttsPhase4Concat(audioFiles: string[], outputPath: string): Promise<void> {
+export async function ttsPhase4Concat(audioFiles: string[], outputPath: string): Promise<void> {
   console.log(`[TTS Phase 4] 拼接 ${audioFiles.length} 个片段...`);
   const sorted   = [...audioFiles].sort();
   const listFile = outputPath.replace(/\.mp3$/, "_concat_list.txt");
@@ -1212,7 +1218,8 @@ async function runGroupTtsPipeline(
       }
     }
 
-    // 字幕事件生成：按子片段逐字分组 → 写 g{XX}_subtitles.json（group 本地秒）
+    // 字幕显示文字取传给 TTS 的原始 synthSegs.text，切换时间取豆包对应标点所在 word 的真实时间戳。
+    // 这样既保留 V4、GPT-5.6 等原文写法，也不再按字幕条数平均分配 words。
     if (SUBTITLES_ENABLED) {
       const maxChars = aspectRatio === "9:16" ? SUBTITLES_CHARS_PORT : SUBTITLES_CHARS_LAND;
       const events: Array<{ start: number; end: number; text: string }> = [];
@@ -1220,35 +1227,24 @@ async function runGroupTtsPipeline(
       for (let j = 0; j < segResults.length; j++) {
         const { p, words } = segResults[j];
         const segDur = await getMediaDuration(p);
-        if (words.length > 0) {
-          // maxChars 为软阈值：未达到时遇标点不切；达到或超过后等到下一个标点才切
-          let exceeded = false;
-          let curWords: TtsWord[] = [];
-          let curText = "";
-          const flush = () => {
-            const display = wrapSubtitleLines(stripTrailingPunct(curText), maxChars);
-            if (display && curWords.length > 0) {
-              events.push({
-                start: groupOffset + curWords[0].startTime,
-                end:   groupOffset + curWords[curWords.length - 1].endTime,
-                text:  display,
-              });
-            }
-            curWords = []; curText = ""; exceeded = false;
-          };
-          for (const w of words) {
-            const wc = w.word.replace(/\s/g, "");
-            if (!wc) continue;
-            curWords.push(w);
-            curText += wc;
-            if (curText.length >= maxChars) exceeded = true;
-            if (exceeded && isPunct(curText[curText.length - 1])) flush();
-          }
-          if (curText) flush();
-        } else {
-          // 无 word 级时间戳（API 降级情况）：整段文本作单条，时长占满该子片段
-          const segText = String(synthSegs[j]?.text ?? "").replace(/【[^】]*】/g, "").trim();
-          if (segText) events.push({ start: groupOffset, end: groupOffset + segDur, text: stripTrailingPunct(segText) });
+        const sourceText = String(synthSegs[j].text ?? "")
+          .replace(/【[^】]*】/g, "")
+          .replace(/\s/g, "");
+        const chunks = splitSubtitleText(sourceText, maxChars);
+        const timedWords = words.filter((w) => w.word.replace(/\s/g, ""));
+        const boundaryWords = findSubtitleBoundaryWords(timedWords, chunks);
+
+        let startWord = 0;
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const endWord = boundaryWords[ci];
+          const start = timedWords[startWord]?.startTime ?? 0;
+          const end = timedWords[endWord]?.endTime ?? segDur;
+          events.push({
+            start: groupOffset + start,
+            end: groupOffset + end,
+            text: wrapSubtitleLines(stripTrailingPunct(chunks[ci].text), maxChars),
+          });
+          startWord = endWord + 1;
         }
         groupOffset += segDur;
       }
@@ -1282,38 +1278,6 @@ async function runGroupTtsPipeline(
 }
 
 // ── 字幕 ASS 生成 + group 视频烧录 ───────────────────────────────────────────
-
-// ── 字幕文本处理 ──────────────────────────────────────────────────────────────
-
-// 中英文标点正则（用 Unicode 转义避免源码中出现会被 esbuild 误解析的引号字符）
-const PUNCT_RE = /[，。！？；：、“”‘’「」『』（）【】…—～,.!?;:"'()[\]]/;
-
-function isPunct(ch: string): boolean {
-  return PUNCT_RE.test(ch);
-}
-
-/** 去掉字符串末尾连续的标点符号和空白 */
-function stripTrailingPunct(text: string): string {
-  let i = text.length - 1;
-  while (i >= 0 && (isPunct(text[i]) || text[i] === " ")) i--;
-  return text.slice(0, i + 1);
-}
-
-/**
- * 将过长的字幕文本按 maxChars 换行（ASS 硬换行 \\N）。
- * 优先在标点处切，找不到则强制在 maxChars 处切。保留标点。
- */
-function wrapSubtitleLines(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  const lines: string[] = [];
-  let rem = text;
-  while (rem.length > maxChars) {
-    lines.push(rem.slice(0, maxChars));
-    rem = rem.slice(maxChars);
-  }
-  if (rem) lines.push(rem);
-  return lines.join("\\N");
-}
 
 /** 秒 → ASS 时间戳 H:MM:SS.cc */
 function toAssTime(sec: number): string {
@@ -1354,7 +1318,7 @@ function buildAss(
  * panel 视频先统一尺寸，再拼接并烧录字幕。
  * 非标准比例等比放大后居中裁切，不加黑边；字幕在裁切完成后烧录，避免字幕被后续裁掉。
  */
-async function concatAndBurnSubs(
+export async function concatAndBurnSubs(
   panelVids: string[],
   outputDir: string,
   gi: number,

@@ -10,7 +10,7 @@ gemini-image-gen.py — Gemini 图像生成 helper（供 Node.js 通过 child_pr
   0  成功（图片写入 output_path）
   1  失败（错误信息输出到 stderr）
 """
-import json, os, sys
+import io, json, os, sys
 from pathlib import Path
 
 # 走本地 Clash HTTP 代理（zenmux.ai 等需代理才能连通）
@@ -24,6 +24,38 @@ os.environ["https_proxy"] = "http://127.0.0.1:7890"
 
 from google import genai
 from google.genai import types
+from PIL import Image
+
+
+def validate_generated_image(img_bytes: bytes) -> None:
+    """拒绝纯黑、纯白、全透明或近乎单色的空白结果。"""
+    try:
+        with Image.open(io.BytesIO(img_bytes)) as img:
+            rgba = img.convert("RGBA")
+            rgba.thumbnail((256, 256))
+            pixels = list(rgba.getdata())
+    except Exception as exc:
+        raise ValueError(f"invalid generated image: {exc}") from exc
+
+    if not pixels:
+        raise ValueError("generated image has no pixels")
+    visible = [(r, g, b) for r, g, b, a in pixels if a >= 16]
+    if len(visible) < len(pixels) * 0.01:
+        raise ValueError("generated image is blank: almost fully transparent")
+
+    count = len(visible)
+    black_ratio = sum(max(rgb) <= 8 for rgb in visible) / count
+    white_ratio = sum(min(rgb) >= 247 for rgb in visible) / count
+    channels = list(zip(*visible))
+    means = [sum(channel) / count for channel in channels]
+    variances = [sum((value - mean) ** 2 for value in channel) / count for channel, mean in zip(channels, means)]
+    if black_ratio >= 0.995:
+        raise ValueError(f"generated image is blank: black pixels {black_ratio:.1%}")
+    if white_ratio >= 0.995:
+        raise ValueError(f"generated image is blank: white pixels {white_ratio:.1%}")
+    if max(variances) < 1.0:
+        raise ValueError(f"generated image is blank: near-solid color variance={max(variances):.3f}")
+
 
 def main():
     if len(sys.argv) < 3:
@@ -79,8 +111,15 @@ def main():
     saved = False
     for part in parts:
         if part.inline_data is not None:
+            img_bytes = part.inline_data.data
+            try:
+                validate_generated_image(img_bytes)
+            except ValueError as exc:
+                Path(output_path).unlink(missing_ok=True)
+                print(f"image quality check failed: {exc}", file=sys.stderr)
+                sys.exit(1)
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            Path(output_path).write_bytes(part.inline_data.data)
+            Path(output_path).write_bytes(img_bytes)
             saved = True
             break
 

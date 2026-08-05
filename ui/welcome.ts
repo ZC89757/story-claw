@@ -20,7 +20,8 @@ const LOGO = `
 export function showWelcome() {
   console.log(LOGO);
   console.log("  /status    查看改编进度");
-  console.log("  /solo      全自动模式");
+  console.log("  /solo      全自动改编下一集");
+  console.log("  /all       全自动改编全部剩余集");
   console.log("  /help      帮助信息");
   console.log("  /exit      退出");
   console.log();
@@ -32,13 +33,14 @@ export function showHelp() {
 
   命令：
     /status    查看所有小说的改编进度
-    /solo      全自动模式：选择小说后自动完成 剧本→解析→资源→分镜→合成
+    /solo      按项目默认配置全自动改编下一集
+    /all       按项目默认配置连续改编全部剩余集（仅支持完整渲染）
     /help      显示此帮助
     /exit      退出程序
 
   工作流程：
-    1. 选择已有小说或新建小说（输入小说文件夹路径）
-    2. 自动续编下一集
-    3. 全自动或分步执行流水线
+    1. 新建项目时设置人物人种、文章类型、画幅和渲染模式
+    2. /solo 自动续编下一集，/all 连续改编全部剩余集
+    3. 已有项目直接沿用改编进度中的默认配置
   `);
 }
