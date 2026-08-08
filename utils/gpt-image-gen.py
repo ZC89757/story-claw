@@ -12,10 +12,12 @@ gpt-image-gen.py — GPT Image 图像生成 helper（供 Node.js 通过 child_pr
   0  成功（图片写入 output_path）
   1  失败（错误信息输出到 stderr）
 """
+import base64
 import io
 import json
 import os
 import sys
+import urllib.request
 from pathlib import Path
 
 # 走本地 Clash HTTP 代理（zenmux.ai 需代理才能连通）
@@ -91,6 +93,142 @@ def compress_image(img_path: str) -> bytes:
         return buf.getvalue()
 
 
+def openai_image_bytes(resp: object) -> bytes:
+    """Extract image bytes from an OpenAI-compatible Images API response."""
+    data = getattr(resp, "data", None) or []
+    if not data:
+        raise ValueError("no image data in OpenAI-compatible response")
+
+    item = data[0]
+    b64_json = getattr(item, "b64_json", None)
+    if b64_json:
+        return base64.b64decode(b64_json)
+
+    image_url = getattr(item, "url", None)
+    if image_url:
+        with urllib.request.urlopen(image_url, timeout=120) as response:
+            return response.read()
+
+    raise ValueError("response image has neither b64_json nor url")
+
+
+def generate_openai_compatible(
+    cfg: dict,
+    prompt: str,
+    image_paths: list[str],
+    image_size: str,
+    aspect_ratio: str | None,
+) -> bytes:
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=cfg["api_key"],
+        base_url=cfg["base_url"].rstrip("/"),
+        timeout=600.0,
+        max_retries=0,
+    )
+    api_prompt = prompt
+    if aspect_ratio:
+        api_prompt += (
+            f"\n\nMANDATORY OUTPUT CANVAS: return the image itself in {aspect_ratio} "
+            "width-to-height aspect ratio. Do not letterbox or place that composition "
+            "inside a differently shaped canvas. Keep every essential subject and body "
+            "part inside the frame."
+        )
+
+    common = {
+        "model": cfg["model"],
+        "prompt": api_prompt,
+        "n": 1,
+        "size": image_size,
+        "response_format": "b64_json",
+        "extra_body": {
+            "image_size": image_size,
+            **({"aspect_ratio": aspect_ratio} if aspect_ratio else {}),
+        },
+    }
+
+    if image_paths:
+        images = [
+            (f"reference_{index}.png", compress_image(path), "image/png")
+            for index, path in enumerate(image_paths, start=1)
+        ]
+        resp = client.images.edit(image=images, **common)
+    else:
+        resp = client.images.generate(**common)
+
+    return openai_image_bytes(resp)
+
+
+def generate_vertex(
+    cfg: dict,
+    prompt: str,
+    image_paths: list[str],
+    image_size: str,
+) -> bytes:
+    client = genai.Client(
+        api_key=cfg["api_key"],
+        vertexai=True,
+        http_options=types.HttpOptions(
+            api_version="v1",
+            base_url=cfg.get("base_url", "https://zenmux.ai/api/vertex-ai"),
+        ),
+    )
+
+    edit_config = types.EditImageConfig(
+        output_mime_type="image/png",
+        http_options=types.HttpOptions(
+            extra_body={"imageSize": image_size},
+        ),
+    )
+
+    if image_paths:
+        refs = []
+        for index, path in enumerate(image_paths, start=1):
+            refs.append(
+                types.RawReferenceImage(
+                    reference_id=index,
+                    reference_image=types.Image(
+                        image_bytes=compress_image(path),
+                        mime_type="image/png",
+                    ),
+                )
+            )
+
+        resp = client.models.edit_image(
+            model=cfg["model"],
+            prompt=prompt,
+            reference_images=refs,
+            config=edit_config,
+        )
+    else:
+        gen_config = types.GenerateImagesConfig(
+            number_of_images=1,
+            output_mime_type="image/png",
+            http_options=types.HttpOptions(
+                extra_body={"imageSize": image_size},
+            ),
+        )
+        resp = client.models.generate_images(
+            model=cfg["model"],
+            prompt=prompt,
+            config=gen_config,
+        )
+
+    generated = getattr(resp, "generated_images", None)
+    if not generated:
+        raise ValueError("no generated_images in Vertex response")
+
+    img_obj = generated[0].image
+    if hasattr(img_obj, "image_bytes") and img_obj.image_bytes:
+        return img_obj.image_bytes
+    if hasattr(img_obj, "save"):
+        buf = io.BytesIO()
+        img_obj.save(buf)
+        return buf.getvalue()
+    raise ValueError("empty image data in Vertex response")
+
+
 def main() -> None:
     if len(sys.argv) < 3:
         print(
@@ -116,77 +254,22 @@ def main() -> None:
     cfg_path = Path.home() / ".story-claw" / "image_gen_config.json"
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
 
-    client = genai.Client(
-        api_key=cfg["api_key"],
-        vertexai=True,
-        http_options=types.HttpOptions(
-            api_version="v1",
-            base_url="https://zenmux.ai/api/vertex-ai",
-        ),
-    )
+    base_url = cfg.get("base_url", "https://zenmux.ai/api/vertex-ai")
+    api_format = cfg.get("api_format")
+    if not api_format:
+        api_format = "vertex" if "vertex-ai" in base_url else "openai"
 
-    # 读取模型名（config 里已含 :openai 后缀）
-    model = cfg["model"]
-
-    edit_config = types.EditImageConfig(
-        output_mime_type="image/png",
-        http_options=types.HttpOptions(
-            extra_body={"imageSize": image_size},
-        ),
-    )
-
-    if image_paths:
-        # 图生图：edit_image
-        refs = []
-        for i, p in enumerate(image_paths, start=1):
-            img_bytes = compress_image(p)
-            refs.append(
-                types.RawReferenceImage(
-                    reference_id=i,
-                    reference_image=types.Image(image_bytes=img_bytes, mime_type="image/png"),
-                )
+    try:
+        if api_format == "openai":
+            img_bytes = generate_openai_compatible(
+                cfg, prompt, image_paths, image_size, aspect_ratio
             )
-
-        resp = client.models.edit_image(
-            model=model,
-            prompt=prompt,
-            reference_images=refs,
-            config=edit_config,
-        )
-    else:
-        # 文生图：generate_images
-        gen_config = types.GenerateImagesConfig(
-            number_of_images=1,
-            output_mime_type="image/png",
-            http_options=types.HttpOptions(
-                extra_body={"imageSize": image_size},
-            ),
-        )
-        resp = client.models.generate_images(
-            model=model,
-            prompt=prompt,
-            config=gen_config,
-        )
-
-    # 取第一张图
-    generated = getattr(resp, "generated_images", None)
-    if not generated:
-        print("no generated_images in response", file=sys.stderr)
-        sys.exit(1)
-
-    img_obj = generated[0].image
-    img_bytes: bytes | None = None
-
-    # SDK 有两种写法，兼容处理
-    if hasattr(img_obj, "image_bytes") and img_obj.image_bytes:
-        img_bytes = img_obj.image_bytes
-    elif hasattr(img_obj, "save"):
-        buf = io.BytesIO()
-        img_obj.save(buf)
-        img_bytes = buf.getvalue()
-
-    if not img_bytes:
-        print("empty image data in response", file=sys.stderr)
+        elif api_format == "vertex":
+            img_bytes = generate_vertex(cfg, prompt, image_paths, image_size)
+        else:
+            raise ValueError(f"unsupported image api_format: {api_format}")
+    except Exception as exc:
+        print(f"image API request failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
     try:

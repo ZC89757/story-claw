@@ -2,9 +2,9 @@
  * 流水线实时进度展示
  */
 
-export type StageStatus = "pending" | "running" | "done" | "failed";
+type StageStatus = "pending" | "running" | "done";
 
-export interface StageInfo {
+interface StageInfo {
   label: string;
   status: StageStatus;
   detail?: string;
@@ -38,12 +38,10 @@ export function createProgress() {
       const icon =
         s.status === "done" ? "v" :
         s.status === "running" ? "*" :
-        s.status === "failed" ? "x" :
         " ";
       const statusText =
         s.status === "done" ? "完成" :
         s.status === "running" ? "进行中" :
-        s.status === "failed" ? "失败" :
         "";
       const dots = ".".repeat(Math.max(0, 18 - s.label.length));
       const detail = s.detail ? `  ${s.detail}` : "";
@@ -60,7 +58,6 @@ export function createProgress() {
   }
 
   return {
-    stages,
     /** 标记某阶段开始 */
     start(index: number, title: string, detail?: string) {
       stages[index].status = "running";
@@ -74,22 +71,10 @@ export function createProgress() {
       stages[index].subLines = undefined;
       render(title);
     },
-    /** 标记某阶段失败 */
-    fail(index: number, title: string, detail?: string) {
-      stages[index].status = "failed";
-      stages[index].detail = detail;
-      render(title);
-    },
-    /** 更新某阶段的 detail（不改状态） */
-    update(index: number, title: string, detail: string) {
-      stages[index].detail = detail;
-      render(title);
-    },
     /** 更新某阶段的多行附加信息 */
     updateSubLines(index: number, title: string, subLines: string[]) {
       stages[index].subLines = subLines;
       render(title);
     },
-    render,
   };
 }

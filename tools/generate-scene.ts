@@ -7,7 +7,6 @@
  */
 
 import fs from "node:fs/promises";
-import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { novelPaths } from "../utils/paths.js";

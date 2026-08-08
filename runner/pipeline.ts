@@ -531,8 +531,6 @@ export async function archive(sel: NovelSelection, visualPresetPath: string): Pr
   const listResult = await listResourcesTool.execute("", { novel_name: sel.novelName });
   const listText   = (listResult.content[0] as any).text as string;
 
-  const charsDir = novelPaths.charactersDir(sel.novelName);
-
   // 角色姓名未点明/造型连续性判断不了时，给建档 agent 一个按需查后续章节原文的工具，
   // 不强行把下一章原文塞进每次的 prompt——多数章节角色姓名当章就点明，只有真遇到未点明的情况才触发这次查询。
   const readLaterChapterTool: ToolDefinition = {
@@ -682,7 +680,7 @@ export async function segment(sel: NovelSelection, archiveResult: ArchiveResult,
   // 议论文无画面预设、无场景列表，直接读 clean 文本按段切
   const loadText = isEssay
     ? await fs.readFile(novelPaths.cleanedText(sel.novelName, sel.episode), "utf-8")
-    : await loadSegmentData(sel.novelName, sel.episode, archiveResult.sceneNames, visualPresetPath);
+    : await loadSegmentData(archiveResult.sceneNames, visualPresetPath);
 
   await runSubAgent(
     [],
@@ -974,13 +972,12 @@ export async function assignGlobalOrder(
     return assignEssayGlobalOrder(novelName, episode, sceneNames);
   }
   const visualPresetPath = novelPaths.visualPreset(novelName, episode);
-  const storyboardsDir = novelPaths.storyboardsDir(novelName, episode);
 
   // 1. 解析画面预设.txt，提取原文顺序
   // 按【...】标注边界切分整个文件，不按换行分行——sub-agent 偶尔会漏加换行，把两句
   // 话的【标注】写在同一物理行里，此时按行分割会导致第二句连同其标注一起被前一句的
-  // `line.split("【")[0]` 吞掉、永远进不了候选池（实测：见 STTN_SCHEDULER_REWRITE_PLAN.md
-  // 之外的测试小说案例，第二句因此被误判 999）。正则按序扫描全文本身就保留了阅读顺序。
+  // `line.split("【")[0]` 吞掉、永远进不了候选池，导致第二句被误判 999。
+  // 正则按序扫描全文本身就保留了阅读顺序。
   const presetText = await fs.readFile(visualPresetPath, "utf-8");
   const presetLines: Array<{ text: string; order: number }> = [];
   {

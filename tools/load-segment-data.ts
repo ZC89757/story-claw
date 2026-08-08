@@ -5,12 +5,9 @@
  */
 
 import fs from "node:fs/promises";
-import { novelPaths } from "../utils/paths.js";
-import { OUTPUT_SCHEMAS } from "./schemas.js";
+import { SEGMENT_SCRIPT_SCHEMA } from "./schemas.js";
 
 export async function loadSegmentData(
-  novelName: string,
-  episodeNum: number,
   sceneNames: string[],
   visualPresetPath: string,
 ): Promise<string> {
@@ -26,6 +23,6 @@ export async function loadSegmentData(
     `== 输出文件 ==\n` +
     `工作目录已设为剧本目录，write 工具的 path 只写文件名（不带目录），共 ${sceneNames.length} 个：\n` +
     `${sceneFilesDesc}\n\n` +
-    OUTPUT_SCHEMAS["segment_script"]
+    SEGMENT_SCRIPT_SCHEMA
   );
 }

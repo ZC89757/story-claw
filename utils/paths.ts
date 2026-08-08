@@ -13,12 +13,8 @@
  *       characters/                角色图      {角色名}.png（跨集共享）
  *       scenes/                    场景底图    {场景名}.png（跨集共享）
  *       ep01/                      第1集
- *         scene_data.json          场景结构化数据
  *         scripts/                 分场剧本（每场景一个文件）
  *           {场景名}.md
- *         panels_scene_XX.json     分镜构图（direct_storyboard 输出）
- *         character_frames/        合成帧图    frame_XX.png（按集隔离）
- *         storyboard_panels/       分镜图片    panel_*.png（按集隔离）
  *       ep02/
  *         ...
  */
@@ -58,25 +54,6 @@ export const novelPaths = {
       "scripts",
     ),
 
-  /** 单场景剧本文件：workspace/{名}/ep{XX}/scripts/{场景名}.md */
-  sceneScript: (novelName: string, episodeNum: number, sceneName: string) =>
-    path.join(
-      PATHS.workspace,
-      novelName,
-      `ep${String(episodeNum).padStart(2, "0")}`,
-      "scripts",
-      `${sceneName}.md`,
-    ),
-
-  /** 场景结构化数据：workspace/{名}/ep{XX}/scene_data.json */
-  sceneData: (novelName: string, episodeNum: number) =>
-    path.join(
-      PATHS.workspace,
-      novelName,
-      `ep${String(episodeNum).padStart(2, "0")}`,
-      "scene_data.json",
-    ),
-
   /** 角色图目录：workspace/{名}/characters/ */
   charactersDir: (novelName: string) =>
     path.join(PATHS.workspace, novelName, "characters"),
@@ -112,14 +89,6 @@ export const novelPaths = {
   /** 场景底图完整路径 */
   sceneImage: (novelName: string, locationName: string) =>
     path.join(PATHS.workspace, novelName, "scenes", `${locationName}.png`),
-
-  /** 合成帧图目录：workspace/{名}/ep{XX}/character_frames/ */
-  characterFramesDir: (novelName: string, episodeNum: number) =>
-    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "character_frames"),
-
-  /** 分镜图片目录：workspace/{名}/ep{XX}/storyboard_panels/ */
-  storyboardPanelsDir: (novelName: string, episodeNum: number) =>
-    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "storyboard_panels"),
 
   /** 画面预设文件：workspace/{名}/ep{XX}/画面预设.txt */
   visualPreset: (novelName: string, episodeNum: number) =>
@@ -168,10 +137,6 @@ export const novelPaths = {
   /** 渲染输出目录：workspace/{名}/ep{XX}/render_{场景名}/ */
   renderDir: (novelName: string, episodeNum: number, sceneName: string) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `render_${sceneName}`),
-
-  /** 场景最终视频（含TTS）：workspace/{名}/ep{XX}/render_{场景名}/final.mp4 */
-  sceneFinalVideo: (novelName: string, episodeNum: number, sceneName: string) =>
-    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `render_${sceneName}`, "final.mp4"),
 
   /** 字幕重建测试目录：workspace/{名}/ep{XX}/subtitle_rebuild/ */
   subtitleRebuildDir: (novelName: string, episodeNum: number) =>

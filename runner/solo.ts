@@ -108,7 +108,6 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
 
     // ── 开启 GPU 实例 ──
     console.log(`\n  正在开启 GPU 实例...`);
-    const { execSync } = await import("node:child_process");
     execSync("python scripts/grab_gpu.py", { stdio: "inherit" });
     console.log(`  GPU 实例已就绪\n`);
 

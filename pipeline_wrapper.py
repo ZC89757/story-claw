@@ -11,8 +11,7 @@ pipeline_wrapper.py — 调度型版本 v6（双队列互斥轮转，去字幕�
     去字幕阶段：耗尽 sttn_pending，每个 job 先跑 check_subtitle_presence 前置
               探测（VLM 判断有没有字幕/水印），无字幕直接短路成功；有字幕才跑
               run_ltx_subtitle_removal，完成即成功（不再做去字幕后的残留检测）。
-  两阶段互斥由代码结构保证，不存在"猜时机"的等待逻辑，详见
-  STTN_SCHEDULER_REWRITE_PLAN.md。
+  两阶段互斥由代码结构保证，不存在"猜时机"的等待逻辑。
   无字幕 → i2v 完成即 success；有字幕 → 去字幕全部完成后 success。
 
   v6 变化：去字幕方法从外部 video-subtitle-remover（STTN+LaMa 子进程）换成
@@ -66,7 +65,7 @@ for _bin in ("/root/miniconda3/bin", "/usr/local/ffmpeg/bin"):
 
 # ─── 视觉模型与人物一致性质检配置 ──────────────────────────────────────────────
 VISION_BASE_URL   = "https://zenmux.ai/api/anthropic"
-VISION_API_KEY    = "xxx"
+VISION_API_KEY    = os.environ.get("STORY_CLAW_VISION_API_KEY", "")
 
 # 以下两项可在 dashboard 页面上改，持久化到 GATE_CONFIG_PATH，重启进程不丢、改完立即生效：
 #   - VISION_MODEL：人物一致性 Gate1/2 和去字幕前置探测共用；
@@ -159,6 +158,9 @@ def gate_decide(job_key: str, passed: bool) -> str:
 
 
 def call_vision_llm(images_png: list[bytes], prompt: str) -> dict | None:
+    if not VISION_API_KEY:
+        log("[vision_llm] 缺少 STORY_CLAW_VISION_API_KEY，跳过视觉检测")
+        return None
     content = [
         {"type": "image", "source": {"type": "base64", "media_type": "image/png",
                                       "data": base64.b64encode(p).decode()}}
@@ -470,7 +472,7 @@ def _ensure_comfy_ready() -> None:
 
 # ─── i2v 阶段（调度循环消费 i2v_pending）───────────────────────────────────────
 def _submit_and_wait_i2v(prompt_id: str) -> None:
-    """提交单个 i2v 到 ComfyUI，同步轮询直到跑完/报错才返回（阶段内串行，见 STTN_SCHEDULER_REWRITE_PLAN.md）。"""
+    """提交单个 i2v 到 ComfyUI，同步轮询直到跑完/报错才返回。"""
     with _jobs_lock:
         job = _jobs.get(prompt_id)
     if job is None:                      # /clear 之后 job 已被删掉

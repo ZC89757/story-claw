@@ -198,8 +198,6 @@ type AgentEvent = {
 
 // ─── Sub-agent 运行器 ──────────────────────────────────────────
 
-const SESSION_FILE = path.join(DATA_DIR, "session.jsonl");
-
 export async function runSubAgent(
   customTools: ToolDefinition[],
   systemPrompt: string,

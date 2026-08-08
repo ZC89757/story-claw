@@ -286,24 +286,6 @@ async function mixSfx(segPath: string, sfxFile: string, triggerTime: number): Pr
   await fs.unlink(tmp).catch(() => {});
 }
 
-/** ffmpeg 拼接视频（同目录，用相对路径规避中文路径问题） */
-async function concatVideos(videoPaths: string[], output: string): Promise<void> {
-  const outDir = path.dirname(output);
-  const listFile = path.join(outDir, `_concat_${path.basename(output, ".mp4")}.txt`);
-  const lines = videoPaths.map((p) => `file '${path.basename(p)}'`).join("\n");
-  await fs.writeFile(listFile, lines, "utf-8");
-
-  await execFileAsync("ffmpeg", [
-    "-y", "-f", "concat", "-safe", "0",
-    "-i", path.basename(listFile),
-    "-c:v", "copy",
-    "-c:a", "aac", "-ar", "44100", "-ac", "2",
-    path.basename(output),
-  ], { cwd: outDir });
-
-  await fs.unlink(listFile).catch(() => {});
-}
-
 /** 议论文静帧：把单张图做成定长静帧 mp4，不调 LTX。帧数走 durationToFrames，与 LTX panel 同 8k+1 栅格，便于 -c:v copy 拼接。 */
 async function generateStillVideo(imagePath: string, outputPath: string, duration: number): Promise<void> {
   const fps = getVideoFps();
@@ -331,27 +313,6 @@ async function extractLastFrame(videoPath: string, outputPng: string): Promise<b
   } catch {
     return false;
   }
-}
-
-/** ffmpeg 合并：缩放视频速度使时长与音频匹配 */
-async function mergeVideoAudio(videoPath: string, audioPath: string, outputPath: string): Promise<void> {
-  const videoDur = await getMediaDuration(videoPath);
-  const audioDur = await getMediaDuration(audioPath);
-  const ratio    = audioDur / videoDur;
-  console.log(`[合并] 视频 ${videoDur.toFixed(1)}s  音频 ${audioDur.toFixed(1)}s  速度 ×${ratio.toFixed(3)}`);
-
-  await execFileAsync("ffmpeg", [
-    "-y",
-    "-i", videoPath,
-    "-i", audioPath,
-    "-filter:v", `setpts=${ratio.toFixed(6)}*PTS`,
-    "-map", "0:v", "-map", "1:a",
-    "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-    "-c:a", "aac", "-b:a", "192k",
-    "-shortest",
-    outputPath,
-  ]);
-  console.log(`[合并] 完成 → ${path.basename(outputPath)}`);
 }
 
 // ── 资源目录构建 ──────────────────────────────────────────────────────────────
@@ -1467,18 +1428,16 @@ export async function renderScene(
 
   // ── 阶段二:先逐 group 配音，拿到每组真实时长 d_g 驱动视频（imagesOnly 跳过）──
   let groupDurations: number[] = groups.map(() => VIDEO_DEFAULT_DURATION);
-  let sceneAudio = "";
   if (!sel.imagesOnly) {
     let voiceMap: Record<string, string> = {};
     if (fsSync.existsSync(voiceMapPath)) {
       voiceMap = JSON.parse(await fs.readFile(voiceMapPath, "utf-8"));
     }
     groupDurations = await runGroupTtsPipeline(groups, voiceMap, outputDir, sceneName, sel.aspectRatio);
-    sceneAudio = path.join(outputDir, `_tts_${sceneName}.mp3`);
   }
 
   // ── 视频管线（时长由 d_g 驱动）──
-  const videoTask = (async (): Promise<string> => {
+  const videoTask = (async (): Promise<string[]> => {
     // ── 预注册所有 panel 的 videoEvent ──
     for (let gi = 0; gi < groups.length; gi++) {
       for (let pi = 0; pi < (groups[gi].panels ?? []).length; pi++) {
@@ -1645,7 +1604,7 @@ export async function renderScene(
 
     if (sel.imagesOnly) {
       console.log(`\n[${sceneName}] images-only：所有分镜图已生成，跳过视频拼接/TTS/合并`);
-      return "";
+      return [];
     }
 
     const missingVideos = findMissingPanels("mp4");
