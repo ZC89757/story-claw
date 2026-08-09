@@ -26,13 +26,15 @@
     "tools/",
     "ui/",
     "utils/",
+    "desktop/",
     "agent.ts",
     "cli.ts",
     "config.example.json",
     "image_gen_config.example.json"
   ],
   "scripts": {
-    "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts"
+    "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts",
+    "desktop": "electron desktop/main.cjs"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.52.8",
@@ -40,5 +42,8 @@
     "@mariozechner/pi-coding-agent": "0.52.8",
     "tsx": "^4.21.0",
     "undici": "^6.28.0"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0"
   }
 }
