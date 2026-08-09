@@ -12,6 +12,7 @@
     previewItems: [],
     previewIndex: -1,
     selectedEpisode: 1,
+    previewLoadId: 0,
     showingFinalFilm: false,
     lastLog: "就绪",
   };
@@ -447,6 +448,48 @@
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
   }
 
+  function availableEpisodes(project) {
+    const listed = Array.isArray(project?.episodeNumbers) ? project.episodeNumbers : [];
+    const episodes = [...new Set(listed
+      .map(Number)
+      .filter((episode) => Number.isInteger(episode) && episode > 0))]
+      .sort((a, b) => a - b);
+    if (episodes.length) return episodes;
+    const fallbackCount = Math.max(
+      1,
+      Math.trunc(Number(project?.latestEpisode) || 0),
+      Math.trunc(Number(project?.adaptedCount) || 0),
+    );
+    return Array.from({ length: fallbackCount }, (_item, index) => index + 1);
+  }
+
+  function defaultPreviewEpisode(project) {
+    const episodes = availableEpisodes(project);
+    const latestCompleted = Math.trunc(Number(project?.adaptedCount) || 0);
+    return latestCompleted > 0 && episodes.includes(latestCompleted)
+      ? latestCompleted
+      : episodes.at(-1) || 1;
+  }
+
+  function renderEpisodeOptions(project, selectedEpisode) {
+    const projectName = root.querySelector("[data-claw-editor-project-name]");
+    const select = root.querySelector("[data-claw-episode-select]");
+    if (projectName) projectName.textContent = project?.novelName || "未命名项目";
+    if (!select) return;
+
+    const normalizedEpisode = Math.max(1, Math.trunc(Number(selectedEpisode) || 1));
+    const episodes = availableEpisodes(project);
+    if (!episodes.includes(normalizedEpisode)) episodes.push(normalizedEpisode);
+    episodes.sort((a, b) => a - b);
+    select.replaceChildren(...episodes.map((episode) => {
+      const option = document.createElement("option");
+      option.value = String(episode);
+      option.textContent = `第 ${episode} 集`;
+      return option;
+    }));
+    select.value = String(normalizedEpisode);
+  }
+
   function setPreviewPlayIcon(playing) {
     const button = root.querySelector("[data-claw-play]");
     if (!button) return;
@@ -586,7 +629,48 @@
     if (duration) duration.textContent = " / 00:00:00";
   }
 
-  function renderShots(images) {
+  function resetPreviewSurface(message) {
+    const preview = root.querySelector("[data-claw-preview]");
+    const range = root.querySelector(".claw-range");
+    const current = root.querySelector("[data-claw-current-time]");
+    const duration = root.querySelector("[data-claw-duration]");
+    const play = root.querySelector("[data-claw-play]");
+    const scriptLabel = root.querySelector("[data-claw-script-label]");
+    const scriptLead = root.querySelector(".claw-script-labels strong");
+    const scriptParagraphs = [...root.querySelectorAll(".claw-script-card p")];
+    if (preview) {
+      preview.pause?.();
+      preview.dataset.previewMode = "panel";
+      preview.dataset.videoUrl = "";
+      preview.poster = "";
+      preview.classList.add("is-pending");
+      preview.setAttribute("aria-label", message);
+      preview.removeAttribute("src");
+      preview.load?.();
+    }
+    if (play) play.disabled = true;
+    if (range) {
+      range.value = "0";
+      range.max = "0";
+      range.disabled = true;
+    }
+    if (current) current.textContent = formatPreviewTime(0);
+    if (duration) duration.textContent = " / 00:00:00";
+    if (scriptLabel) scriptLabel.textContent = "分镜";
+    if (scriptLead) scriptLead.textContent = "";
+    scriptParagraphs.forEach((paragraph, paragraphIndex) => {
+      paragraph.textContent = paragraphIndex === 0 ? message : "";
+      paragraph.hidden = paragraphIndex !== 0;
+    });
+    setPreviewPlayIcon(false);
+    updatePreviewNavigation();
+  }
+
+  function renderShots(images, options = {}) {
+    const {
+      emptyMessage = "本集暂未生成分镜",
+      totalDuration: episodeDuration = null,
+    } = options;
     const strip = root.querySelector(".claw-shot-strip");
     if (!strip) return;
     state.previewItems = Array.isArray(images) ? images : [];
@@ -596,7 +680,12 @@
     const shotCount = root.querySelector("[data-claw-shot-count]");
     if (shotCount) shotCount.textContent = String(state.previewItems.length);
     const totalDuration = root.querySelector("[data-claw-total-duration]");
-    if (totalDuration) totalDuration.textContent = "--:--:--";
+    const durationSeconds = Number(episodeDuration);
+    if (totalDuration) {
+      totalDuration.textContent = Number.isFinite(durationSeconds) && durationSeconds > 0
+        ? formatPreviewTime(durationSeconds)
+        : "--:--:--";
+    }
     strip.replaceChildren();
     state.previewItems.forEach((item, index) => {
       const shot = document.createElement("button");
@@ -633,24 +722,52 @@
     });
     window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
     if (state.previewItems.length > 0) setPreviewItem(state.previewItems[0], 0);
+    else resetPreviewSurface(emptyMessage);
+  }
+
+  async function loadEpisodePreview(project, episode) {
+    if (!project) return;
+    const normalizedEpisode = Math.max(1, Math.trunc(Number(episode) || 1));
+    const loadId = ++state.previewLoadId;
+    const select = root.querySelector("[data-claw-episode-select]");
+    state.selectedEpisode = normalizedEpisode;
+    renderEpisodeOptions(project, normalizedEpisode);
+    renderShots([], { emptyMessage: "正在读取本集分镜…" });
+    if (select) {
+      select.disabled = true;
+      select.setAttribute("aria-busy", "true");
+    }
+
+    try {
+      const previewData = await api.getEpisodePreview(project.novelName, normalizedEpisode);
+      if (loadId !== state.previewLoadId || state.selectedProject?.id !== project.id) return;
+      const images = Array.isArray(previewData) ? previewData : previewData?.panels;
+      const totalDuration = Array.isArray(previewData) ? null : previewData?.totalDuration;
+      renderShots(images, { totalDuration });
+    } catch (error) {
+      if (loadId !== state.previewLoadId || state.selectedProject?.id !== project.id) return;
+      renderShots([]);
+      showToast(error instanceof Error ? error.message : "读取分镜失败");
+    } finally {
+      if (loadId === state.previewLoadId && select) {
+        select.disabled = false;
+        select.removeAttribute("aria-busy");
+      }
+    }
   }
 
   async function openProject(project) {
+    const previousEpisode = state.selectedProject?.id === project.id ? state.selectedEpisode : null;
     state.selectedProject = project;
     state.renderMode = project.renderMode === "full" ? "full" : "images_only";
-    const title = root.querySelector(".claw-editor-project-title");
     showLibraryView("projects");
     if (libraryScreen) libraryScreen.hidden = true;
     if (editorScreen) editorScreen.hidden = false;
-    try {
-      const previewEpisode = project.adaptedCount || project.latestEpisode || 1;
-      state.selectedEpisode = previewEpisode;
-      if (title) title.textContent = `${project.novelName} · 第 ${previewEpisode} 集`;
-      const images = await api.getEpisodePreview(project.novelName, previewEpisode);
-      renderShots(images);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "读取分镜失败");
-    }
+    const episodes = availableEpisodes(project);
+    const previewEpisode = previousEpisode && episodes.includes(previousEpisode)
+      ? previousEpisode
+      : defaultPreviewEpisode(project);
+    await loadEpisodePreview(project, previewEpisode);
   }
 
   function makeSelection() {
@@ -894,6 +1011,10 @@
 
   function bindInteractions() {
     bindPreviewControls();
+    root.querySelector("[data-claw-episode-select]")?.addEventListener("change", (event) => {
+      if (!state.selectedProject) return;
+      loadEpisodePreview(state.selectedProject, event.currentTarget.value);
+    });
     root.querySelectorAll("[data-claw-page]").forEach((button) => {
       button.addEventListener("click", () => {
         const page = button.dataset.clawPage;

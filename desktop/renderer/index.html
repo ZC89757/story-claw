@@ -774,7 +774,56 @@
     }
     #storyclaw-gui-concept .claw-editor-back:hover { background: var(--claw-panel) !important; color: var(--claw-text) !important; }
     #storyclaw-gui-concept .claw-editor-back svg { width: 20px; height: 20px; }
-    #storyclaw-gui-concept .claw-editor-project-title { overflow: hidden; font-size: 17px; font-weight: 500; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+    #storyclaw-gui-concept .claw-editor-project-title {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      overflow: hidden;
+      font-size: 17px;
+      font-weight: 500;
+      text-align: center;
+      white-space: nowrap;
+    }
+    #storyclaw-gui-concept .claw-editor-project-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #storyclaw-gui-concept .claw-editor-project-separator { flex: 0 0 auto; color: var(--claw-dim); }
+    #storyclaw-gui-concept .claw-episode-picker {
+      position: relative;
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+    }
+    #storyclaw-gui-concept .claw-episode-picker select {
+      width: 108px;
+      height: 36px;
+      appearance: none;
+      padding: 0 31px 0 12px;
+      border: 1px solid #393b3f;
+      border-radius: 6px;
+      outline: 0;
+      background: #191a1c;
+      color: var(--claw-text);
+      font: inherit;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    #storyclaw-gui-concept .claw-episode-picker select:hover { border-color: #575a60; }
+    #storyclaw-gui-concept .claw-episode-picker select:focus-visible { border-color: var(--claw-orange); }
+    #storyclaw-gui-concept .claw-episode-picker select:disabled { cursor: wait; opacity: .55; }
+    #storyclaw-gui-concept .claw-episode-picker svg {
+      position: absolute;
+      right: 10px;
+      width: 15px;
+      height: 15px;
+      pointer-events: none;
+      color: var(--claw-muted);
+    }
     #storyclaw-gui-concept .claw-editor-topbar-spacer { min-width: 0; }
     #storyclaw-gui-concept .claw-editor-upper {
       display: grid;
@@ -1015,7 +1064,14 @@
     <section class="claw-editor" data-claw-screen="editor" hidden>
       <header class="claw-editor-topbar">
         <div class="claw-editor-left-tools"><div class="claw-editor-brand" aria-label="Story Claw"><img data-img="brand-logo" alt="" aria-hidden="true"><span>Story Claw</span></div><button type="button" class="claw-editor-back" data-claw-back aria-label="返回项目"><i data-lucide="arrow-left" aria-hidden="true"></i><span>返回</span></button></div>
-        <div class="claw-editor-project-title">东方快车谋杀案 · 第 7 集</div>
+        <div class="claw-editor-project-title">
+          <span class="claw-editor-project-name" data-claw-editor-project-name>东方快车谋杀案</span>
+          <span class="claw-editor-project-separator" aria-hidden="true">·</span>
+          <span class="claw-episode-picker">
+            <select data-claw-episode-select aria-label="选择集数"><option value="7">第 7 集</option></select>
+            <i data-lucide="chevron-down" aria-hidden="true"></i>
+          </span>
+        </div>
         <div class="claw-editor-topbar-spacer" aria-hidden="true"></div>
       </header>
 

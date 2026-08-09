@@ -12,6 +12,7 @@ let mainWindow;
 let activeRun = null;
 let nextRunId = 1;
 let quitting = false;
+const mediaDurationCache = new Map();
 
 function send(channel, payload) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -66,6 +67,68 @@ async function readJson(filePath, fallback = null) {
   }
 }
 
+async function probeMediaDuration(filePath) {
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch {
+    return null;
+  }
+
+  const signature = `${stat.size}:${stat.mtimeMs}`;
+  const cached = mediaDurationCache.get(filePath);
+  if (cached?.signature === signature) return cached.duration;
+
+  const duration = await new Promise((resolve) => {
+    execFile("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ], { windowsHide: true }, (error, stdout) => {
+      const value = Number.parseFloat(String(stdout || "").trim());
+      resolve(!error && Number.isFinite(value) && value > 0 ? value : null);
+    });
+  });
+  mediaDurationCache.set(filePath, { signature, duration });
+  return duration;
+}
+
+async function sumMediaDurations(filePaths) {
+  const durations = [];
+  for (let index = 0; index < filePaths.length; index += 4) {
+    const batch = await Promise.all(filePaths.slice(index, index + 4).map(probeMediaDuration));
+    durations.push(...batch.filter((duration) => Number.isFinite(duration) && duration > 0));
+  }
+  return durations.length ? durations.reduce((sum, duration) => sum + duration, 0) : null;
+}
+
+async function getEpisodeTotalDuration(episodeDir) {
+  const episodeStem = path.basename(episodeDir);
+  for (const fileName of [`${episodeStem}.mp4`, `${episodeStem}_with_bgm.mp4`]) {
+    const duration = await probeMediaDuration(path.join(episodeDir, fileName));
+    if (duration) return duration;
+  }
+
+  const renderDirs = (await fs.readdir(episodeDir, { withFileTypes: true }).catch(() => []))
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("render_"));
+  const sceneVideoPaths = [];
+  for (const renderDir of renderDirs) {
+    const dirPath = path.join(episodeDir, renderDir.name);
+    const entries = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => []);
+    const combined = entries.find((entry) => entry.isFile() && entry.name === "_video_only.mp4")
+      || entries.find((entry) => entry.isFile() && entry.name === "final.mp4");
+    if (combined) {
+      sceneVideoPaths.push(path.join(dirPath, combined.name));
+      continue;
+    }
+    sceneVideoPaths.push(...entries
+      .filter((entry) => entry.isFile() && /^g\d+\.mp4$/i.test(entry.name))
+      .map((entry) => path.join(dirPath, entry.name)));
+  }
+  return sumMediaDurations(sceneVideoPaths);
+}
+
 async function listImageFiles(dir) {
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -91,7 +154,18 @@ async function listProjects() {
     if (!progress || typeof progress !== "object" || !progress.novel_name) continue;
     const adapted = Array.isArray(progress.adapted) ? progress.adapted : [];
     const episodes = progress.episodes && typeof progress.episodes === "object" ? progress.episodes : {};
-    const episodeNumbers = Object.keys(episodes).map(Number).filter(Number.isFinite);
+    const progressEpisodeNumbers = Object.keys(episodes)
+      .map(Number)
+      .filter((episode) => Number.isInteger(episode) && episode > 0);
+    const episodeDirectoryNumbers = (await fs.readdir(dir, { withFileTypes: true }).catch(() => []))
+      .filter((item) => item.isDirectory() && /^ep\d+$/i.test(item.name))
+      .map((item) => Number(item.name.slice(2)))
+      .filter((episode) => Number.isInteger(episode) && episode > 0);
+    const episodeNumbers = [...new Set([
+      ...progressEpisodeNumbers,
+      ...episodeDirectoryNumbers,
+      ...adapted.map((_chapter, index) => index + 1),
+    ])].sort((a, b) => a - b);
     const latestEpisode = episodeNumbers.length ? Math.max(...episodeNumbers) : 0;
     const characterImages = await listImageFiles(path.join(dir, "characters"));
     const sceneImages = await listImageFiles(path.join(dir, "scenes"));
@@ -116,6 +190,7 @@ async function listProjects() {
       adaptedCount: adapted.length,
       latestEpisode,
       episodeCount: Math.max(adapted.length, episodeNumbers.length),
+      episodeNumbers,
       articleType: progress.article_type === "essay" ? "essay" : "story",
       aspectRatio: progress.aspect_ratio === "16:9" ? "16:9" : "9:16",
       renderMode: progress.render_mode === "full" ? "full" : "images_only",
@@ -156,6 +231,7 @@ async function getEpisodePreview(novelName, episode) {
   const dir = projectDir(novelName);
   const episodeDir = path.join(dir, `ep${String(Number(episode) || 1).padStart(2, "0")}`);
   if (!isWithin(dir, episodeDir)) throw new Error("集目录无效");
+  const totalDurationPromise = getEpisodeTotalDuration(episodeDir);
   const storyboardsDir = path.join(episodeDir, "storyboards");
   const storyboardFiles = (await fs.readdir(storyboardsDir, { withFileTypes: true }).catch(() => []))
     .filter((entry) => entry.isFile() && entry.name.startsWith("storyboard_") && entry.name.endsWith(".jsonl"))
@@ -215,7 +291,10 @@ async function getEpisodePreview(novelName, episode) {
       });
     }
   }
-  return panels;
+  return {
+    panels,
+    totalDuration: await totalDurationPromise,
+  };
 }
 
 async function chooseSource(kind) {
