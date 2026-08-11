@@ -46,6 +46,32 @@ DEFAULT_SIZE = "1024x1024"
 # 参考图压缩目标短边像素（避免超大图占带宽/tokens）
 COMPRESS_MAX_PX = 512
 
+ASPECT_INSTRUCTIONS: dict[str, str] = {
+    "16:9": (
+        "MANDATORY OUTPUT FORMAT: create a true 16:9 landscape image. "
+        "Compose the scene specifically for a wide horizontal canvas, keeping all "
+        "essential subjects and text inside the frame. The returned image canvas itself "
+        "must be 16:9. Do not return a 3:2, 4:3, square, or portrait canvas, and do not "
+        "simulate 16:9 with letterboxing or borders."
+    ),
+    "9:16": (
+        "MANDATORY OUTPUT FORMAT: create a true 9:16 portrait image. "
+        "Compose the scene specifically for a tall vertical canvas, keeping all essential "
+        "subjects and text inside the frame. The returned image canvas itself must be 9:16. "
+        "Do not return a 2:3, 3:2, square, or landscape canvas, and do not simulate 9:16 "
+        "with letterboxing or borders."
+    ),
+    "1:1": (
+        "MANDATORY OUTPUT FORMAT: create a true 1:1 square image. The returned image "
+        "canvas itself must be square, with no letterboxing or borders."
+    ),
+}
+
+
+def append_aspect_instruction(prompt: str, aspect_ratio: str | None) -> str:
+    instruction = ASPECT_INSTRUCTIONS.get(aspect_ratio or "")
+    return f"{prompt}\n\n{instruction}" if instruction else prompt
+
 
 def validate_generated_image(img_bytes: bytes) -> None:
     """拒绝纯黑、纯白、全透明或近乎单色的空白结果，让调用方触发重试。"""
@@ -127,14 +153,7 @@ def generate_openai_compatible(
         timeout=600.0,
         max_retries=0,
     )
-    api_prompt = prompt
-    if aspect_ratio:
-        api_prompt += (
-            f"\n\nMANDATORY OUTPUT CANVAS: return the image itself in {aspect_ratio} "
-            "width-to-height aspect ratio. Do not letterbox or place that composition "
-            "inside a differently shaped canvas. Keep every essential subject and body "
-            "part inside the frame."
-        )
+    api_prompt = append_aspect_instruction(prompt, aspect_ratio)
 
     common = {
         "model": cfg["model"],
@@ -165,6 +184,7 @@ def generate_vertex(
     prompt: str,
     image_paths: list[str],
     image_size: str,
+    aspect_ratio: str | None,
 ) -> bytes:
     client = genai.Client(
         api_key=cfg["api_key"],
@@ -182,6 +202,8 @@ def generate_vertex(
         ),
     )
 
+    api_prompt = append_aspect_instruction(prompt, aspect_ratio)
+
     if image_paths:
         refs = []
         for index, path in enumerate(image_paths, start=1):
@@ -197,7 +219,7 @@ def generate_vertex(
 
         resp = client.models.edit_image(
             model=cfg["model"],
-            prompt=prompt,
+            prompt=api_prompt,
             reference_images=refs,
             config=edit_config,
         )
@@ -211,7 +233,7 @@ def generate_vertex(
         )
         resp = client.models.generate_images(
             model=cfg["model"],
-            prompt=prompt,
+            prompt=api_prompt,
             config=gen_config,
         )
 
@@ -265,7 +287,9 @@ def main() -> None:
                 cfg, prompt, image_paths, image_size, aspect_ratio
             )
         elif api_format == "vertex":
-            img_bytes = generate_vertex(cfg, prompt, image_paths, image_size)
+            img_bytes = generate_vertex(
+                cfg, prompt, image_paths, image_size, aspect_ratio
+            )
         else:
             raise ValueError(f"unsupported image api_format: {api_format}")
     except Exception as exc:

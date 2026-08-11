@@ -971,9 +971,9 @@
       </nav>
 
       <main class="claw-library-view claw-home-view" data-claw-view="home" hidden>
-        <h1 class="claw-home-headline">说出你的想法，AI帮你一键成片。</h1>
-        <p class="claw-home-subtitle">资源建档、资源复用、剧本分场、分镜配音与视频渲染，AI帮你完成</p>
-        <div class="claw-compose-box">
+        <h1 class="claw-home-headline" data-claw-home-landing>说出你的想法，AI帮你一键成片。</h1>
+        <p class="claw-home-subtitle" data-claw-home-landing>资源建档、资源复用、剧本分场、分镜配音与视频渲染，AI帮你完成</p>
+        <div class="claw-compose-box" data-claw-home-landing>
           <div class="claw-compose-tabs"><button type="button" class="claw-compose-tab" aria-pressed="true" data-claw-compose-tab="text">输入文稿</button><button type="button" class="claw-compose-tab" aria-pressed="false" data-claw-compose-tab="upload">上传章节</button></div>
           <div class="claw-compose-pane" data-claw-compose-pane="text">
             <textarea class="claw-compose-textarea" maxlength="10000" aria-label="输入小说章节" placeholder="输入或粘贴小说章节，Story Claw 将自动生成分场、分镜、配音与视频。"></textarea>
@@ -993,6 +993,21 @@
           <span class="claw-compose-count" data-claw-compose-count>0 / 10000</span>
           <div class="claw-compose-actions"><div class="claw-compose-tools"><button type="button" class="claw-compact-control" aria-label="添加素材"><i data-lucide="plus" aria-hidden="true"></i></button><button type="button" class="claw-compact-control"><i data-lucide="users" aria-hidden="true"></i><span>自动人物风格</span></button><button type="button" class="claw-compact-control"><i data-lucide="zap" aria-hidden="true"></i><span>完整模式</span></button></div><button type="button" class="claw-create-button" data-claw-create><i data-lucide="sparkles" aria-hidden="true"></i><span>创建</span></button></div>
         </div>
+        <div class="claw-chat-nav" data-chat-nav hidden>
+          <button type="button" class="claw-chat-nav-trigger" data-chat-nav-trigger aria-haspopup="menu" aria-expanded="false">
+            <img data-img="brand-logo" alt="" aria-hidden="true">
+            <strong>Story Claw</strong>
+            <i data-lucide="chevron-down" aria-hidden="true"></i>
+          </button>
+          <div class="claw-chat-nav-menu" data-chat-nav-menu role="menu" hidden>
+            <button type="button" role="menuitem" data-chat-go-home>回到首页</button>
+            <button type="button" role="menuitem" data-chat-go-projects>我的项目</button>
+          </div>
+        </div>
+        <section class="claw-project-chat" data-claw-project-chat hidden aria-label="项目对话">
+          <div class="claw-project-chat-messages" data-project-chat-messages></div>
+          <form class="claw-project-chat-composer" data-project-chat-composer><textarea data-project-chat-input rows="1" placeholder="继续告诉 AI 你的要求，或询问项目配置" aria-label="继续项目对话"></textarea><button type="submit" class="claw-project-chat-send" data-project-chat-send aria-label="发送"><i data-lucide="send" aria-hidden="true"></i></button></form>
+        </section>
       </main>
 
       <main class="claw-library-view" data-claw-view="projects">
@@ -1476,11 +1491,6 @@
         const files = [...(event.dataTransfer?.files || [])];
         if (files.length) setUploadStatus(`已添加 ${files.length} 个文件`);
       });
-      root.querySelector("[data-claw-create]")?.addEventListener("click", () => {
-        showLibraryView("projects");
-        showClawToast("作品已加入项目");
-      });
-
       root.querySelectorAll("[data-claw-asset-tab]").forEach((tab) => tab.addEventListener("click", () => {
         const type = tab.dataset.clawAssetTab;
         root.querySelectorAll("[data-claw-asset-tab]").forEach((peer) => peer.setAttribute("aria-selected", String(peer === tab)));

@@ -15,7 +15,11 @@ async function main(): Promise<void> {
   if (!selection.novelName || !selection.sourcePath) throw new Error("缺少项目或章节源目录");
   console.log(`[desktop] 开始运行 ${selection.novelName} · 第 ${selection.episode} 集`);
   console.log(`[desktop] 模式：${selection.imagesOnly ? "只生成分镜图" : "完整渲染"}`);
-  const result = await runSolo(selection);
+  const result = await runSolo(selection, (event) => {
+    // The main process consumes this line as a structured phase event and
+    // keeps ordinary pipeline output available as the human-readable log.
+    console.log(`STORYCLAW_PHASE ${JSON.stringify(event)}`);
+  });
   console.log(`[desktop] 任务结束：${result}`);
   if (result === "failed") process.exitCode = 1;
 }

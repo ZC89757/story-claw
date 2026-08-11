@@ -27,6 +27,33 @@ from google.genai import types
 from PIL import Image
 
 
+ASPECT_INSTRUCTIONS: dict[str, str] = {
+    "16:9": (
+        "MANDATORY OUTPUT FORMAT: create a true 16:9 landscape image. "
+        "Compose the scene specifically for a wide horizontal canvas, keeping all "
+        "essential subjects and text inside the frame. The returned image canvas itself "
+        "must be 16:9. Do not return a 3:2, 4:3, square, or portrait canvas, and do not "
+        "simulate 16:9 with letterboxing or borders."
+    ),
+    "9:16": (
+        "MANDATORY OUTPUT FORMAT: create a true 9:16 portrait image. "
+        "Compose the scene specifically for a tall vertical canvas, keeping all essential "
+        "subjects and text inside the frame. The returned image canvas itself must be 9:16. "
+        "Do not return a 2:3, 3:2, square, or landscape canvas, and do not simulate 9:16 "
+        "with letterboxing or borders."
+    ),
+    "1:1": (
+        "MANDATORY OUTPUT FORMAT: create a true 1:1 square image. The returned image "
+        "canvas itself must be square, with no letterboxing or borders."
+    ),
+}
+
+
+def append_aspect_instruction(prompt: str, aspect_ratio: str | None) -> str:
+    instruction = ASPECT_INSTRUCTIONS.get(aspect_ratio or "")
+    return f"{prompt}\n\n{instruction}" if instruction else prompt
+
+
 def validate_generated_image(img_bytes: bytes) -> None:
     """拒绝纯黑、纯白、全透明或近乎单色的空白结果。"""
     try:
@@ -73,6 +100,8 @@ def main():
         image_paths  = rest[2:]
     else:
         image_paths  = rest
+
+    prompt = append_aspect_instruction(prompt, aspect_ratio)
 
     cfg_path = Path.home() / ".story-claw" / "image_gen_config.json"
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))

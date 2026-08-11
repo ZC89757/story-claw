@@ -287,13 +287,25 @@ async function mixSfx(segPath: string, sfxFile: string, triggerTime: number): Pr
 }
 
 /** 议论文静帧：把单张图做成定长静帧 mp4，不调 LTX。帧数走 durationToFrames，与 LTX panel 同 8k+1 栅格，便于 -c:v copy 拼接。 */
-async function generateStillVideo(imagePath: string, outputPath: string, duration: number): Promise<void> {
+async function generateStillVideo(
+  imagePath: string,
+  outputPath: string,
+  duration: number,
+  aspectRatio: string,
+): Promise<void> {
   const fps = getVideoFps();
   const frames = durationToFrames(duration, fps);
+  const [targetW, targetH] = videoSize(aspectRatio);
+  const normalizeFilter = [
+    `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase`,
+    `crop=${targetW}:${targetH}:(iw-ow)/2:(ih-oh)/2`,
+    "setsar=1",
+  ].join(",");
   await execFileAsync("ffmpeg", [
     "-y", "-loop", "1", "-i", path.basename(imagePath),
     "-frames:v", String(frames),
     "-r", String(fps),
+    "-vf", normalizeFilter,
     "-c:v", "libx264", "-preset", "fast", "-crf", "18",
     "-pix_fmt", "yuv420p",
     path.basename(outputPath),
@@ -1534,7 +1546,7 @@ export async function renderScene(
                 console.log(`    [${prefix}] 议论文静帧：无参考图，跳过`);
                 return;
               }
-              await generateStillVideo(actualImg, panelVidPath, duration);
+              await generateStillVideo(actualImg, panelVidPath, duration, sel.aspectRatio);
               console.log(`    [${prefix}] 议论文静帧视频: ${path.basename(panelVidPath)}（${duration.toFixed(2)}s，不调 LTX）`);
               return;
             }

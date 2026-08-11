@@ -16,16 +16,54 @@ import { readProgress, getEpisodeRecord, markStage, finalizeEpisode } from "../u
 
 export type SoloRunResult = "done" | "images_only" | "already_done" | "failed";
 
-export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
+export type SoloPhase =
+  | "planning"
+  | "preparing"
+  | "visual_preset"
+  | "archiving"
+  | "segmenting"
+  | "storyboarding"
+  | "ordering"
+  | "gpu_queued"
+  | "gpu_ready"
+  | "rendering"
+  | "merging"
+  | "postprocessing"
+  | "completed"
+  | "failed"
+  | "gpu_stopped";
+
+export interface SoloPhaseEvent {
+  phase: SoloPhase;
+  label: string;
+  detail?: string;
+}
+
+export type SoloPhaseReporter = (event: SoloPhaseEvent) => void;
+
+export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter): Promise<SoloRunResult> {
   const title = `${sel.novelName} 第${sel.episode}集`;
   const ep = sel.episode;
   const p = createProgress();
+  let gpuStarted = false;
+  let terminalPhase: SoloPhaseEvent | null = null;
+
+  const reportPhase = (event: SoloPhaseEvent): void => {
+    try {
+      onPhase?.(event);
+    } catch {
+      // 桌面端状态上报失败不应影响流水线本身。
+    }
+  };
+
+  reportPhase({ phase: "planning", label: "规划中", detail: `${title} 正在生成分场与分镜规划` });
 
   try {
     // 读取本集已记录的阶段进度，用于跳过已完成阶段（续跑）
     const epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
 
     // 原文清理
+    reportPhase({ phase: "preparing", label: "整理原文", detail: `${title} 正在读取并清理原始章节` });
     p.start(0, title);
     if (epRec.stages.clean === "done") {
       p.done(0, title, "已完成，跳过");
@@ -39,6 +77,11 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
     const isEssay = articleType === "essay";
 
     // 画面预设（议论文跳过：无场景人物可标）
+    reportPhase({
+      phase: "visual_preset",
+      label: isEssay ? "检查画面预设" : "生成画面预设",
+      detail: isEssay ? "议论文无需角色与场景预设，正在跳过" : "正在逐句分析场景、人物与镜头语言",
+    });
     p.start(1, title);
     let presetPath = novelPaths.visualPreset(sel.novelName, ep);
     if (isEssay) {
@@ -52,6 +95,11 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
     }
 
     // 资源建档（议论文跳过：无角色无场景）
+    reportPhase({
+      phase: "archiving",
+      label: isEssay ? "检查资源建档" : "资源建档",
+      detail: isEssay ? "议论文无需角色与场景资源，正在跳过" : "正在整理角色、场景与参考图资源",
+    });
     p.start(2, title);
     let archiveResult: { sceneNames: string[] };
     if (isEssay) {
@@ -67,6 +115,7 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
     }
 
     // 剧本分场
+    reportPhase({ phase: "segmenting", label: "剧本分场", detail: "正在按场景拆分本集原文" });
     p.start(3, title);
     let scriptsDir = novelPaths.scriptsDir(sel.novelName, ep);
     if (epRec.stages.segment === "done") {
@@ -78,11 +127,17 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
     }
 
     // 分镜制作
+    reportPhase({ phase: "storyboarding", label: "分镜制作", detail: "正在为各场景规划镜头与画面提示词" });
     p.start(4, title);
     if (epRec.stages.storyboard === "done") {
       p.done(4, title, "已完成，跳过");
     } else {
       await storyboard(sel, scriptsDir, (prog) => {
+        reportPhase({
+          phase: "storyboarding",
+          label: "分镜制作",
+          detail: `已完成 ${prog.done} / ${prog.total} 个场景`,
+        });
         p.updateSubLines(4, title, [
           `分镜  ${progressBar(prog.done, prog.total)}`,
         ]);
@@ -92,8 +147,8 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
     }
 
     // ── 为 group 附上 global_order ──
+    reportPhase({ phase: "ordering", label: "整理分镜顺序", detail: "正在按原文顺序分配全局镜头编号" });
     await assignGlobalOrder(sel.novelName, ep, archiveResult.sceneNames, articleType);
-
     // 整集已完整渲染过，无需再跑
     if (epRec.stages.render === "done") {
       p.done(5, title, "已完成，跳过");
@@ -103,15 +158,31 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
         console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
       }
       console.log(`\n  本集已完整渲染完成，无需重跑。`);
+      terminalPhase = { phase: "completed", label: "已完成", detail: "本集已经完成，无需重复渲染" };
       return "already_done";
     }
 
     // ── 开启 GPU 实例 ──
-    console.log(`\n  正在开启 GPU 实例...`);
-    execSync("python scripts/grab_gpu.py", { stdio: "inherit" });
-    console.log(`  GPU 实例已就绪\n`);
+    if (!sel.imagesOnly) {
+      reportPhase({
+        phase: "gpu_queued",
+        label: "正在抢 GPU",
+        detail: "分镜规划已完成，正在申请渲染 GPU",
+      });
+      console.log(`\n  正在开启 GPU 实例...`);
+      // 从发起抢占起就接管生命周期，确保就绪探测失败时也会进入 finally 关机。
+      gpuStarted = true;
+      execSync("python -u scripts/grab_gpu.py", { stdio: "inherit" });
+      console.log(`  GPU 实例已就绪\n`);
+      reportPhase({ phase: "gpu_ready", label: "GPU 已就绪", detail: "渲染资源已准备完成" });
+    }
 
     // 渲染（每个场景的 JSONL → 视频+TTS → final.mp4，各场景并行）
+    reportPhase({
+      phase: "rendering",
+      label: sel.imagesOnly ? "生成分镜图" : "渲染合成中",
+      detail: sel.imagesOnly ? "正在生成分镜静态图" : "正在生成配音、视频并合并成片",
+    });
     p.start(5, title);
     initRenderLog(novelPaths.episodeDir(sel.novelName, sel.episode) + "/render.log");
     const storyboardsDir = novelPaths.storyboardsDir(sel.novelName, sel.episode);
@@ -135,6 +206,11 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
       jsonlFiles.map((sceneName) =>
         renderScene(sel, sceneName, (rp) => {
           renderProgress[sceneName] = rp;
+          reportPhase({
+            phase: "rendering",
+            label: sel.imagesOnly ? "生成分镜图" : "渲染合成中",
+            detail: `${rp.scene} · 已完成 ${rp.done} / ${rp.total} 个镜头`,
+          });
           updateRenderSubLines();
         }, isEssay),
       ),
@@ -142,10 +218,12 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
     p.done(5, title, `${jsonlFiles.length} 个场景`);
 
     // panel 静态图完成后即可生成横竖封面；失败只告警，不阻断本集。
-    try {
-      await generateEpisodeCovers(sel);
-    } catch (err) {
-      console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
+    if (!sel.imagesOnly) {
+      try {
+        await generateEpisodeCovers(sel);
+      } catch (err) {
+        console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
+      }
     }
 
     // images-only 模式：只出分镜图，记 render=images_only，不推进进度（等 ComfyUI 就绪后重跑补视频）
@@ -155,10 +233,12 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
       console.log(`  只生图完成！分镜图目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
       console.log(`  将项目默认渲染模式改为完整渲染后，对同一集再跑一次 /solo 即可补生视频。`);
       console.log();
+      terminalPhase = { phase: "completed", label: "分镜图已完成", detail: "已生成全部分镜静态图" };
       return "images_only";
     }
 
     // ── 全局对齐合并（音视频相向调速后拼为集视频）──
+    reportPhase({ phase: "merging", label: "合并成片", detail: "正在对齐各场景音视频并合并本集成片" });
     if (sceneResults.length > 0) {
       const episodeVideoPath = novelPaths.episodeVideo(sel.novelName, sel.episode);
       const epDir = novelPaths.episodeDir(sel.novelName, sel.episode);
@@ -168,6 +248,7 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
 
     // ── 最终视频后处理：故事加标题并 1.1x；议论文 1.2x 并混入本地随机 BGM。
     // 失败只告警，保留原始成片并照常完成本集。
+    reportPhase({ phase: "postprocessing", label: "成片后处理", detail: "正在处理标题、播放速度与背景音乐" });
     try {
       await postprocessEpisodeVideo(sel);
     } catch (err) {
@@ -180,14 +261,29 @@ export async function runSolo(sel: NovelSelection): Promise<SoloRunResult> {
     console.log(`\n  ${"=".repeat(50)}`);
     console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
     console.log();
+    terminalPhase = { phase: "completed", label: "已完成", detail: "本集成片已生成" };
     return "done";
 
   } catch (err) {
     console.error(`\n  x 流水线出错: ${err}\n`);
+    terminalPhase = { phase: "failed", label: "运行失败", detail: err instanceof Error ? err.message : String(err) };
     return "failed";
   } finally {
-    // ── 无论成功还是出错，都关闭 GPU 实例 ──
-    execSync("python scripts/shutdown_gpu.py", { stdio: "inherit" });
+    // ── 本次启动过 GPU 时，无论成功还是出错都负责关闭 ──
+    if (gpuStarted) {
+      try {
+        execSync("python -u scripts/shutdown_gpu.py", { stdio: "inherit" });
+        reportPhase({ phase: "gpu_stopped", label: "GPU 已关闭", detail: "本次渲染实例已经停止计费" });
+      } catch (error) {
+        reportPhase({
+          phase: "failed",
+          label: "GPU 关闭失败",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    }
+    if (terminalPhase) reportPhase(terminalPhase);
   }
 }
 
