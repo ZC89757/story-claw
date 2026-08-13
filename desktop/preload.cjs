@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 function subscribe(channel, callback) {
   const listener = (_event, payload) => callback(payload);
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("storyClaw", {
   getEpisodePreview: (novelName, episode) => ipcRenderer.invoke("episode:preview", novelName, episode),
   chooseSource: (kind) => ipcRenderer.invoke("source:choose", kind),
   inspectSource: (inputPath) => ipcRenderer.invoke("source:inspect", inputPath),
+  getFilePath: (file) => webUtils.getPathForFile(file),
   createProject: (payload) => ipcRenderer.invoke("project:create", payload),
   getProjectConversation: (novelName) => ipcRenderer.invoke("project:conversation:get", novelName),
   updateProjectConversation: (novelName, session) => ipcRenderer.invoke("project:conversation", novelName, session),

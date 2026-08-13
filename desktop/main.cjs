@@ -9,9 +9,6 @@ const projectRoot = path.resolve(__dirname, "..");
 const workspaceRoot = path.join(projectRoot, "workspace");
 const rendererPath = path.join(__dirname, "renderer", "index.html");
 const sessionsFileName = "sessions.json";
-const obsoleteSystemMessages = new Set([
-  "项目已建立。你可以继续补充要求，确认配置后再开始渲染。",
-]);
 let mainWindow;
 let activeRun = null;
 let nextRunId = 1;
@@ -109,7 +106,7 @@ function normalizeConversation(value) {
   return value
     .filter((item) => item && ["user", "assistant", "system"].includes(item.role))
     .map((item) => ({ role: item.role, text: String(item.text || "").trim() }))
-    .filter((item) => item.text && !(item.role === "system" && obsoleteSystemMessages.has(item.text)));
+    .filter((item) => item.text);
 }
 
 function normalizeProgressCards(value) {
@@ -267,12 +264,6 @@ async function getEpisodeTotalDuration(episodeDir) {
   for (const renderDir of renderDirs) {
     const dirPath = path.join(episodeDir, renderDir.name);
     const entries = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => []);
-    const combined = entries.find((entry) => entry.isFile() && entry.name === "_video_only.mp4")
-      || entries.find((entry) => entry.isFile() && entry.name === "final.mp4");
-    if (combined) {
-      sceneVideoPaths.push(path.join(dirPath, combined.name));
-      continue;
-    }
     sceneVideoPaths.push(...entries
       .filter((entry) => entry.isFile() && /^g\d+\.mp4$/i.test(entry.name))
       .map((entry) => path.join(dirPath, entry.name)));
@@ -360,7 +351,6 @@ async function listProjects() {
       sceneCount: sceneImages.length,
       updatedAt,
       cover,
-      conversation: session.messages,
       isDraft: Boolean(progress.draft_project),
       agentSessionId: session.session_id,
     });
@@ -598,8 +588,8 @@ async function getProjectConversation(novelName) {
 }
 
 async function updateProjectConversation(novelName, payload) {
-  const snapshot = normalizeConversation(Array.isArray(payload) ? payload : payload?.messages);
-  const progressCards = Array.isArray(payload) ? null : normalizeProgressCards(payload?.progressCards);
+  const snapshot = normalizeConversation(payload?.messages);
+  const progressCards = normalizeProgressCards(payload?.progressCards);
   return enqueueSessionWrite(novelName, async () => {
     const resolvedName = resolveProjectName(novelName);
     const dir = projectDir(resolvedName);
@@ -607,7 +597,7 @@ async function updateProjectConversation(novelName, payload) {
     if (!progress || typeof progress !== "object") throw new Error("项目进度不存在");
     const session = await readProjectSession(dir, progress, resolvedName);
     session.messages = snapshot;
-    if (progressCards) session.progress_cards = progressCards;
+    session.progress_cards = progressCards;
     session.updated_at = new Date().toISOString();
     await writeJsonAtomic(projectSessionsPath(dir), session);
     return { messages: session.messages, progressCards: session.progress_cards };

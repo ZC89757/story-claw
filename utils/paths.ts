@@ -78,10 +78,6 @@ export const novelPaths = {
   characterStageImage: (novelName: string, charName: string, stage: string) =>
     path.join(PATHS.workspace, novelName, "characters", `${charName}_${stage}.png`),
 
-  /** 角色图完整路径（兼容旧接口，等同于原型图） */
-  characterImage: (novelName: string, charName: string) =>
-    path.join(PATHS.workspace, novelName, "characters", `${charName}_原型.png`),
-
   /** 场景 JSON 路径：workspace/{名}/scenes/{场景名}.json */
   sceneJson: (novelName: string, locationName: string) =>
     path.join(PATHS.workspace, novelName, "scenes", `${locationName}.json`),

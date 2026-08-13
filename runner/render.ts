@@ -1905,45 +1905,19 @@ export async function globalAlignAndMerge(
   console.log(`  视频原速: ${totalVideo.toFixed(1)}s → 实际: ${videoActual.toFixed(3)}s（零量化，视频不动）  音频 atempo ×${audioSpeed.toFixed(4)}`);
 }
 
-// ── JSONL 解析（带容错）──────────────────────────────────────────────────────
+// ── JSONL 解析 ───────────────────────────────────────────────────────────────
 
 function parseJsonl(content: string): any[] {
-  // 替换中文弯引号
-  const raw = content.replace(/\u201c/g, "\uff02").replace(/\u201d/g, "\uff02");
-  const groups: any[] = [];
-  const decoder = { pos: 0 };
-
-  function skipWs() {
-    while (decoder.pos < raw.length && /\s/.test(raw[decoder.pos])) decoder.pos++;
-  }
-
-  skipWs();
-  while (decoder.pos < raw.length) {
-    try {
-      // 尝试用 JSON.parse 解析当前位置开始的对象
-      const sub = raw.slice(decoder.pos);
-      // 找到第一个完整的 JSON 对象
-      let depth = 0, end = -1;
-      for (let i = 0; i < sub.length; i++) {
-        if (sub[i] === "{") depth++;
-        else if (sub[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
-      }
-      if (end === -1) break;
-      const chunk = sub.slice(0, end + 1);
+  return content
+    .split(/\r?\n/)
+    .map((line, index) => ({ line: line.trim(), lineNumber: index + 1 }))
+    .filter(({ line }) => line)
+    .map(({ line, lineNumber }) => {
       try {
-        groups.push(JSON.parse(chunk));
-      } catch {
-        // 容错：只提取 panels 数组
-        const m = chunk.match(/"panels"\s*:\s*(\[[\s\S]*?\])\s*}/);
-        if (m) {
-          try { groups.push({ panels: JSON.parse(m[1]) }); } catch { /* 跳过 */ }
-        }
+        return JSON.parse(line);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`分镜 JSONL 第 ${lineNumber} 行格式错误: ${detail}`);
       }
-      decoder.pos += end + 1;
-    } catch {
-      decoder.pos++;
-    }
-    skipWs();
-  }
-  return groups;
+    });
 }

@@ -54,6 +54,41 @@ const VISUAL_PRESET_SYSTEM = `你是分镜预设专员。任务：为小说原�
 
 完成后直接结束，不要询问用户任何问题。`;
 
+const ESSAY_VISUAL_PRESET_SYSTEM = `你是议论文画面预设专员。任务：先为议论文、科普文或新闻评论划定稳定的 group 边界，再为每个 group 补充简短的画面意图，供后续分镜制作使用。
+
+== Group 划分 ==
+
+- 以中文句终标点（。！？…）为单位依次切分全文；英文句终标点（.!?）仅在确实结束句子时作为边界，版本号、小数、域名和英文缩写中的点不得切分
+- 分号、冒号和逗号属于句内标点，不单独切分 group
+- 若某句去掉标点后不超过 4 个字，将它并入语义最连贯的相邻句；合并后的完整内容仍只占一行、只对应一个 group
+- 原文逐字保留，不得改写、删减、补充或调换顺序
+- 不按自然段分组，也不要保留自然段空行；输出是一条从全文开头到结尾连续排列的 group 清单
+
+== 画面意图 ==
+
+- 每个 group 只补充一条简短、具体、可视化的画面意图
+- 优先使用论述中真实存在的产品、平台、人物、事件、物体、界面或数据关系
+- 抽象概念可用准确的图表、流程、对比关系或现实场景表达
+- 不规划 panel 数量，不写 P1/P2，不把一个 group 预拆成多个画面；后续分镜 Agent 会判断一张图是否足够
+- 不需要故事文的场景、人物位置、景别、角度、镜头运动、光影、情绪、语言或独白字段
+
+== 输出格式 ==
+
+每个 group 必须独占一个物理行，格式固定为：
+原文处理单元【画面：简短、具体的画面意图】
+
+硬性要求：
+- 除上述 group 行外，不要输出标题、序号、解释、Markdown 列表或空行
+- 一行就是一个 group；禁止把两个 group 写在同一行，也禁止把一个 group 换行
+- 【画面：】必须写在该行原文之后，且每行只能有一个【画面：】块
+
+步骤：
+1. 从头到尾划分全部 group，并逐行补充画面意图
+2. 用内置 write 工具将全部 group 行写入 task 指定的输出路径
+3. 在最终回复末行写明：画面预设路径: <输出路径>
+
+完成后直接结束，不要询问用户任何问题。`;
+
 const ARCHIVE_SYSTEM = `你是资源建档专员。根据小说原文和已有资源，完成以下分析并输出结果。不要停下来询问，直接完成所有步骤。
 
 == 概念定义 ==
@@ -155,22 +190,6 @@ const SEGMENT_SYSTEM = `你是剧本分场专员。任务：将章节原文按�
 2. write 工具的 path 参数只写文件名「{场景名}.md」，不要带任何目录前缀（工作目录已设为剧本目录）
 3. 文件名中的场景名必须与 task「场景列表」中的名称逐字完全一致，禁止自创、改写、编号或合并场景名
 4. 在最终回复末行写明：剧本目录已写入
-
-完成后直接结束，不要询问用户任何问题。`;
-
-const ESSAY_SEGMENT_SYSTEM = `你是议论文分场专员。任务：将议论文/科普文按论述段落切分，原文逐字保留，不改写。
-
-切分规则：
-- 每个自然段（论述单元）保存为单独的 .md 文件
-- 文件名按段落顺序编号：01.md、02.md、03.md……（两位数，从 01 起）
-- 原文逐字保留，不得改写、删减或添加任何内容
-- 一个自然段即一个 group 单元，不要跨段合并、也不要在同段内再拆
-- 段落之间的空行不计；若某段极短（如单句过渡），并入语义最连贯的相邻段
-
-步骤：
-1. 将原文按自然段切分，用内置 write 工具将每段保存为 {nn}.md
-2. write 工具的 path 参数只写文件名（如 01.md），不要带目录前缀（工作目录已设为剧本目录）
-3. 在最终回复末行写明：剧本目录已写入
 
 完成后直接结束，不要询问用户任何问题。`;
 
@@ -322,12 +341,14 @@ is_continuation 规则：
 
 完成后直接结束，不要询问用户任何问题。`;
 
-const ESSAY_STORYBOARD_SYSTEM = `你是议论文概念画面分镜导演。任务：把一段论述按句拆成若干概念可视化画面，输出可直接用于生图和生视频的 prompt。议论文无人物、无场景、无对白，不要强行造人物剧情。
+const ESSAY_STORYBOARD_SYSTEM = `你是议论文概念画面分镜导演。任务：逐行读取已经划分好 group 的议论文画面预设，为每个 group 生成可直接用于生图和生视频的 panels。议论文无虚构角色、无故事场景、无对白，不要强行造人物剧情。
 
 == 基本概念 ==
 
-**一个 .md 文件包含一个自然段的多句论述。每个句终标点（。！？…）对应一个 group**——与叙事文一样按句切 group，不要把整段当成一个 group。若某句去掉标点后不超过 4 个字，并入相邻句（同叙事文规则）。
-每个 group 内有 1~N 个 panel（分镜），每个 panel 是该句论述在时间线上的一个概念画面。
+**.md 中每条非空物理行已经是一个完整 group。即使一行含有多个句终标点，也必须整行作为一个 group，不得再次切句、合并、拆分或调整顺序。**
+每行末尾的【画面：...】是该 group 的画面意图。它只提供方向，不规定 panel 数量。
+每个 group 内有 1~N 个 panel（分镜）：一张图片足以完整表达时只生成 1 个 panel；一句较长或包含多个无法在单张画面中清楚表达的信息点时，可以生成多个 panel。
+若某行末尾已有「(已处理)」，表示该 group 已经写入 JSONL，直接跳过该行，不要再次调用 append_group。
 
 == 概念画面映射 ==
 
@@ -375,18 +396,21 @@ const ESSAY_STORYBOARD_SYSTEM = `你是议论文概念画面分镜导演。任�
 
 == group 字段 ==
 
-- text：本句论述原文，逐字保留
+- text：逐字照搬当前物理行中【画面：...】之前的原文处理单元，不得改写或遗漏；不要把【画面：...】块写入 text
 - panels：上述 panel 数组
 
 == 步骤 ==
 
-1. 通读本段论述，按句终标点切 group
-2. 每句处理完，立即调用 append_group 工具传入该句的 group JSON（一个 group = 一句 + 该句的若干 panel）
-3. 所有句子处理完毕后结束
+1. 通读本文件，理解相邻 group 的论述关系
+2. 从第一条非空物理行开始，判断该 group 需要 1 个还是多个 panel
+3. 该行所有 panel 规划完成后，立即调用一次 append_group，传入完整 group JSON
+4. 按物理行顺序继续处理，直至所有行完成
 
 注意：
+- 一条物理行只能调用一次 append_group；一次调用必须包含该 group 的全部 panels
+- 禁止根据句号重新划分 group，也禁止将多条物理行放入同一个 group
 - append_group 的 content 参数是单个 group 的 JSON 字符串，格式：
-  {"text":"本句原文","panels":[{"shot_type":"...","is_continuation":false,"image_prompt":"...","video_prompt":"..."}]}
+  {"text":"当前物理行中【画面：...】之前的原文处理单元","panels":[{"shot_type":"...","is_continuation":false,"image_prompt":"...","video_prompt":"..."}]}
 - 不需要 end_positions（无人物空间关系），不要 sfx（议论文不配音效）
 - image_prompt 必须输出；video_prompt 除"图表/统计/截图类"与"无需变量变化的数学模型类"外都必须输出
 
@@ -456,7 +480,7 @@ async function loadChapterFileByNumber(novelFolder: string, chapterNum: number):
 
 /** 按 改编进度.json 的 source_path + next_chapter 定位并读取本集对应的原始章节正文 */
 async function loadRawChapter(novelName: string): Promise<string> {
-  const progressContent = await fs.readFile(novelPaths.progress(novelName), "utf-8").catch(() => JSON.stringify({ next_chapter: 1 }));
+  const progressContent = await fs.readFile(novelPaths.progress(novelName), "utf-8");
   const progress = JSON.parse(progressContent);
   const nextChapter: number = progress.next_chapter ?? 1;
   const novelFolder: string = progress.source_path;
@@ -491,12 +515,15 @@ export async function cleanText(sel: NovelSelection): Promise<string> {
 
 // ── VisualPreset：画面预设 ────────────────────────────────────
 
-export async function visualPreset(sel: NovelSelection): Promise<string> {
-  // 优先用清理后的原文；无则回退原始章节（清理阶段被跳过/未启用时）
-  const cleanPath = novelPaths.cleanedText(sel.novelName, sel.episode);
-  const chapterText = fsSync.existsSync(cleanPath)
-    ? await fs.readFile(cleanPath, "utf-8")
-    : await loadRawChapter(sel.novelName);
+export async function visualPreset(
+  sel: NovelSelection,
+  articleType: ArticleType = "story",
+): Promise<string> {
+  const chapterText = await fs.readFile(
+    novelPaths.cleanedText(sel.novelName, sel.episode),
+    "utf-8",
+  );
+  const isEssay = articleType === "essay";
 
   const outputPath = novelPaths.visualPreset(sel.novelName, sel.episode);
 
@@ -504,14 +531,14 @@ export async function visualPreset(sel: NovelSelection): Promise<string> {
 
   await runSubAgent(
     [],
-    VISUAL_PRESET_SYSTEM,
+    isEssay ? ESSAY_VISUAL_PRESET_SYSTEM : VISUAL_PRESET_SYSTEM,
     [
       `输出路径：${outputPath}`,
       ``,
       `== 章节原文 ==`,
       chapterText,
     ].join("\n"),
-    "[画面预设]",
+    isEssay ? "[议论文画面预设]" : "[画面预设]",
     [writeTool],  // 只需要写文件，禁用 read
   );
 
@@ -671,40 +698,96 @@ export async function archive(sel: NovelSelection, visualPresetPath: string): Pr
 
 // ── Segment：剧本分场 ─────────────────────────────────────────
 
+const ESSAY_GROUPS_PER_SCRIPT = 5;
+
+function splitEssayPresetLines(
+  groupLines: string[],
+  targetSize: number = ESSAY_GROUPS_PER_SCRIPT,
+): string[][] {
+  if (groupLines.length === 0) return [];
+  const fileCount = Math.ceil(groupLines.length / Math.max(1, targetSize));
+  const baseSize = Math.floor(groupLines.length / fileCount);
+  const largerFileCount = groupLines.length % fileCount;
+  const chunks: string[][] = [];
+  let offset = 0;
+  for (let fileIndex = 0; fileIndex < fileCount; fileIndex++) {
+    const size = baseSize + (fileIndex < largerFileCount ? 1 : 0);
+    chunks.push(groupLines.slice(offset, offset + size));
+    offset += size;
+  }
+  return chunks;
+}
+
+async function segmentEssayByPresetLines(
+  visualPresetPath: string,
+  outputDir: string,
+): Promise<void> {
+  const presetText = await fs.readFile(visualPresetPath, "utf-8");
+  const groupLines = presetText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (groupLines.length === 0) {
+    throw new Error(`议论文画面预设为空: ${visualPresetPath}`);
+  }
+
+  const chunks = splitEssayPresetLines(groupLines);
+  const fileCount = chunks.length;
+  const filenameWidth = Math.max(2, String(fileCount).length);
+
+  // segment 阶段的编号 MD 是可重建产物；重试时先移除残留文件，避免旧分片混入本轮。
+  const existingFiles = await fs.readdir(outputDir).catch(() => []);
+  await Promise.all(
+    existingFiles
+      .filter((filename) => filename.endsWith(".md"))
+      .map((filename) => fs.unlink(path.join(outputDir, filename))),
+  );
+
+  for (let fileIndex = 0; fileIndex < chunks.length; fileIndex++) {
+    const lines = chunks[fileIndex];
+    const filename = `${String(fileIndex + 1).padStart(filenameWidth, "0")}.md`;
+    await fs.writeFile(path.join(outputDir, filename), `${lines.join("\n")}\n`, "utf-8");
+  }
+
+  const sizes = chunks.map((chunk) => chunk.length);
+  console.log(
+    `[议论文分组] ${groupLines.length} 个 group -> ${fileCount} 个任务文件` +
+    `（每个 ${Math.min(...sizes)}~${Math.max(...sizes)} 行）`,
+  );
+}
+
 export async function segment(sel: NovelSelection, archiveResult: ArchiveResult, visualPresetPath: string, articleType: ArticleType = "story"): Promise<string> {
   const expectedDir = novelPaths.scriptsDir(sel.novelName, sel.episode);
   await fs.mkdir(expectedDir, { recursive: true });  // cwd 必须先存在
 
   const isEssay = articleType === "essay";
-  const systemPrompt = isEssay ? ESSAY_SEGMENT_SYSTEM : SEGMENT_SYSTEM;
-  // 议论文无画面预设、无场景列表，直接读 clean 文本按段切
-  const loadText = isEssay
-    ? await fs.readFile(novelPaths.cleanedText(sel.novelName, sel.episode), "utf-8")
-    : await loadSegmentData(archiveResult.sceneNames, visualPresetPath);
+  if (isEssay) {
+    await segmentEssayByPresetLines(visualPresetPath, expectedDir);
+  } else {
+    const loadText = await loadSegmentData(archiveResult.sceneNames, visualPresetPath);
+    await runSubAgent(
+      [],
+      SEGMENT_SYSTEM,
+      [
+        `请为小说「${sel.novelName}」第${sel.episode}集切分剧本。`,
+        ``,
+        loadText,
+      ].join("\n"),
+      "[剧本分场]",
+      [writeTool],  // 只需要写文件，禁用 read
+      expectedDir,  // 工作目录设为剧本目录，agent 写裸文件名即落入此处
+    );
+  }
 
-  await runSubAgent(
-    [],
-    systemPrompt,
-    [
-      isEssay
-        ? `请为议论文「${sel.novelName}」第${sel.episode}集按论述段落切分。`
-        : `请为小说「${sel.novelName}」第${sel.episode}集切分剧本。`,
-      ``,
-      loadText,
-    ].join("\n"),
-    isEssay ? "[议论文分场]" : "[剧本分场]",
-    [writeTool],  // 只需要写文件，禁用 read
-    expectedDir,  // 工作目录设为剧本目录，agent 写裸文件名即落入此处
-  );
-
-  // 验证至少有一个场景文件被写入
+  // 验证至少有一个任务文件被写入
   try {
     const files = await fs.readdir(expectedDir);
     if (!files.some((f) => f.endsWith(".md"))) {
       throw new Error("目录存在但没有 .md 文件");
     }
   } catch {
-    throw new Error(`剧本分场完成但目录不存在或为空: ${expectedDir}`);
+    throw new Error(`${isEssay ? "议论文任务分配" : "剧本分场"}完成但目录不存在或为空: ${expectedDir}`);
   }
   return expectedDir;
 }
@@ -716,7 +799,7 @@ export interface StoryboardProgress {
   total: number;
 }
 
-// ── Storyboard：分镜制作（每个场景 .md 文件对应一个 agent，并行）────────────
+// ── Storyboard：分镜制作（每个 .md 文件对应一个 agent）─────────────────────
 
 // append_group 时长校验：按此语速估算 group 配音时长，均分给 panels 后
 // 若单 panel 预计超过 MAX_PANEL_SECONDS，拒绝写入并要求拆出更多 panel。
@@ -732,6 +815,7 @@ export async function storyboard(
 ): Promise<void> {
   const isEssay = articleType === "essay";
   const files = (await fs.readdir(scriptsDir)).filter((f) => f.endsWith(".md"));
+  if (isEssay) files.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   // 议论文无角色名单、无音效库，跳过这些注入，直接用 ESSAY_STORYBOARD_SYSTEM
   let rosterText = "（无）";
@@ -778,8 +862,7 @@ export async function storyboard(
   const progress: StoryboardProgress = { done: 0, total: files.length };
   onProgress?.(progress);
 
-  await Promise.all(
-    files.map(async (filename) => {
+  const processFile = async (filename: string): Promise<void> => {
       const sceneName  = filename.replace(/\.md$/, "");
       const scriptPath = path.join(scriptsDir, filename);
       const jsonlPath  = novelPaths.storyboardJsonl(sel.novelName, sel.episode, sceneName);
@@ -811,14 +894,15 @@ export async function storyboard(
           // 若单 panel 超过 20s（TTS 实测时长驱动的视频时长过长，接近/超出视频模型单次生成上限），
           // 拒绝写入，提示至少需要多少个 panel，让 agent 在同一句上重新拆分后再提交。
           const groupText = String(parsed?.text ?? "");
+          const timingText = isEssay ? groupText.replace(/【[^】]*】/g, "") : groupText;
           const panelCount = Array.isArray(parsed?.panels) ? parsed.panels.length : 0;
-          const estSeconds = groupText.length / CHARS_PER_SECOND;
+          const estSeconds = timingText.length / CHARS_PER_SECOND;
           const minPanels = Math.max(1, Math.ceil(estSeconds / MAX_PANEL_SECONDS));
           if (panelCount < minPanels) {
             return {
               content: [{
                 type: "text" as const,
-                text: `ERROR: group 中 panel 太少。该 group 文字约 ${groupText.length} 字，按 ${CHARS_PER_SECOND} 字/秒估算配音时长约 ${estSeconds.toFixed(1)} 秒；单 panel 时长上限 ${MAX_PANEL_SECONDS} 秒，因此这个 group 至少需要 ${minPanels} 个 panel（当前只有 ${panelCount} 个）。请保持 text 不变，在剧情合理的前提下把 panel 数拆到至少 ${minPanels} 个并尽量平均，重新调用 append_group。`,
+                text: `ERROR: group 中 panel 太少。该 group 可朗读原文约 ${timingText.length} 字，按 ${CHARS_PER_SECOND} 字/秒估算配音时长约 ${estSeconds.toFixed(1)} 秒；单 panel 时长上限 ${MAX_PANEL_SECONDS} 秒，因此这个 group 至少需要 ${minPanels} 个 panel（当前只有 ${panelCount} 个）。请保持 text 不变，在内容表达合理的前提下把 panel 数拆到至少 ${minPanels} 个并尽量平均，重新调用 append_group。`,
               }],
               details: {},
             };
@@ -877,9 +961,9 @@ export async function storyboard(
         isEssay ? ESSAY_STORYBOARD_SYSTEM : STORYBOARD_SYSTEM,
         (isEssay
           ? [
-              `段落名：${sceneName}`,
+              `任务文件：${sceneName}`,
               ``,
-              `== 本段论述原文 ==`,
+              `== 已逐行划分的议论文画面预设 ==`,
               scriptContent,
             ]
           : [
@@ -915,7 +999,7 @@ export async function storyboard(
       let lastRemaining = remaining.length;
       let lastProgressAt = Date.now();
       if (remaining.length > 0) {
-        console.log(`[storyboard] 「${sceneName}」子 agent 已返回但仍有 ${remaining.length} 句未落盘，等待其写完…`);
+        console.log(`[storyboard] ${isEssay ? "任务文件" : "场景"}「${sceneName}」子 agent 已返回但仍有 ${remaining.length} 句未落盘，等待其写完…`);
       }
       while (remaining.length > 0) {
         await new Promise((r) => setTimeout(r, POLL_MS));
@@ -925,7 +1009,7 @@ export async function storyboard(
           lastProgressAt = Date.now();
         } else if (Date.now() - lastProgressAt >= STALL_MS) {
           throw new Error(
-            `分镜卡死：场景「${sceneName}」还有 ${remaining.length} 句未处理，已 ` +
+            `分镜卡死：${isEssay ? "任务文件" : "场景"}「${sceneName}」还有 ${remaining.length} 句未处理，已 ` +
             `${Math.round(STALL_MS / 60000)} 分钟无进展（首句："${remaining[0].trim().slice(0, 30)}…"）。` +
             `已中止本集以防 render 消费不完整的 JSONL，请重跑本集分镜。`,
           );
@@ -934,8 +1018,9 @@ export async function storyboard(
 
       progress.done++;
       onProgress?.(progress);
-    }),
-  );
+  };
+
+  await Promise.all(files.map(processFile));
 }
 
 // ── 为 group 附上 global_order ──────────────────────────────────────────────
@@ -957,10 +1042,10 @@ function lcsLen(a: string, b: string): number {
  * 遍历所有 JSONL 文件中的 text 字段，按照画面预设的顺序给 group 附上 global_order。
  * 在 storyboard 完成后、renderScene 之前调用。
  *
- * 议论文分支（articleType === "essay"）：无画面预设、无人物、无对白，分场阶段已按段
- * 编号（01.md、02.md……）切好，渲染只需按段文件名数值升序、段内按 JSONL 行序依次执行。
- * 因此跳过画面预设读取与文本/sfx 去重，直接给每个 group 写入「段序*100000 + 段内 gi」
- * 作为全局唯一递增的 global_order，保证跨场景排序正确（globalAlignAndMerge 按此排序）。
+ * 议论文分支（articleType === "essay"）：画面预设已按全文顺序固定为一行一个 group，
+ * segment 再将连续行均匀分配到编号任务文件（01.md、02.md……）。排序时按任务文件编号
+ * 数值升序、文件内 JSONL 行序执行，直接写入「文件序*100000 + 文件内 gi」作为
+ * global_order；无需再做故事文的文本匹配和 sfx 去重。
  */
 export async function assignGlobalOrder(
   novelName: string,
@@ -1004,27 +1089,25 @@ export async function assignGlobalOrder(
     const jsonlText = await fs.readFile(jsonlPath, "utf-8");
     const lines = jsonlText.split("\n").filter(l => l.trim());
     for (let gi = 0; gi < lines.length; gi++) {
-      try {
-        const data = JSON.parse(lines[gi]);
-        const text = (data.text || "").split("【")[0].trim();
-        if (!text) continue;
-        groups.push({ scene: sceneName, gi, text, globalOrder: -1, sfx: Array.isArray(data.sfx) ? data.sfx : [] });
+      const data = JSON.parse(lines[gi]);
+      const text = (data.text || "").split("【")[0].trim();
+      if (!text) continue;
+      groups.push({ scene: sceneName, gi, text, globalOrder: -1, sfx: Array.isArray(data.sfx) ? data.sfx : [] });
 
-        const key = normKey(text);
-        if (!key) continue;
-        const panels = Array.isArray(data.panels) ? data.panels.length : 0;
-        const prev = bestByText.get(key);
-        if (!prev) {
-          bestByText.set(key, { scene: sceneName, gi, panels });
-        } else if (panels > prev.panels) {
-          dropped.add(`${prev.scene}\x00${prev.gi}`);
-          bestByText.set(key, { scene: sceneName, gi, panels });
-          console.warn(`[assignGlobalOrder] 去重: 丢弃 ${prev.scene}#${prev.gi}(panel=${prev.panels})，保留 ${sceneName}#${gi}(panel=${panels}) text="${text.slice(0, 30)}"`);
-        } else {
-          dropped.add(`${sceneName}\x00${gi}`);
-          console.warn(`[assignGlobalOrder] 去重: 丢弃 ${sceneName}#${gi}(panel=${panels})，保留 ${prev.scene}#${prev.gi}(panel=${prev.panels}) text="${text.slice(0, 30)}"`);
-        }
-      } catch { /* 跳过解析失败 */ }
+      const key = normKey(text);
+      if (!key) continue;
+      const panels = Array.isArray(data.panels) ? data.panels.length : 0;
+      const prev = bestByText.get(key);
+      if (!prev) {
+        bestByText.set(key, { scene: sceneName, gi, panels });
+      } else if (panels > prev.panels) {
+        dropped.add(`${prev.scene}\x00${prev.gi}`);
+        bestByText.set(key, { scene: sceneName, gi, panels });
+        console.warn(`[assignGlobalOrder] 去重: 丢弃 ${prev.scene}#${prev.gi}(panel=${prev.panels})，保留 ${sceneName}#${gi}(panel=${panels}) text="${text.slice(0, 30)}"`);
+      } else {
+        dropped.add(`${sceneName}\x00${gi}`);
+        console.warn(`[assignGlobalOrder] 去重: 丢弃 ${sceneName}#${gi}(panel=${panels})，保留 ${prev.scene}#${prev.gi}(panel=${prev.panels}) text="${text.slice(0, 30)}"`);
+      }
     }
   }
   if (dropped.size > 0) {
@@ -1113,21 +1196,17 @@ export async function assignGlobalOrder(
     const updatedLines: string[] = [];
 
     for (let gi = 0; gi < lines.length; gi++) {
-      try {
-        const data = JSON.parse(lines[gi]);
-        if (dropped.has(`${sceneName}\x00${gi}`)) continue;  // 去重丢弃，删除此行
-        const group = groups.find(g => g.scene === sceneName && g.gi === gi);
-        if (group) {
-          data.global_order = group.globalOrder;
-        }
-        if (Array.isArray(data.sfx)) {
-          const kept = data.sfx.filter((_: any, idx: number) => !sfxDrop.has(`${sceneName}\x00${gi}\x00${idx}`));
-          if (kept.length > 0) data.sfx = kept; else delete data.sfx;
-        }
-        updatedLines.push(JSON.stringify(data));
-      } catch {
-        updatedLines.push(lines[gi]); // 解析失败保持原样
+      const data = JSON.parse(lines[gi]);
+      if (dropped.has(`${sceneName}\x00${gi}`)) continue;  // 去重丢弃，删除此行
+      const group = groups.find(g => g.scene === sceneName && g.gi === gi);
+      if (group) {
+        data.global_order = group.globalOrder;
       }
+      if (Array.isArray(data.sfx)) {
+        const kept = data.sfx.filter((_: any, idx: number) => !sfxDrop.has(`${sceneName}\x00${gi}\x00${idx}`));
+        if (kept.length > 0) data.sfx = kept; else delete data.sfx;
+      }
+      updatedLines.push(JSON.stringify(data));
     }
 
     await fs.writeFile(jsonlPath, updatedLines.join("\n") + "\n", "utf-8");
@@ -1137,10 +1216,10 @@ export async function assignGlobalOrder(
 }
 
 /**
- * 议论文专用：不读画面预设、不做文本/sfx 去重，按段文件名数值升序 + 段内 JSONL 行序
- * 给每个 group 写入全局唯一递增的 global_order。议论文分场用 01.md/02.md 编号，
+ * 议论文专用：按任务文件名数值升序 + 文件内 JSONL 行序
+ * 给每个 group 写入全局唯一递增的 global_order。议论文任务文件用 01.md/02.md 编号，
  * storyboard 产出 storyboard_01.jsonl 等；sceneNames 可能来自进度记录（可能为空），
- * 这里直接扫 storyboards 目录兜底，按段号数值排序，保证跨段拼接顺序正确。
+ * 这里直接扫 storyboards 目录兜底，按文件编号排序，保证全篇拼接顺序正确。
  */
 async function assignEssayGlobalOrder(novelName: string, episode: number, sceneNames: string[]): Promise<void> {
   const storyboardsDir = novelPaths.storyboardsDir(novelName, episode);
@@ -1154,7 +1233,7 @@ async function assignEssayGlobalOrder(novelName: string, episode: number, sceneN
       .map((f) => f.replace(/^storyboard_/, "").replace(/\.jsonl$/, ""));
   }
 
-  // 按段号数值升序（"01" < "02" < "10"），非数字段名退回字符串序
+  // 按任务文件编号数值升序（"01" < "02" < "10"），非数字名称退回字符串序
   const numeric = (s: string) => /^\d+$/.test(s);
   const sorted = [...names].sort((a, b) =>
     numeric(a) && numeric(b) ? Number(a) - Number(b) : a.localeCompare(b),
@@ -1169,18 +1248,14 @@ async function assignEssayGlobalOrder(novelName: string, episode: number, sceneN
     const base = si * 100000;
     const updatedLines: string[] = [];
     for (let gi = 0; gi < lines.length; gi++) {
-      try {
-        const data = JSON.parse(lines[gi]);
-        data.global_order = base + gi;
-        updatedLines.push(JSON.stringify(data));
-      } catch {
-        updatedLines.push(lines[gi]);
-      }
+      const data = JSON.parse(lines[gi]);
+      data.global_order = base + gi;
+      updatedLines.push(JSON.stringify(data));
     }
     await fs.writeFile(jsonlPath, updatedLines.join("\n") + "\n", "utf-8");
     total += lines.length;
   }
-  console.log(`[assignGlobalOrder] 议论文：${sorted.length} 段、共 ${total} 个 group，按段号顺序写入 global_order`);
+  console.log(`[assignGlobalOrder] 议论文：${sorted.length} 个任务文件、共 ${total} 个 group，按文件编号写入 global_order`);
 }
 
 // ── Render：分镜渲染 ──────────────────────────────────────────────

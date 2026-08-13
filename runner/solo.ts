@@ -76,20 +76,18 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     const articleType: "essay" | "story" = sel.articleType ?? "story";
     const isEssay = articleType === "essay";
 
-    // 画面预设（议论文跳过：无场景人物可标）
+    // 画面预设：故事文标注场景人物；议论文在这里固定逐行 group 边界与画面意图。
     reportPhase({
       phase: "visual_preset",
-      label: isEssay ? "检查画面预设" : "生成画面预设",
-      detail: isEssay ? "议论文无需角色与场景预设，正在跳过" : "正在逐句分析场景、人物与镜头语言",
+      label: "生成画面预设",
+      detail: isEssay ? "正在逐句划分分镜组并规划画面意图" : "正在逐句分析场景、人物与镜头语言",
     });
     p.start(1, title);
     let presetPath = novelPaths.visualPreset(sel.novelName, ep);
-    if (isEssay) {
-      p.done(1, title, "议论文，跳过画面预设");
-    } else if (epRec.stages.visualPreset === "done") {
+    if (epRec.stages.visualPreset === "done") {
       p.done(1, title, "已完成，跳过");
     } else {
-      presetPath = await visualPreset(sel);
+      presetPath = await visualPreset(sel, articleType);
       await markStage(sel.novelName, ep, "visualPreset", "done", { chapter: sel.nextChapter });
       p.done(1, title, "画面预设.txt");
     }
@@ -115,7 +113,11 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     }
 
     // 剧本分场
-    reportPhase({ phase: "segmenting", label: "剧本分场", detail: "正在按场景拆分本集原文" });
+    reportPhase({
+      phase: "segmenting",
+      label: isEssay ? "分配分镜任务" : "剧本分场",
+      detail: isEssay ? "正在按画面预设行数均匀分配分镜任务" : "正在按场景拆分本集原文",
+    });
     p.start(3, title);
     let scriptsDir = novelPaths.scriptsDir(sel.novelName, ep);
     if (epRec.stages.segment === "done") {
@@ -136,7 +138,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         reportPhase({
           phase: "storyboarding",
           label: "分镜制作",
-          detail: `已完成 ${prog.done} / ${prog.total} 个场景`,
+          detail: `已完成 ${prog.done} / ${prog.total} 个${isEssay ? "任务文件" : "场景"}`,
         });
         p.updateSubLines(4, title, [
           `分镜  ${progressBar(prog.done, prog.total)}`,

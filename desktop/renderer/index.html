@@ -1465,11 +1465,6 @@
         uploadMenu.hidden = !uploadMenu.hidden;
         uploadPicker.setAttribute("aria-expanded", String(!uploadMenu.hidden));
       });
-      root.querySelectorAll("[data-claw-open-input]").forEach((button) => button.addEventListener("click", () => {
-        root.querySelector(`[data-claw-upload-input="${button.dataset.clawOpenInput}"]`)?.click();
-        if (uploadMenu) uploadMenu.hidden = true;
-        uploadPicker?.setAttribute("aria-expanded", "false");
-      }));
       root.querySelectorAll("[data-claw-upload-input]").forEach((input) => input.addEventListener("change", () => {
         const files = [...(input.files || [])];
         if (!files.length) {

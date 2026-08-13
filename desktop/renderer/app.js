@@ -647,10 +647,7 @@
     return value
       .filter((item) => item && ["user", "assistant", "system"].includes(item.role))
       .map((item) => ({ role: item.role, text: String(item.text || "").trim() }))
-      .filter((item) => item.text && !(
-        item.role === "system"
-        && item.text === "项目已建立。你可以继续补充要求，确认配置后再开始渲染。"
-      ));
+      .filter((item) => item.text);
   }
 
   function normalizeProgressCards(value) {
@@ -1257,15 +1254,13 @@
     }
     if (!(sameProject && state.agentStreaming)) {
       try {
-        const session = typeof api.getProjectConversation === "function"
-          ? await api.getProjectConversation(project.novelName)
-          : project.conversation;
+        const session = await api.getProjectConversation(project.novelName);
         if (openId !== state.projectOpenId) return;
-        state.agentMessages = normalizeConversation(Array.isArray(session) ? session : session?.messages);
-        state.progressCards = normalizeProgressCards(Array.isArray(session) ? [] : session?.progressCards);
+        state.agentMessages = normalizeConversation(session?.messages);
+        state.progressCards = normalizeProgressCards(session?.progressCards);
       } catch (error) {
         if (openId !== state.projectOpenId) return;
-        state.agentMessages = normalizeConversation(project.conversation);
+        state.agentMessages = [];
         state.progressCards = [];
         showToast(error instanceof Error ? error.message : "读取对话记录失败");
       }
@@ -1705,7 +1700,7 @@
   }
 
   function scheduleConversationPersist() {
-    if (!state.selectedProject || typeof api.updateProjectConversation !== "function") return;
+    if (!state.selectedProject) return;
     clearTimeout(state.conversationPersistTimer);
     state.conversationPersistTimer = setTimeout(() => {
       state.conversationPersistTimer = null;
@@ -1714,7 +1709,7 @@
   }
 
   function persistConversationSnapshot() {
-    if (!state.selectedProject || typeof api.updateProjectConversation !== "function") {
+    if (!state.selectedProject) {
       return state.conversationPersistPromise;
     }
     const novelName = state.selectedProject.novelName;
@@ -1849,7 +1844,10 @@
     const text = typedText || (source === "landing" && state.pendingInput
       ? "请读取我选择的章节素材，先和我确认项目配置。"
       : "");
-    if (!text) return;
+    if (!text) {
+      if (source === "landing") showToast("请先输入文稿或选择章节文件夹");
+      return;
+    }
     if (input) input.value = "";
     if (source === "landing") {
       const count = root.querySelector("[data-claw-compose-count]");
@@ -1899,6 +1897,28 @@
     } catch (error) {
       showToast(error instanceof Error ? error.message : "选择文件失败");
     }
+  }
+
+  async function getSelectedFilePath(file) {
+    if (!file) return "";
+    try {
+      const resolved = api.getFilePath?.(file);
+      if (resolved) return resolved;
+    } catch {
+      // 某些拖拽对象无法交给 Electron 文件路径 API，继续使用可用的公开属性。
+    }
+    return typeof file.path === "string" ? file.path : "";
+  }
+
+  function directoryPathFromRelativeFile(filePath, relativePath) {
+    if (!filePath || !relativePath) return "";
+    const parts = String(relativePath).split(/[\\/]+/).filter(Boolean);
+    if (parts.length < 2) return "";
+    let directory = filePath;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      directory = directory.replace(/[\\/][^\\/]*$/, "");
+    }
+    return directory;
   }
 
   function bindPreviewControls() {
@@ -2048,10 +2068,25 @@
     root.querySelector("[data-chat-go-home]")?.addEventListener("click", () => showHomeLanding({ reset: true }));
     root.querySelector("[data-chat-go-projects]")?.addEventListener("click", () => showLibraryView("projects"));
     document.addEventListener("click", closeChatMenu);
+    root.querySelectorAll("[data-claw-open-input]").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const kind = button.dataset.clawOpenInput === "file" ? "file" : "directory";
+        const menu = root.querySelector("[data-claw-upload-menu]");
+        const picker = root.querySelector("[data-claw-upload-pick]");
+        if (menu) menu.hidden = true;
+        picker?.setAttribute("aria-expanded", "false");
+        await chooseInput(kind);
+      });
+    });
     root.querySelectorAll("[data-claw-upload-input]").forEach((input) => {
       input.addEventListener("change", async () => {
         const file = input.files?.[0];
-        const selectedPath = file?.path;
+        const filePath = await getSelectedFilePath(file);
+        const selectedPath = input.dataset.clawUploadInput === "directory"
+          ? directoryPathFromRelativeFile(filePath, file?.webkitRelativePath)
+          : filePath;
         if (!selectedPath) return;
         try {
           const selected = await api.inspectSource(selectedPath);
@@ -2065,7 +2100,10 @@
       });
     });
     root.querySelector("[data-claw-upload-pick]")?.addEventListener("drop", async (event) => {
-      const selectedPath = event.dataTransfer?.files?.[0]?.path;
+      event.preventDefault();
+      const file = event.dataTransfer?.files?.[0];
+      const filePath = await getSelectedFilePath(file);
+      const selectedPath = directoryPathFromRelativeFile(filePath, file?.webkitRelativePath) || filePath;
       if (!selectedPath) return;
       try {
         const selected = await api.inspectSource(selectedPath);

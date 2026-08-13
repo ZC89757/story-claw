@@ -96,13 +96,7 @@ async function buildStoryCandidates(sel: NovelSelection): Promise<CoverCandidate
     const lines = (await fs.readFile(path.join(storyboardsDir, filename), "utf-8")).split(/\r?\n/);
     for (let gi = 0; gi < lines.length; gi++) {
       if (!lines[gi].trim()) continue;
-      let group: any;
-      try {
-        group = JSON.parse(lines[gi]);
-      } catch {
-        console.warn(`  [封面] 跳过无法解析的 JSONL: ${filename}:${gi + 1}`);
-        continue;
-      }
+      const group = JSON.parse(lines[gi]);
       const panels = Array.isArray(group.panels) ? group.panels : [];
       for (let pi = 0; pi < panels.length; pi++) {
         const panel = panels[pi];
