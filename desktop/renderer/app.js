@@ -696,6 +696,17 @@
         currentIndex: Math.max(0, Math.trunc(Number(item.currentIndex) || 0)),
         pauseNoticeAdded: Boolean(item.pauseNoticeAdded),
         presetReview: item.presetReview && typeof item.presetReview === "object" ? item.presetReview : null,
+        settingsSummary: item.settingsSummary && typeof item.settingsSummary === "object"
+          ? {
+            templateName: String(item.settingsSummary.templateName || "项目设置"),
+            articleType: item.settingsSummary.articleType === "essay" ? "essay" : "story",
+            aspectRatio: item.settingsSummary.aspectRatio === "16:9" ? "16:9" : "9:16",
+            renderMode: item.settingsSummary.renderMode === "images_only" ? "images_only" : "full",
+            ethnicity: String(item.settingsSummary.ethnicity || ""),
+            reviewVisualPreset: item.settingsSummary.reviewVisualPreset !== false,
+            requireFinalConfirmation: item.settingsSummary.requireFinalConfirmation !== false,
+          }
+          : null,
       }));
   }
 
@@ -793,15 +804,45 @@
       articleType: template?.articleType === "essay" ? "essay" : "story",
       aspectRatio: template?.aspectRatio === "16:9" ? "16:9" : "9:16",
       renderMode: template?.renderMode === "images_only" ? "images_only" : "full",
+      ethnicity: typeof template?.ethnicity === "string" ? template.ethnicity : "",
       reviewVisualPreset: template?.reviewVisualPreset !== false,
       requireFinalConfirmation: template?.requireFinalConfirmation !== false,
     };
+  }
+
+  function settingsForProject(project = state.selectedProject) {
+    const summary = project?.settingsSummary;
+    if (!summary || typeof summary !== "object") return activeSettingsTemplate();
+    return {
+      templateName: String(summary.templateName || "").trim() || "项目设置",
+      articleType: summary.articleType === "essay" ? "essay" : "story",
+      aspectRatio: summary.aspectRatio === "16:9" ? "16:9" : "9:16",
+      renderMode: summary.renderMode === "images_only" ? "images_only" : "full",
+      ethnicity: typeof summary.ethnicity === "string" ? summary.ethnicity : "",
+      reviewVisualPreset: summary.reviewVisualPreset !== false,
+      requireFinalConfirmation: summary.requireFinalConfirmation !== false,
+    };
+  }
+
+  function populateSettingsTemplateSelect(selectedName) {
+    const select = root.querySelector("[data-claw-settings-template-select]");
+    if (!select) return;
+    const templates = state.settings?.templates && typeof state.settings.templates === "object" ? state.settings.templates : {};
+    const names = Object.keys(templates);
+    select.replaceChildren(...names.map((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      return option;
+    }));
+    if (names.length) select.value = names.includes(selectedName) ? selectedName : (state.settings?.activeTemplate || names[0]);
   }
 
   function applySettingsForm(settings = activeSettingsTemplate()) {
     const dialog = root.querySelector("[data-claw-settings-dialog]");
     if (!dialog) return;
     const setValue = (selector, value) => { const node = dialog.querySelector(selector); if (node) node.value = value; };
+    populateSettingsTemplateSelect(settings.templateName);
     setValue("[data-claw-settings-template-name]", settings.templateName);
     setValue("[data-claw-settings-article-type]", settings.articleType);
     dialog.querySelectorAll("[data-claw-settings-aspect]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.clawSettingsAspect === settings.aspectRatio)));
@@ -810,6 +851,8 @@
     const final = dialog.querySelector("[data-claw-settings-final]");
     if (review) review.checked = settings.reviewVisualPreset !== false;
     if (final) final.checked = settings.requireFinalConfirmation !== false;
+    const ethnicity = dialog.querySelector("[data-claw-settings-ethnicity]");
+    if (ethnicity) ethnicity.value = settings.ethnicity || "";
     state.settingsDraft = { ...settings };
   }
 
@@ -826,10 +869,10 @@
   function bindSettingsControls() {
     const dialog = root.querySelector("[data-claw-settings-dialog]");
     if (!dialog) return;
-    root.querySelector("[data-claw-settings-open]")?.addEventListener("click", () => {
+    root.querySelectorAll("[data-claw-settings-open]").forEach((button) => button.addEventListener("click", () => {
       applySettingsForm(activeSettingsTemplate());
       dialog.showModal?.();
-    });
+    }));
     root.querySelectorAll("[data-claw-settings-close]").forEach((button) => button.addEventListener("click", () => dialog.close?.()));
     dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close?.(); });
     dialog.querySelectorAll("[data-claw-settings-aspect]").forEach((button) => button.addEventListener("click", () => {
@@ -838,6 +881,19 @@
     dialog.querySelectorAll("[data-claw-settings-render]").forEach((button) => button.addEventListener("click", () => {
       dialog.querySelectorAll("[data-claw-settings-render]").forEach((peer) => peer.setAttribute("aria-pressed", String(peer === button)));
     }));
+    dialog.querySelector("[data-claw-settings-template-select]")?.addEventListener("change", async (event) => {
+      const name = String(event.currentTarget.value || "");
+      const template = state.settings?.templates?.[name];
+      if (!template) return;
+      try {
+        state.settings = typeof api.activateSettingsTemplate === "function"
+          ? await api.activateSettingsTemplate(name)
+          : { ...state.settings, activeTemplate: name };
+        applySettingsForm(activeSettingsTemplate());
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "切换模板失败");
+      }
+    });
     dialog.querySelector("[data-claw-settings-form]")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const aspect = [...dialog.querySelectorAll("[data-claw-settings-aspect]")].find((button) => button.getAttribute("aria-pressed") === "true")?.dataset.clawSettingsAspect || "9:16";
@@ -848,6 +904,7 @@
           articleType: dialog.querySelector("[data-claw-settings-article-type]")?.value === "essay" ? "essay" : "story",
           aspectRatio: aspect === "16:9" ? "16:9" : "9:16",
           renderMode: renderMode === "images_only" ? "images_only" : "full",
+          ethnicity: dialog.querySelector("[data-claw-settings-ethnicity]")?.value || "",
           reviewVisualPreset: Boolean(dialog.querySelector("[data-claw-settings-review]")?.checked),
           requireFinalConfirmation: Boolean(dialog.querySelector("[data-claw-settings-final]")?.checked),
         },
@@ -1342,7 +1399,7 @@
     if (openId !== state.projectOpenId) return;
     const sameProject = previousProject?.id === project.id;
     const previousEpisode = sameProject ? state.selectedEpisode : null;
-    const activeRunProject = ["running", "stopping"].includes(state.running?.status)
+    const activeRunProject = ["running", "stopping", "review"].includes(state.running?.status)
       && state.running?.selection?.novelName === project.novelName;
     if (!sameProject) {
       state.pendingChoices = [];
@@ -1395,6 +1452,29 @@
       if (normalizedStaleCard) scheduleConversationPersist();
     }
     if (activeRunProject) state.runStepIndex = pipelineStepIndex(state.runPhase);
+    if (project.reviewEpisodes?.length && !activeRunProject && state.progressCards.length === 0) {
+      const reviewEpisode = Number(project.reviewEpisodes[0]);
+      try {
+        const review = await api.getVisualPreset(project.novelName, reviewEpisode);
+        state.running = {
+          runId: `review_${project.id}_${reviewEpisode}`,
+          status: "review",
+          selection: { ...selectionForProject(project), episode: reviewEpisode },
+          phase: "visual_preset_review",
+          phaseLabel: "等待审核画面预设",
+          phaseDetail: "画面预设已生成，请确认或提出修改意见",
+          review,
+          logs: [],
+        };
+        state.runPhase = "visual_preset_review";
+        state.runPhaseLabel = "等待审核画面预设";
+        state.runPhaseDetail = "画面预设已生成，请确认或提出修改意见";
+        state.runStepIndex = pipelineStepIndex(state.runPhase);
+        ensureProgressCard(state.running);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "恢复画面预设审核失败");
+      }
+    }
     const episodes = availableEpisodes(project);
     const activeEpisode = activeRunProject ? Number(state.running?.selection?.episode) : 0;
     const previewEpisode = activeEpisode > 0 && episodes.includes(activeEpisode)
@@ -1431,13 +1511,14 @@
       sourcePath: project.sourcePath,
       episode: project.adaptedCount + 1,
       nextChapter: project.nextChapter,
-      ethnicity: "",
+      ethnicity: settingsForProject(project).ethnicity || "",
       aspectRatio: project.aspectRatio || "9:16",
       imagesOnly: state.renderMode !== "full",
       articleType: project.articleType || "story",
       reviewVisualPreset: project.reviewVisualPreset !== false,
       requireFinalConfirmation: project.requireFinalConfirmation !== false,
       agentSessionId: project.agentSessionId || project.id || project.novelName,
+      settingsTemplate: settingsForProject(project).templateName,
     };
   }
 
@@ -1525,7 +1606,7 @@
     if (!run?.selection || !state.selectedProject || run.selection.novelName !== state.selectedProject.novelName) return null;
     if (!["running", "stopping", "review"].includes(run.status)) return null;
     const runId = String(run.runId ?? "");
-    let card = state.progressCards.find((item) => item.runId === runId && ["active", "stopping"].includes(item.status));
+    let card = state.progressCards.find((item) => item.runId === runId && ["active", "stopping", "review"].includes(item.status));
     if (!card) {
       const createdAt = new Date().toISOString();
       card = {
@@ -1543,6 +1624,16 @@
         log: "",
         currentIndex: 0,
         pauseNoticeAdded: false,
+        presetReview: run.review || null,
+        settingsSummary: {
+          templateName: run.selection.settingsTemplate || "项目设置",
+          articleType: run.selection.articleType === "essay" ? "essay" : "story",
+          aspectRatio: run.selection.aspectRatio === "16:9" ? "16:9" : "9:16",
+          renderMode: run.selection.imagesOnly ? "images_only" : "full",
+          ethnicity: String(run.selection.ethnicity || ""),
+          reviewVisualPreset: run.selection.reviewVisualPreset !== false,
+          requireFinalConfirmation: run.selection.requireFinalConfirmation !== false,
+        },
       };
       state.progressCards.push(card);
       scheduleConversationPersist();
@@ -1742,6 +1833,22 @@
     return wrapper;
   }
 
+  function renderSettingsSummaryCard(settings, card) {
+    const wrapper = document.createElement("section");
+    wrapper.className = "claw-settings-summary-card";
+    wrapper.dataset.settingsSummaryId = card?.id || "";
+    const title = document.createElement("strong");
+    title.textContent = "本次制作设置";
+    const meta = document.createElement("div");
+    meta.className = "claw-settings-summary-items";
+    const article = settings?.articleType === "essay" ? "议论文 / 科普文" : "叙事小说";
+    const mode = settings?.renderMode === "images_only" ? "只生成分镜图" : "完整渲染";
+    const values = [article, settings?.aspectRatio || "9:16", mode, settings?.reviewVisualPreset === false ? "不审核画面预设" : "审核画面预设", settings?.requireFinalConfirmation === false ? "无需最终确认" : "需要最终确认"];
+    values.forEach((value) => { const item = document.createElement("span"); item.textContent = value; meta.appendChild(item); });
+    wrapper.append(title, meta);
+    return wrapper;
+  }
+
   async function approvePresetReview(card, button) {
     if (!card || button.disabled || !state.selectedProject) return;
     button.disabled = true;
@@ -1874,6 +1981,10 @@
     state.progressCards.forEach((card) => {
       if (!card.presetReview) return;
       addCard(card.messageIndex, `2_${card.createdAt}_${card.id}`, () => renderVisualPresetReviewCard(card.presetReview, card));
+    });
+    state.progressCards.forEach((card) => {
+      if (!card.settingsSummary) return;
+      addCard(card.messageIndex, `3_${card.createdAt}_${card.id}`, () => renderSettingsSummaryCard(card.settingsSummary, card));
     });
     const appendMessage = (message) => {
       const item = document.createElement("div");
@@ -2074,11 +2185,12 @@
         text,
         selection: state.selectedProject ? makeSelection() : null,
         conversation: state.agentMessages,
-        context: {
+      context: {
           ...currentAgentContext(),
           draftText: state.homeSourceText || text,
           inputPath: state.pendingInput?.path || "",
           inputKind: state.pendingInput?.kind || "",
+          settings: activeSettingsTemplate(),
         },
       });
       if (!response?.accepted) appendAgentMessage("system", "消息没有送达主 Agent。");
@@ -2486,6 +2598,7 @@
         create_project: "正在确认项目配置",
         start_pipeline: "正在启动流水线",
         pause_pipeline: "正在暂停流水线",
+        revise_visual_preset: "正在根据意见修改画面预设",
       };
       state.agentActivityLabel = event.status === "error"
         ? "操作未完成"
@@ -2493,6 +2606,28 @@
         ? "AI 正在处理"
         : (toolLabels[event.toolName] || "AI 正在处理");
       state.agentActivityDetail = event.status === "done" ? "正在整理结果" : "";
+      updateProjectChatControls();
+      updateAgentPanel();
+      return;
+    }
+    if (event.type === "visual_preset_updated" && event.review) {
+      const review = event.review;
+      const card = state.progressCards.find((item) => item.presetReview && item.runId === String(state.running?.runId || ""))
+        || progressCardForRun(state.running?.runId);
+      if (card) {
+        card.presetReview = review;
+        card.status = "review";
+        card.phase = "visual_preset_review";
+        card.label = "等待审核画面预设";
+        card.detail = "画面预设已更新，请确认或继续提出修改意见";
+      }
+      if (state.running) state.running.review = review;
+      state.agentActivityLabel = "等待你审核更新后的画面预设";
+      state.agentActivityDetail = "可以确认，也可以继续提出修改意见";
+      scheduleConversationPersist();
+      renderAgentMessages();
+      renderHomeConversation();
+      renderProjectConversation();
       updateProjectChatControls();
       updateAgentPanel();
       return;
@@ -2566,6 +2701,7 @@
           detail: state.runPhaseDetail,
           log: "",
           currentIndex: 0,
+          settingsSummary: settingsForProject(state.selectedProject),
         });
         scheduleConversationPersist();
       }
@@ -2575,7 +2711,16 @@
       state.runPhaseLabel = "等待审核画面预设";
       state.runPhaseDetail = "画面预设已生成，请确认或提出修改意见";
       const card = progressCardForRun(event.runId) || ensureProgressCard(state.running);
-      if (card && event.review) card.presetReview = event.review;
+      if (card) {
+        card.status = "review";
+        card.phase = "visual_preset_review";
+        card.label = state.runPhaseLabel;
+        card.detail = state.runPhaseDetail;
+        if (event.review) card.presetReview = event.review;
+      }
+      state.agentActivityLabel = "等待你审核画面预设";
+      state.agentActivityDetail = "可以确认，也可以直接提出修改意见";
+      scheduleConversationPersist();
     } else if (["stopping", "stopped"].includes(event.status)) {
       state.running = { ...(state.running || {}), runId: event.runId, status: event.status, statusText: event.status === "stopping" ? "正在暂停任务…" : "任务已暂停" };
       state.agentMonitorActivated = true;
@@ -2634,19 +2779,27 @@
       if (activeRun) {
         state.running = {
           runId: activeRun.runId,
-          status: activeRun.status === "stopping" ? "stopping" : "running",
-          statusText: activeRun.status === "stopping" ? "正在暂停任务…" : "运行中…",
+          status: activeRun.status === "stopping" ? "stopping" : activeRun.status === "review" ? "review" : "running",
+          statusText: activeRun.status === "stopping" ? "正在暂停任务…" : activeRun.status === "review" ? "等待审核画面预设" : "运行中…",
           selection: activeRun.selection,
           phase: activeRun.phase,
           phaseLabel: activeRun.phaseLabel,
           phaseDetail: activeRun.phaseDetail,
           logs: Array.isArray(activeRun.logs) ? activeRun.logs : [],
+          review: activeRun.review || null,
         };
         state.runPhase = activeRun.phase || "planning";
         state.runPhaseLabel = activeRun.phaseLabel || "规划中";
         state.runPhaseDetail = activeRun.phaseDetail || "流水线正在运行";
         state.runStepIndex = pipelineStepIndex(state.runPhase);
         state.agentMonitorActivated = isRenderPhase(state.runPhase);
+        if (activeRun.status === "review") {
+          state.runPhase = "visual_preset_review";
+          state.runPhaseLabel = "等待审核画面预设";
+          state.runPhaseDetail = "画面预设已生成，请确认或提出修改意见";
+          state.runStepIndex = pipelineStepIndex(state.runPhase);
+          ensureProgressCard(state.running);
+        }
       }
       injectAgentPanel();
       updateProjectChatControls();

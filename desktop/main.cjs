@@ -143,6 +143,9 @@ function normalizeProgressCards(value) {
       presetReview: item.presetReview && typeof item.presetReview === "object"
         ? normalizePresetReview(item.presetReview)
         : null,
+      settingsSummary: item.settingsSummary && typeof item.settingsSummary === "object"
+        ? settingsSummary(item.settingsSummary, item.settingsSummary.templateName)
+        : null,
     }));
 }
 
@@ -176,6 +179,19 @@ function normalizeTemplateSettings(value) {
   };
 }
 
+function settingsSummary(value, templateName = "") {
+  const settings = normalizeTemplateSettings(value);
+  return {
+    templateName: String(templateName || "").trim().slice(0, 40),
+    articleType: settings.articleType,
+    aspectRatio: settings.aspectRatio,
+    renderMode: settings.renderMode,
+    ethnicity: settings.ethnicity,
+    reviewVisualPreset: settings.reviewVisualPreset,
+    requireFinalConfirmation: settings.requireFinalConfirmation,
+  };
+}
+
 function normalizeDesktopSettings(value) {
   const source = value && typeof value === "object" ? value : {};
   const sourceTemplates = source.templates && typeof source.templates === "object" ? source.templates : {};
@@ -197,7 +213,7 @@ async function readDesktopSettings() {
 
 async function getActiveTemplateSettings() {
   const settings = await readDesktopSettings();
-  return { ...settings.templates[settings.activeTemplate] };
+  return { ...settings.templates[settings.activeTemplate], templateName: settings.activeTemplate };
 }
 
 async function saveDesktopSettings(payload = {}) {
@@ -208,6 +224,18 @@ async function saveDesktopSettings(payload = {}) {
   const settings = normalizeTemplateSettings(payload.settings);
   current.templates[templateName] = settings;
   current.activeTemplate = templateName;
+  await fs.mkdir(userConfigRoot, { recursive: true });
+  await writeJsonAtomic(desktopSettingsPath, current);
+  return current;
+}
+
+async function activateDesktopTemplate(templateName) {
+  const current = await readDesktopSettings();
+  const requestedName = String(templateName || "").trim();
+  if (!Object.prototype.hasOwnProperty.call(current.templates, requestedName)) {
+    throw new Error("设置模板不存在");
+  }
+  current.activeTemplate = requestedName;
   await fs.mkdir(userConfigRoot, { recursive: true });
   await writeJsonAtomic(desktopSettingsPath, current);
   return current;
@@ -257,6 +285,17 @@ function normalizeProjectSession(stored, progress, fallbackName) {
     session_id: sessionId,
     messages: normalizeConversation(hasStoredMessages ? stored.messages : progress?.conversation),
     progress_cards: normalizeProgressCards(stored?.progress_cards),
+    settings_summary: settingsSummary(
+      stored?.settings_summary || {
+        articleType: progress?.article_type,
+        aspectRatio: progress?.aspect_ratio,
+        renderMode: progress?.render_mode,
+        ethnicity: progress?.ethnicity,
+        reviewVisualPreset: progress?.review_visual_preset,
+        requireFinalConfirmation: progress?.require_final_confirmation,
+      },
+      stored?.settings_summary?.templateName || progress?.settings_template || "",
+    ),
     updated_at: typeof stored?.updated_at === "string" ? stored.updated_at : "",
   };
 }
@@ -265,7 +304,7 @@ async function readProjectSession(dir, progress, fallbackName, { migrate = false
   const filePath = projectSessionsPath(dir);
   const stored = await readJson(filePath);
   const session = normalizeProjectSession(stored, progress, fallbackName);
-  if (migrate && (!stored || stored.version !== 2 || !Array.isArray(stored.messages) || !Array.isArray(stored.progress_cards) || !stored.session_id)) {
+  if (migrate && (!stored || stored.version !== 2 || !Array.isArray(stored.messages) || !Array.isArray(stored.progress_cards) || !stored.session_id || !stored.settings_summary)) {
     session.updated_at = new Date().toISOString();
     await writeJsonAtomic(filePath, session);
   }
@@ -383,6 +422,11 @@ async function listProjects() {
       .map(([episode]) => Number(episode))
       .filter((episode) => Number.isInteger(episode) && episode > 0)
       .sort((a, b) => a - b);
+    const reviewEpisodes = Object.entries(episodes)
+      .filter(([, record]) => record?.stages?.visualPreset === "review")
+      .map(([episode]) => Number(episode))
+      .filter((episode) => Number.isInteger(episode) && episode > 0)
+      .sort((a, b) => a - b);
     const progressEpisodeNumbers = Object.keys(episodes)
       .map(Number)
       .filter((episode) => Number.isInteger(episode) && episode > 0);
@@ -425,6 +469,7 @@ async function listProjects() {
       episodeCount: Math.max(adapted.length, episodeNumbers.length),
       episodeNumbers,
       renderedEpisodes,
+      reviewEpisodes,
       articleType: progress.article_type === "essay" ? "essay" : "story",
       aspectRatio: progress.aspect_ratio === "16:9" ? "16:9" : "9:16",
       renderMode: progress.render_mode === "full" ? "full" : "images_only",
@@ -436,6 +481,7 @@ async function listProjects() {
       cover,
       isDraft: Boolean(progress.draft_project),
       agentSessionId: session.session_id,
+      settingsSummary: session.settings_summary,
     });
   }
   return projects.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
@@ -546,6 +592,7 @@ async function getVisualPresetReview(novelName, episode) {
   const presetPath = path.join(dir, `ep${String(episodeNumber).padStart(2, "0")}`, "画面预设.txt");
   const content = await fs.readFile(presetPath, "utf8");
   const articleType = progress.article_type === "essay" ? "essay" : "story";
+  const reviewRecord = progress.episodes?.[String(episodeNumber)]?.visual_preset_review;
   const rows = content.split(/\r?\n/).map((line, index) => {
     const text = line.trim();
     if (!text) return null;
@@ -566,7 +613,13 @@ async function getVisualPresetReview(novelName, episode) {
     STORY_PRESET_FIELDS.forEach((field, fieldIndex) => { fields[field] = String(values[fieldIndex] || "").trim(); });
     return { index: index + 1, original, fields };
   }).filter(Boolean);
-  return { articleType, episode: episodeNumber, version: 1, status: "review", rows };
+  return {
+    articleType,
+    episode: episodeNumber,
+    version: Math.max(1, Math.trunc(Number(reviewRecord?.version) || 1)),
+    status: reviewRecord?.status === "approved" ? "approved" : "review",
+    rows,
+  };
 }
 
 async function approveVisualPreset(novelName, episode) {
@@ -579,7 +632,12 @@ async function approveVisualPreset(novelName, episode) {
   progress.episodes ??= {};
   const record = progress.episodes[key] ?? { stages: {} };
   record.stages = { ...(record.stages || {}), visualPreset: "done" };
-  record.visual_preset_review = { ...(record.visual_preset_review || {}), status: "approved" };
+  record.visual_preset_review = {
+    ...(record.visual_preset_review || {}),
+    articleType: progress.article_type === "essay" ? "essay" : "story",
+    version: Math.max(1, Math.trunc(Number(record.visual_preset_review?.version) || 1)),
+    status: "approved",
+  };
   record.updated_at = new Date().toISOString();
   progress.episodes[key] = record;
   await writeJsonAtomic(progressPath, progress);
@@ -652,6 +710,7 @@ async function createProject(payload = {}) {
     article_type: payload.articleType === "essay" || payload.articleType === "story" ? payload.articleType : template.articleType,
     aspect_ratio: payload.aspectRatio === "16:9" || payload.aspectRatio === "9:16" ? payload.aspectRatio : template.aspectRatio,
     render_mode: renderMode,
+    settings_template: String(payload.templateName || template.templateName || "").trim(),
     review_visual_preset: payload.reviewVisualPreset !== undefined ? payload.reviewVisualPreset !== false : template.reviewVisualPreset,
     require_final_confirmation: payload.requireFinalConfirmation !== undefined ? payload.requireFinalConfirmation !== false : template.requireFinalConfirmation,
     adapted: [],
@@ -668,6 +727,14 @@ async function createProject(payload = {}) {
     session_id: agentSessionId,
     messages: normalizeConversation(payload.conversation),
     progress_cards: [],
+    settings_summary: settingsSummary({
+      articleType: progress.article_type,
+      aspectRatio: progress.aspect_ratio,
+      renderMode: progress.render_mode,
+      ethnicity: progress.ethnicity,
+      reviewVisualPreset: progress.review_visual_preset,
+      requireFinalConfirmation: progress.require_final_confirmation,
+    }, progress.settings_template),
     updated_at: new Date().toISOString(),
   };
   await Promise.all([
@@ -703,6 +770,7 @@ async function finalizeDraftProject(currentName, payload = {}) {
   progress.article_type = payload.articleType === "essay" || payload.articleType === "story" ? payload.articleType : template.articleType;
   progress.aspect_ratio = payload.aspectRatio === "16:9" || payload.aspectRatio === "9:16" ? payload.aspectRatio : template.aspectRatio;
   progress.render_mode = payload.renderMode === "images_only" || payload.renderMode === "full" ? payload.renderMode : template.renderMode;
+  progress.settings_template = String(payload.templateName || template.templateName || progress.settings_template || "").trim();
   progress.review_visual_preset = payload.reviewVisualPreset !== undefined ? payload.reviewVisualPreset !== false : template.reviewVisualPreset;
   progress.require_final_confirmation = payload.requireFinalConfirmation !== undefined ? payload.requireFinalConfirmation !== false : template.requireFinalConfirmation;
   progress.draft_project = false;
@@ -716,6 +784,17 @@ async function finalizeDraftProject(currentName, payload = {}) {
   }
   progress.source_path = sourcePath;
   await fs.writeFile(path.join(nextDir, "改编进度.json"), JSON.stringify(progress, null, 4), "utf8");
+  const session = await readProjectSession(nextDir, progress, nextName, { migrate: true });
+  session.settings_summary = settingsSummary({
+    articleType: progress.article_type,
+    aspectRatio: progress.aspect_ratio,
+    renderMode: progress.render_mode,
+    ethnicity: progress.ethnicity,
+    reviewVisualPreset: progress.review_visual_preset,
+    requireFinalConfirmation: progress.require_final_confirmation,
+  }, progress.settings_template);
+  session.updated_at = new Date().toISOString();
+  await writeJsonAtomic(projectSessionsPath(nextDir), session);
   return (await listProjects()).find((project) => project.id === nextName) || { id: nextName, novelName: nextName };
 }
 
@@ -762,14 +841,23 @@ function agentSessionPath(selection) {
 
 function runContext(run = activeRun) {
   if (!run) return {};
+  const selection = run.selection || {};
   return {
-    projectName: run.selection?.novelName,
-    episode: run.selection?.episode,
+    projectName: selection.novelName,
+    episode: selection.episode,
     phase: run.phase || "planning",
     phaseLabel: run.phaseLabel || "规划中",
     phaseDetail: run.phaseDetail || "",
     runStatus: run.status,
     visualPresetReview: run.review || null,
+    settings: {
+      templateName: selection.settingsTemplate || "",
+      articleType: selection.articleType === "essay" ? "essay" : "story",
+      aspectRatio: selection.aspectRatio === "16:9" ? "16:9" : "9:16",
+      renderMode: selection.imagesOnly ? "images_only" : "full",
+      reviewVisualPreset: selection.reviewVisualPreset !== false,
+      requireFinalConfirmation: selection.requireFinalConfirmation !== false,
+    },
     recentLogs: Array.isArray(run.logs) ? run.logs.slice(-20) : [],
   };
 }
@@ -794,17 +882,19 @@ function updateAgentContext() {
 }
 
 function selectionForProject(project) {
+  const summary = project.settingsSummary || {};
   return {
     novelName: project.novelName,
     sourcePath: project.sourcePath || "",
     episode: Math.max(1, Number(project.nextChapter) || Number(project.adaptedCount) + 1 || 1),
     nextChapter: Math.max(1, Number(project.nextChapter) || 1),
-    ethnicity: "",
+    ethnicity: typeof summary.ethnicity === "string" ? summary.ethnicity : "",
     aspectRatio: project.aspectRatio === "16:9" ? "16:9" : "9:16",
     imagesOnly: project.renderMode !== "full",
     articleType: project.articleType === "essay" ? "essay" : "story",
     reviewVisualPreset: project.reviewVisualPreset !== false,
     requireFinalConfirmation: project.requireFinalConfirmation !== false,
+    settingsTemplate: summary.templateName || "",
     agentSessionId: project.agentSessionId || project.id || project.novelName,
   };
 }
@@ -867,6 +957,7 @@ async function handleAgentCreateProject(payload) {
         articleType: details.articleType,
         aspectRatio: details.aspectRatio,
         renderMode: details.renderMode,
+        templateName: details.templateName,
         reviewVisualPreset: details.reviewVisualPreset,
         requireFinalConfirmation: details.requireFinalConfirmation,
       });
@@ -899,6 +990,34 @@ async function handleAgentCreateProject(payload) {
   }
 }
 
+async function approveAndResumeVisualPreset(novelName, episode, expectedRun = null) {
+  const resolvedName = resolveProjectName(novelName);
+  const project = (await listProjects()).find((item) => item.id === resolvedName);
+  if (!project) throw new Error("审核项目不存在");
+  if (expectedRun && expectedRun.selection?.novelName !== resolvedName) {
+    throw new Error("审核项目与当前项目不一致");
+  }
+  const selectedEpisode = Math.max(
+    1,
+    Math.trunc(Number(episode) || expectedRun?.selection?.episode || project.reviewEpisodes?.[0] || project.nextChapter || 1),
+  );
+  const progress = await readJson(path.join(projectDir(resolvedName), "改编进度.json"));
+  if (progress?.episodes?.[String(selectedEpisode)]?.stages?.visualPreset !== "review") {
+    throw new Error("当前项目没有等待确认的画面预设");
+  }
+  await approveVisualPreset(resolvedName, selectedEpisode);
+  const selection = {
+    ...(expectedRun?.selection || selectionForProject(project)),
+    novelName: project.novelName,
+    episode: selectedEpisode,
+  };
+  if (activeRun === expectedRun || (activeRun && activeRun.status === "review" && !expectedRun)) activeRun = null;
+  const result = startRun(selection);
+  send("run:review-approved", { runId: expectedRun?.id || null, nextRunId: result.runId, selection });
+  updateAgentContext();
+  return result;
+}
+
 function handleAgentWorkerLine(line) {
   const prefix = "STORYCLAW_AGENT ";
   if (!line.startsWith(prefix)) return;
@@ -923,12 +1042,20 @@ function handleAgentWorkerLine(line) {
       const selection = activeAgent?.selection;
       if (!selection) {
         sendAgentEvent({ type: "error", message: "还没有选中的项目，无法启动流水线。" });
+      } else if (activeRun?.status === "review") {
+        approveAndResumeVisualPreset(selection.novelName, selection.episode, activeRun)
+          .catch((error) => sendAgentEvent({ type: "error", message: error instanceof Error ? error.message : String(error) }));
       } else if (activeRun) {
         sendAgentEvent({ type: "error", message: "当前已经有任务在运行。" });
       } else {
-        try { startRun(selection); } catch (error) {
-          sendAgentEvent({ type: "error", message: error instanceof Error ? error.message : String(error) });
-        }
+        (async () => {
+          const project = (await listProjects()).find((item) => item.id === resolveProjectName(selection.novelName));
+          if (project?.reviewEpisodes?.includes(Number(selection.episode))) {
+            await approveAndResumeVisualPreset(selection.novelName, selection.episode);
+          } else {
+            startRun(selection);
+          }
+        })().catch((error) => sendAgentEvent({ type: "error", message: error instanceof Error ? error.message : String(error) }));
       }
       return;
     }
@@ -977,33 +1104,33 @@ function ensureAgentWorker(selection) {
   return activeAgent;
 }
 
-function forwardStream(stream, streamName) {
+function forwardStream(stream, streamName, run = activeRun) {
   let buffer = "";
   stream.setEncoding("utf8");
   stream.on("data", (chunk) => {
     buffer += chunk;
     const parts = buffer.split(/\r?\n/);
     buffer = parts.pop() || "";
-    for (const line of parts) handleRunOutputLine(line, streamName);
+    for (const line of parts) handleRunOutputLine(line, streamName, run);
   });
   stream.on("end", () => {
-    if (buffer) handleRunOutputLine(buffer, streamName);
+    if (buffer) handleRunOutputLine(buffer, streamName, run);
   });
 }
 
-function handleRunOutputLine(line, streamName) {
+function handleRunOutputLine(line, streamName, run = activeRun) {
   const phasePrefix = "STORYCLAW_PHASE ";
   const reviewPrefix = "STORYCLAW_REVIEW ";
   const trimmed = String(line || "").trim();
   if (trimmed.startsWith(phasePrefix)) {
     try {
       const payload = JSON.parse(trimmed.slice(phasePrefix.length));
-      if (activeRun && payload && typeof payload === "object") {
-        activeRun.phase = payload.phase || activeRun.phase;
-        activeRun.phaseLabel = payload.label || activeRun.phaseLabel;
-        activeRun.phaseDetail = payload.detail || "";
-        send("run:phase", { runId: activeRun.id, ...payload });
-        updateAgentContext();
+      if (run && payload && typeof payload === "object") {
+        run.phase = payload.phase || run.phase;
+        run.phaseLabel = payload.label || run.phaseLabel;
+        run.phaseDetail = payload.detail || "";
+        send("run:phase", { runId: run.id, ...payload });
+        if (activeRun === run) updateAgentContext();
       }
       return;
     } catch {
@@ -1013,7 +1140,6 @@ function handleRunOutputLine(line, streamName) {
   if (trimmed.startsWith(reviewPrefix)) {
     try {
       const marker = JSON.parse(trimmed.slice(reviewPrefix.length));
-      const run = activeRun;
       if (run) {
         run.reviewPending = true;
         run.status = "review";
@@ -1033,12 +1159,11 @@ function handleRunOutputLine(line, streamName) {
       // Malformed review marker is kept as a normal log line for diagnosis.
     }
   }
-  const run = activeRun;
   if (run) {
     run.logs = [...(run.logs || []).slice(-79), String(line)];
   }
   send("run:log", { runId: run?.id, stream: streamName, line });
-  updateAgentContext();
+  if (activeRun === run) updateAgentContext();
 }
 
 function shutdownGpuOnce(run) {
@@ -1078,11 +1203,13 @@ function startRun(selection) {
     phaseDetail: "流水线正在生成规划",
     logs: [],
   };
+  const run = activeRun;
+  run.closePromise = new Promise((resolve) => { run.resolveClose = resolve; });
   try { ensureAgentWorker(selection); } catch (error) {
     sendAgentEvent({ type: "error", message: `主 Agent 启动失败：${error instanceof Error ? error.message : String(error)}` });
   }
-  forwardStream(child.stdout, "stdout");
-  forwardStream(child.stderr, "stderr");
+  forwardStream(child.stdout, "stdout", run);
+  forwardStream(child.stderr, "stderr", run);
   child.stdin.write(JSON.stringify(selection));
   child.stdin.end();
   send("run:state", { runId, status: "running", selection });
@@ -1095,8 +1222,7 @@ function startRun(selection) {
   updateAgentContext();
   child.once("error", (error) => send("run:state", { runId, status: "failed", error: error.message }));
   child.once("close", async (code, signal) => {
-    const run = activeRun;
-    const stopped = activeRun?.stopRequested || signal === "SIGTERM" || code === 143;
+    const stopped = run.stopRequested || signal === "SIGTERM" || code === 143;
     const status = run?.reviewPending ? "review" : stopped ? "stopped" : code === 0 ? "done" : "failed";
     if (["failed", "stopped"].includes(status)) await shutdownGpuOnce(run);
     if (run) run.status = status;
@@ -1108,8 +1234,9 @@ function startRun(selection) {
         run.status = "review";
       }
     } else {
-      activeRun = null;
+      if (activeRun === run) activeRun = null;
     }
+    run.resolveClose?.();
   });
   return { runId };
 }
@@ -1157,6 +1284,7 @@ function createWindow() {
 ipcMain.handle("projects:list", () => listProjects());
 ipcMain.handle("settings:get", () => readDesktopSettings());
 ipcMain.handle("settings:save", (_event, payload) => saveDesktopSettings(payload));
+ipcMain.handle("settings:activate", (_event, templateName) => activateDesktopTemplate(templateName));
 ipcMain.handle("assets:list", (_event, novelName) => getAssets(novelName));
 ipcMain.handle("episode:preview", (_event, novelName, episode) => getEpisodePreview(novelName, episode));
 ipcMain.handle("source:choose", (_event, kind) => chooseSource(kind === "file" ? "file" : "directory"));
@@ -1178,15 +1306,9 @@ ipcMain.handle("run:active", () => activeRun ? {
 } : null);
 ipcMain.handle("visual-preset:get", (_event, novelName, episode) => getVisualPresetReview(novelName, episode));
 ipcMain.handle("visual-preset:approve", async (_event, novelName, episode) => {
-  if (!activeRun || activeRun.status !== "review") throw new Error("当前没有等待审核的画面预设");
-  const run = activeRun;
-  if (run.selection?.novelName !== resolveProjectName(novelName)) throw new Error("审核项目与当前项目不一致");
-  await approveVisualPreset(novelName, episode);
-  activeRun = null;
-  const result = startRun(run.selection);
-  send("run:review-approved", { runId: run.id, nextRunId: result.runId, selection: run.selection });
-  updateAgentContext();
-  return result;
+  if (activeRun && activeRun.status !== "review") throw new Error("当前已经有任务正在运行");
+  const run = activeRun?.status === "review" ? activeRun : null;
+  return approveAndResumeVisualPreset(novelName, episode, run);
 });
 ipcMain.handle("agent:message", async (_event, payload = {}) => {
   const text = String(payload.text || "").trim();

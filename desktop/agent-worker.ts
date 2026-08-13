@@ -352,6 +352,7 @@ const createProjectTool: ToolDefinition = {
           ? (params as any).aspectRatio : context.settings?.aspectRatio,
         renderMode: (params as any)?.renderMode === "images_only" || (params as any)?.renderMode === "full"
           ? (params as any).renderMode : context.settings?.renderMode,
+        templateName: context.settings?.templateName,
         reviewVisualPreset: context.settings?.reviewVisualPreset,
         requireFinalConfirmation: context.settings?.requireFinalConfirmation,
         text: context.inputPath ? "" : String(context.draftText || "").trim(),

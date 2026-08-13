@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("storyClaw", {
   getProjects: () => ipcRenderer.invoke("projects:list"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (payload) => ipcRenderer.invoke("settings:save", payload),
+  activateSettingsTemplate: (templateName) => ipcRenderer.invoke("settings:activate", templateName),
   getAssets: (novelName) => ipcRenderer.invoke("assets:list", novelName),
   getEpisodePreview: (novelName, episode) => ipcRenderer.invoke("episode:preview", novelName, episode),
   chooseSource: (kind) => ipcRenderer.invoke("source:choose", kind),
