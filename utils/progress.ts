@@ -20,7 +20,7 @@ import fs from "node:fs/promises";
 import { novelPaths } from "./paths.js";
 
 export type StageName = "clean" | "visualPreset" | "archive" | "segment" | "storyboard" | "render";
-export type StageStatus = "done" | "images_only";
+export type StageStatus = "done" | "images_only" | "review";
 export type ArticleType = "essay" | "story";
 
 export interface EpisodeRecord {
@@ -28,6 +28,11 @@ export interface EpisodeRecord {
   stages: Partial<Record<StageName, StageStatus>>;
   sceneNames?: string[];
   updated_at?: string;
+  visual_preset_review?: {
+    articleType?: ArticleType;
+    version?: number;
+    status?: "review" | "approved" | "updated";
+  };
 }
 
 export async function readProgress(novelName: string): Promise<any> {

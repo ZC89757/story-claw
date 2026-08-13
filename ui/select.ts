@@ -16,6 +16,10 @@ export interface NovelSelection {
   aspectRatio: string;
   imagesOnly: boolean;  // 只生分镜图，跳过生视频/TTS/合并（ComfyUI 未就绪时先出图）
   articleType: "essay" | "story";
+  /** 画面预设生成后是否进入桌面端人工审阅检查点。 */
+  reviewVisualPreset?: boolean;
+  /** 项目配置确认后是否需要用户再确认一次才启动流水线。 */
+  requireFinalConfirmation?: boolean;
 }
 
 export type RunScope = "solo" | "all";

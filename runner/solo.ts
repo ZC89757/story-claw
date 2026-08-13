@@ -14,12 +14,13 @@ import { postprocessEpisodeVideo } from "./postprocess.js";
 import { novelPaths } from "../utils/paths.js";
 import { readProgress, getEpisodeRecord, markStage, finalizeEpisode } from "../utils/progress.js";
 
-export type SoloRunResult = "done" | "images_only" | "already_done" | "failed";
+export type SoloRunResult = "done" | "images_only" | "already_done" | "review_pending" | "failed";
 
 export type SoloPhase =
   | "planning"
   | "preparing"
   | "visual_preset"
+  | "visual_preset_review"
   | "archiving"
   | "segmenting"
   | "storyboarding"
@@ -86,8 +87,17 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     let presetPath = novelPaths.visualPreset(sel.novelName, ep);
     if (epRec.stages.visualPreset === "done") {
       p.done(1, title, "已完成，跳过");
+    } else if (epRec.stages.visualPreset === "review") {
+      reportPhase({ phase: "visual_preset_review", label: "等待审核画面预设", detail: "画面预设已生成，请在表格中确认或提出修改意见" });
+      return "review_pending";
     } else {
       presetPath = await visualPreset(sel, articleType);
+      if (sel.reviewVisualPreset) {
+        await markStage(sel.novelName, ep, "visualPreset", "review", { chapter: sel.nextChapter });
+        p.done(1, title, "等待用户审核");
+        reportPhase({ phase: "visual_preset_review", label: "等待审核画面预设", detail: "画面预设已生成，请在表格中确认或提出修改意见" });
+        return "review_pending";
+      }
       await markStage(sel.novelName, ep, "visualPreset", "done", { chapter: sel.nextChapter });
       p.done(1, title, "画面预设.txt");
     }

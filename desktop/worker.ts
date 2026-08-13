@@ -20,6 +20,9 @@ async function main(): Promise<void> {
     // keeps ordinary pipeline output available as the human-readable log.
     console.log(`STORYCLAW_PHASE ${JSON.stringify(event)}`);
   });
+  if (result === "review_pending") {
+    console.log(`STORYCLAW_REVIEW ${JSON.stringify({ episode: selection.episode, articleType: selection.articleType || "story" })}`);
+  }
   console.log(`[desktop] 任务结束：${result}`);
   if (result === "failed") process.exitCode = 1;
 }
