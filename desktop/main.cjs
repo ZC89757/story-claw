@@ -12,14 +12,13 @@ const rendererPath = path.join(__dirname, "renderer", "index.html");
 const sessionsFileName = "sessions.json";
 const userConfigRoot = path.join(os.homedir(), ".story-claw");
 const desktopSettingsPath = path.join(userConfigRoot, "desktop_settings.json");
-const DEFAULT_TEMPLATE_SETTINGS = Object.freeze({
-  articleType: "story",
-  aspectRatio: "9:16",
-  renderMode: "full",
-  ethnicity: "",
-  reviewVisualPreset: true,
-  requireFinalConfirmation: true,
-});
+const TEMPLATE_FIELDS = [
+  "articleType",
+  "aspectRatio",
+  "renderMode",
+  "reviewVisualPreset",
+  "requireFinalConfirmation",
+];
 let mainWindow;
 let activeRun = null;
 let nextRunId = 1;
@@ -140,11 +139,12 @@ function normalizeProgressCards(value) {
       log: String(item.log || ""),
       currentIndex: Math.max(0, Math.trunc(Number(item.currentIndex) || 0)),
       pauseNoticeAdded: Boolean(item.pauseNoticeAdded),
+      settingsOnly: Boolean(item.settingsOnly),
       presetReview: item.presetReview && typeof item.presetReview === "object"
         ? normalizePresetReview(item.presetReview)
         : null,
       settingsSummary: item.settingsSummary && typeof item.settingsSummary === "object"
-        ? settingsSummary(item.settingsSummary, item.settingsSummary.templateName)
+        ? settingsSummary(item.settingsSummary)
         : null,
     }));
 }
@@ -167,29 +167,56 @@ function normalizePresetReview(value) {
   };
 }
 
-function normalizeTemplateSettings(value) {
+function normalizeProductionSettings(value) {
   const source = value && typeof value === "object" ? value : {};
-  return {
-    articleType: source.articleType === "essay" ? "essay" : "story",
-    aspectRatio: source.aspectRatio === "16:9" ? "16:9" : "9:16",
-    renderMode: source.renderMode === "images_only" ? "images_only" : "full",
-    ethnicity: typeof source.ethnicity === "string" ? source.ethnicity.slice(0, 120) : "",
-    reviewVisualPreset: source.reviewVisualPreset !== false,
-    requireFinalConfirmation: source.requireFinalConfirmation !== false,
-  };
+  const result = {};
+  if (source.articleType === "essay" || source.articleType === "story") result.articleType = source.articleType;
+  if (source.aspectRatio === "16:9" || source.aspectRatio === "9:16") result.aspectRatio = source.aspectRatio;
+  if (source.renderMode === "images_only" || source.renderMode === "full") result.renderMode = source.renderMode;
+  if (typeof source.ethnicity === "string") result.ethnicity = source.ethnicity.slice(0, 120);
+  if (typeof source.reviewVisualPreset === "boolean") result.reviewVisualPreset = source.reviewVisualPreset;
+  if (typeof source.requireFinalConfirmation === "boolean") result.requireFinalConfirmation = source.requireFinalConfirmation;
+  return result;
 }
 
-function settingsSummary(value, templateName = "") {
+function normalizeTemplateSettings(value) {
+  return normalizeProductionSettings(value);
+}
+
+function isCompleteTemplate(value) {
   const settings = normalizeTemplateSettings(value);
-  return {
-    templateName: String(templateName || "").trim().slice(0, 40),
-    articleType: settings.articleType,
-    aspectRatio: settings.aspectRatio,
-    renderMode: settings.renderMode,
-    ethnicity: settings.ethnicity,
-    reviewVisualPreset: settings.reviewVisualPreset,
-    requireFinalConfirmation: settings.requireFinalConfirmation,
-  };
+  return TEMPLATE_FIELDS.every((field) => Object.prototype.hasOwnProperty.call(settings, field));
+}
+
+function settingsSummary(value) {
+  return normalizeProductionSettings(value);
+}
+
+function settingsFromProgress(progress) {
+  return settingsSummary({
+    articleType: progress?.article_type,
+    aspectRatio: progress?.aspect_ratio,
+    renderMode: progress?.render_mode,
+    ethnicity: progress?.ethnicity,
+    reviewVisualPreset: progress?.review_visual_preset,
+    requireFinalConfirmation: progress?.require_final_confirmation,
+  });
+}
+
+function validProjectSettings(payload = {}) {
+  const settings = {};
+  if (payload.articleType === "essay" || payload.articleType === "story") settings.articleType = payload.articleType;
+  if (payload.aspectRatio === "16:9" || payload.aspectRatio === "9:16") settings.aspectRatio = payload.aspectRatio;
+  if (payload.renderMode === "images_only" || payload.renderMode === "full") settings.renderMode = payload.renderMode;
+  if (typeof payload.ethnicity === "string") settings.ethnicity = payload.ethnicity.slice(0, 120);
+  if (typeof payload.reviewVisualPreset === "boolean") settings.reviewVisualPreset = payload.reviewVisualPreset;
+  if (typeof payload.requireFinalConfirmation === "boolean") settings.requireFinalConfirmation = payload.requireFinalConfirmation;
+  return settings;
+}
+
+function hasRequiredProjectSettings(settings) {
+  return TEMPLATE_FIELDS.every((field) => Object.prototype.hasOwnProperty.call(settings, field)
+    && settings[field] !== undefined);
 }
 
 function normalizeDesktopSettings(value) {
@@ -200,11 +227,16 @@ function normalizeDesktopSettings(value) {
     const cleanName = String(name || "").trim().slice(0, 40);
     if (cleanName) templates[cleanName] = normalizeTemplateSettings(template);
   }
-  if (!Object.keys(templates).length) templates["默认模板"] = { ...DEFAULT_TEMPLATE_SETTINGS };
-  const activeTemplate = Object.prototype.hasOwnProperty.call(templates, String(source.activeTemplate || ""))
-    ? String(source.activeTemplate)
-    : Object.keys(templates)[0];
-  return { version: 1, activeTemplate, templates };
+  const requestedActive = String(source.activeTemplate || "").trim();
+  const activeTemplate = Object.prototype.hasOwnProperty.call(templates, requestedActive)
+    ? requestedActive
+    : "";
+  return {
+    version: 1,
+    templateEnabled: source.templateEnabled === true,
+    activeTemplate,
+    templates,
+  };
 }
 
 async function readDesktopSettings() {
@@ -213,17 +245,37 @@ async function readDesktopSettings() {
 
 async function getActiveTemplateSettings() {
   const settings = await readDesktopSettings();
-  return { ...settings.templates[settings.activeTemplate], templateName: settings.activeTemplate };
+  if (!settings.templateEnabled) {
+    return { templateName: "", templateEnabled: false };
+  }
+  const template = settings.templates[settings.activeTemplate];
+  if (!template || !isCompleteTemplate(template)) {
+    throw new Error("当前启用的模板配置不完整，请先补全模板后再创建项目");
+  }
+  return { ...template, templateName: settings.activeTemplate, templateEnabled: true };
 }
 
 async function saveDesktopSettings(payload = {}) {
   const current = await readDesktopSettings();
-  const requestedName = String(payload.templateName || payload.activeTemplate || current.activeTemplate || "默认模板")
+  const requestedName = String(payload.templateName || payload.activeTemplate || current.activeTemplate || "")
     .trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 40);
-  const templateName = requestedName || "默认模板";
+  const templateEnabled = payload.templateEnabled === true;
+  if (templateEnabled && !requestedName) throw new Error("启用模板前必须填写模板名称");
+  const baseTemplateName = String(payload.baseTemplateName || "").trim();
+  if (requestedName && Object.prototype.hasOwnProperty.call(current.templates, requestedName) && requestedName !== baseTemplateName) {
+    throw new Error(`模板“${requestedName}”已存在，请换一个名称`);
+  }
   const settings = normalizeTemplateSettings(payload.settings);
-  current.templates[templateName] = settings;
-  current.activeTemplate = templateName;
+  if (templateEnabled && !isCompleteTemplate(settings)) {
+    throw new Error("启用模板前必须补全文章类型、画幅、渲染模式和两个确认开关");
+  }
+  if (requestedName) current.templates[requestedName] = settings;
+  current.templateEnabled = templateEnabled;
+  current.activeTemplate = requestedName || current.activeTemplate;
+  if (current.templateEnabled) {
+    const active = current.templates[current.activeTemplate];
+    if (!active || !isCompleteTemplate(active)) throw new Error("当前启用的模板配置不完整，请先补全模板后再保存");
+  }
   await fs.mkdir(userConfigRoot, { recursive: true });
   await writeJsonAtomic(desktopSettingsPath, current);
   return current;
@@ -234,6 +286,9 @@ async function activateDesktopTemplate(templateName) {
   const requestedName = String(templateName || "").trim();
   if (!Object.prototype.hasOwnProperty.call(current.templates, requestedName)) {
     throw new Error("设置模板不存在");
+  }
+  if (current.templateEnabled && !isCompleteTemplate(current.templates[requestedName])) {
+    throw new Error("该模板配置不完整，补全后才能启用");
   }
   current.activeTemplate = requestedName;
   await fs.mkdir(userConfigRoot, { recursive: true });
@@ -285,17 +340,9 @@ function normalizeProjectSession(stored, progress, fallbackName) {
     session_id: sessionId,
     messages: normalizeConversation(hasStoredMessages ? stored.messages : progress?.conversation),
     progress_cards: normalizeProgressCards(stored?.progress_cards),
-    settings_summary: settingsSummary(
-      stored?.settings_summary || {
-        articleType: progress?.article_type,
-        aspectRatio: progress?.aspect_ratio,
-        renderMode: progress?.render_mode,
-        ethnicity: progress?.ethnicity,
-        reviewVisualPreset: progress?.review_visual_preset,
-        requireFinalConfirmation: progress?.require_final_confirmation,
-      },
-      stored?.settings_summary?.templateName || progress?.settings_template || "",
-    ),
+    settings_summary: stored?.settings_summary
+      ? settingsSummary(stored.settings_summary)
+      : settingsFromProgress(progress),
     updated_at: typeof stored?.updated_at === "string" ? stored.updated_at : "",
   };
 }
@@ -470,11 +517,12 @@ async function listProjects() {
       episodeNumbers,
       renderedEpisodes,
       reviewEpisodes,
-      articleType: progress.article_type === "essay" ? "essay" : "story",
-      aspectRatio: progress.aspect_ratio === "16:9" ? "16:9" : "9:16",
-      renderMode: progress.render_mode === "full" ? "full" : "images_only",
-      reviewVisualPreset: progress.review_visual_preset !== false,
-      requireFinalConfirmation: progress.require_final_confirmation !== false,
+      ...(progress.article_type === "essay" || progress.article_type === "story" ? { articleType: progress.article_type } : {}),
+      ...(progress.aspect_ratio === "16:9" || progress.aspect_ratio === "9:16" ? { aspectRatio: progress.aspect_ratio } : {}),
+      ...(progress.render_mode === "full" || progress.render_mode === "images_only" ? { renderMode: progress.render_mode } : {}),
+      ...(typeof progress.ethnicity === "string" ? { ethnicity: progress.ethnicity } : {}),
+      ...(typeof progress.review_visual_preset === "boolean" ? { reviewVisualPreset: progress.review_visual_preset } : {}),
+      ...(typeof progress.require_final_confirmation === "boolean" ? { requireFinalConfirmation: progress.require_final_confirmation } : {}),
       characterCount: characterImages.length,
       sceneCount: sceneImages.length,
       updatedAt,
@@ -690,7 +738,16 @@ async function materializeProjectSource(dir, payload = {}, existingSourcePath = 
 }
 
 async function createProject(payload = {}) {
-  const template = await getActiveTemplateSettings();
+  const templateEnabled = payload.templateEnabled === true;
+  const storedTemplate = templateEnabled ? await getActiveTemplateSettings() : { templateName: "", templateEnabled: false };
+  const requestedSettings = validProjectSettings(payload);
+  const settings = templateEnabled
+    ? { ...storedTemplate, ...Object.fromEntries(Object.entries(requestedSettings).filter(([, value]) => value !== undefined)) }
+    : requestedSettings;
+  const persistedSettings = payload.draftProject ? {} : settings;
+  if (!payload.draftProject && !hasRequiredProjectSettings(settings)) {
+    throw new Error("项目配置不完整，请先选择文章类型、画幅、渲染模式及两个确认选项");
+  }
   const novelName = safeProjectName(payload.name || (payload.inputPath ? path.basename(payload.inputPath) : "未命名作品"));
   const dir = projectDir(novelName);
   if (fsSync.existsSync(dir)) throw new Error(`项目“${novelName}”已经存在`);
@@ -699,20 +756,16 @@ async function createProject(payload = {}) {
   const sourcePath = await materializeProjectSource(dir, payload);
   if (!sourcePath && !payload.draftProject) throw new Error("请选择章节文件夹、章节文件或输入文稿");
 
-  const renderMode = payload.renderMode === "full" || payload.renderMode === "images_only"
-    ? payload.renderMode
-    : template.renderMode;
   const agentSessionId = createAgentSessionId();
   const progress = {
     novel_name: novelName,
     source_path: sourcePath,
-    ethnicity: typeof payload.ethnicity === "string" ? payload.ethnicity : template.ethnicity,
-    article_type: payload.articleType === "essay" || payload.articleType === "story" ? payload.articleType : template.articleType,
-    aspect_ratio: payload.aspectRatio === "16:9" || payload.aspectRatio === "9:16" ? payload.aspectRatio : template.aspectRatio,
-    render_mode: renderMode,
-    settings_template: String(payload.templateName || template.templateName || "").trim(),
-    review_visual_preset: payload.reviewVisualPreset !== undefined ? payload.reviewVisualPreset !== false : template.reviewVisualPreset,
-    require_final_confirmation: payload.requireFinalConfirmation !== undefined ? payload.requireFinalConfirmation !== false : template.requireFinalConfirmation,
+    ...(Object.prototype.hasOwnProperty.call(persistedSettings, "ethnicity") ? { ethnicity: persistedSettings.ethnicity } : {}),
+    ...(persistedSettings.articleType ? { article_type: persistedSettings.articleType } : {}),
+    ...(persistedSettings.aspectRatio ? { aspect_ratio: persistedSettings.aspectRatio } : {}),
+    ...(persistedSettings.renderMode ? { render_mode: persistedSettings.renderMode } : {}),
+    ...(typeof persistedSettings.reviewVisualPreset === "boolean" ? { review_visual_preset: persistedSettings.reviewVisualPreset } : {}),
+    ...(typeof persistedSettings.requireFinalConfirmation === "boolean" ? { require_final_confirmation: persistedSettings.requireFinalConfirmation } : {}),
     adapted: [],
     next_chapter: 1,
     global_summary: "",
@@ -727,14 +780,7 @@ async function createProject(payload = {}) {
     session_id: agentSessionId,
     messages: normalizeConversation(payload.conversation),
     progress_cards: [],
-    settings_summary: settingsSummary({
-      articleType: progress.article_type,
-      aspectRatio: progress.aspect_ratio,
-      renderMode: progress.render_mode,
-      ethnicity: progress.ethnicity,
-      reviewVisualPreset: progress.review_visual_preset,
-      requireFinalConfirmation: progress.require_final_confirmation,
-    }, progress.settings_template),
+    settings_summary: settingsFromProgress(progress),
     updated_at: new Date().toISOString(),
   };
   await Promise.all([
@@ -747,7 +793,6 @@ async function createProject(payload = {}) {
 }
 
 async function finalizeDraftProject(currentName, payload = {}) {
-  const template = await getActiveTemplateSettings();
   const oldName = safeProjectName(currentName);
   const nextName = safeProjectName(payload.name);
   const oldDir = projectDir(oldName);
@@ -756,6 +801,15 @@ async function finalizeDraftProject(currentName, payload = {}) {
   const progress = await readJson(oldProgressPath);
   if (!progress || typeof progress !== "object" || !progress.draft_project) {
     throw new Error("当前项目不是待命名项目");
+  }
+  const templateEnabled = payload.templateEnabled === true;
+  const storedTemplate = templateEnabled ? await getActiveTemplateSettings() : {};
+  const requestedSettings = validProjectSettings(payload);
+  const settings = templateEnabled
+    ? { ...storedTemplate, ...Object.fromEntries(Object.entries(requestedSettings).filter(([, value]) => value !== undefined)) }
+    : requestedSettings;
+  if (!hasRequiredProjectSettings(settings)) {
+    throw new Error("项目配置不完整，请先选择文章类型、画幅、渲染模式及两个确认选项");
   }
   if (oldName !== nextName && fsSync.existsSync(nextDir)) {
     throw new Error(`项目“${nextName}”已经存在`);
@@ -767,12 +821,13 @@ async function finalizeDraftProject(currentName, payload = {}) {
   if (!sourcePath) throw new Error("请选择章节文件夹、章节文件或输入文稿");
 
   progress.novel_name = nextName;
-  progress.article_type = payload.articleType === "essay" || payload.articleType === "story" ? payload.articleType : template.articleType;
-  progress.aspect_ratio = payload.aspectRatio === "16:9" || payload.aspectRatio === "9:16" ? payload.aspectRatio : template.aspectRatio;
-  progress.render_mode = payload.renderMode === "images_only" || payload.renderMode === "full" ? payload.renderMode : template.renderMode;
-  progress.settings_template = String(payload.templateName || template.templateName || progress.settings_template || "").trim();
-  progress.review_visual_preset = payload.reviewVisualPreset !== undefined ? payload.reviewVisualPreset !== false : template.reviewVisualPreset;
-  progress.require_final_confirmation = payload.requireFinalConfirmation !== undefined ? payload.requireFinalConfirmation !== false : template.requireFinalConfirmation;
+  progress.article_type = settings.articleType;
+  progress.aspect_ratio = settings.aspectRatio;
+  progress.render_mode = settings.renderMode;
+  if (typeof settings.ethnicity === "string") progress.ethnicity = settings.ethnicity;
+  else delete progress.ethnicity;
+  progress.review_visual_preset = settings.reviewVisualPreset;
+  progress.require_final_confirmation = settings.requireFinalConfirmation;
   progress.draft_project = false;
 
   if (oldName !== nextName) {
@@ -785,14 +840,7 @@ async function finalizeDraftProject(currentName, payload = {}) {
   progress.source_path = sourcePath;
   await fs.writeFile(path.join(nextDir, "改编进度.json"), JSON.stringify(progress, null, 4), "utf8");
   const session = await readProjectSession(nextDir, progress, nextName, { migrate: true });
-  session.settings_summary = settingsSummary({
-    articleType: progress.article_type,
-    aspectRatio: progress.aspect_ratio,
-    renderMode: progress.render_mode,
-    ethnicity: progress.ethnicity,
-    reviewVisualPreset: progress.review_visual_preset,
-    requireFinalConfirmation: progress.require_final_confirmation,
-  }, progress.settings_template);
+  session.settings_summary = settingsFromProgress(progress);
   session.updated_at = new Date().toISOString();
   await writeJsonAtomic(projectSessionsPath(nextDir), session);
   return (await listProjects()).find((project) => project.id === nextName) || { id: nextName, novelName: nextName };
@@ -850,16 +898,21 @@ function runContext(run = activeRun) {
     phaseDetail: run.phaseDetail || "",
     runStatus: run.status,
     visualPresetReview: run.review || null,
-    settings: {
-      templateName: selection.settingsTemplate || "",
-      articleType: selection.articleType === "essay" ? "essay" : "story",
-      aspectRatio: selection.aspectRatio === "16:9" ? "16:9" : "9:16",
-      renderMode: selection.imagesOnly ? "images_only" : "full",
-      reviewVisualPreset: selection.reviewVisualPreset !== false,
-      requireFinalConfirmation: selection.requireFinalConfirmation !== false,
-    },
+    settings: settingsForSelection(selection),
     recentLogs: Array.isArray(run.logs) ? run.logs.slice(-20) : [],
   };
+}
+
+function settingsForSelection(selection = {}) {
+  const settings = {};
+  if (typeof selection.ethnicity === "string") settings.ethnicity = selection.ethnicity;
+  if (selection.articleType === "essay" || selection.articleType === "story") settings.articleType = selection.articleType;
+  if (selection.aspectRatio === "16:9" || selection.aspectRatio === "9:16") settings.aspectRatio = selection.aspectRatio;
+  if (selection.renderMode === "full" || selection.renderMode === "images_only") settings.renderMode = selection.renderMode;
+  else if (selection.imagesOnly === true) settings.renderMode = "images_only";
+  if (typeof selection.reviewVisualPreset === "boolean") settings.reviewVisualPreset = selection.reviewVisualPreset;
+  if (typeof selection.requireFinalConfirmation === "boolean") settings.requireFinalConfirmation = selection.requireFinalConfirmation;
+  return settings;
 }
 
 function sendAgentEvent(payload) {
@@ -888,13 +941,17 @@ function selectionForProject(project) {
     sourcePath: project.sourcePath || "",
     episode: Math.max(1, Number(project.nextChapter) || Number(project.adaptedCount) + 1 || 1),
     nextChapter: Math.max(1, Number(project.nextChapter) || 1),
-    ethnicity: typeof summary.ethnicity === "string" ? summary.ethnicity : "",
-    aspectRatio: project.aspectRatio === "16:9" ? "16:9" : "9:16",
-    imagesOnly: project.renderMode !== "full",
-    articleType: project.articleType === "essay" ? "essay" : "story",
-    reviewVisualPreset: project.reviewVisualPreset !== false,
-    requireFinalConfirmation: project.requireFinalConfirmation !== false,
-    settingsTemplate: summary.templateName || "",
+    ethnicity: typeof project.ethnicity === "string"
+      ? project.ethnicity
+      : typeof summary.ethnicity === "string" ? summary.ethnicity : "",
+    ...(project.aspectRatio === "16:9" || project.aspectRatio === "9:16" ? { aspectRatio: project.aspectRatio } : {}),
+    ...(project.renderMode === "full" || project.renderMode === "images_only" ? {
+      renderMode: project.renderMode,
+      imagesOnly: project.renderMode === "images_only",
+    } : {}),
+    ...(project.articleType === "essay" || project.articleType === "story" ? { articleType: project.articleType } : {}),
+    ...(typeof project.reviewVisualPreset === "boolean" ? { reviewVisualPreset: project.reviewVisualPreset } : {}),
+    ...(typeof project.requireFinalConfirmation === "boolean" ? { requireFinalConfirmation: project.requireFinalConfirmation } : {}),
     agentSessionId: project.agentSessionId || project.id || project.novelName,
   };
 }
@@ -957,7 +1014,9 @@ async function handleAgentCreateProject(payload) {
         articleType: details.articleType,
         aspectRatio: details.aspectRatio,
         renderMode: details.renderMode,
+        ethnicity: details.ethnicity,
         templateName: details.templateName,
+        templateEnabled: details.templateEnabled,
         reviewVisualPreset: details.reviewVisualPreset,
         requireFinalConfirmation: details.requireFinalConfirmation,
       });
@@ -975,6 +1034,8 @@ async function handleAgentCreateProject(payload) {
         projectName: selection.novelName,
         episode: selection.episode,
         runStatus: "idle",
+        draftProject: false,
+        settings: settingsForSelection(selection),
       },
     });
     sendAgentInput({
@@ -1183,6 +1244,13 @@ function shutdownGpuOnce(run) {
 function startRun(selection) {
   if (activeRun) throw new Error(activeRun.status === "review" ? "画面预设正在等待审核" : "已有任务正在运行");
   if (!selection || typeof selection.novelName !== "string") throw new Error("运行参数无效");
+  if (!selection.sourcePath) throw new Error("项目还没有章节源目录");
+  if (selection.articleType !== "essay" && selection.articleType !== "story") throw new Error("项目文章类型尚未确定");
+  if (selection.aspectRatio !== "16:9" && selection.aspectRatio !== "9:16") throw new Error("项目画幅尚未确定");
+  if (selection.renderMode !== "full" && selection.renderMode !== "images_only") throw new Error("项目渲染模式尚未确定");
+  if (typeof selection.reviewVisualPreset !== "boolean" || typeof selection.requireFinalConfirmation !== "boolean") {
+    throw new Error("项目审核配置尚未确定");
+  }
   const runId = `run_${Date.now().toString(36)}_${nextRunId++}`;
   const workerPath = path.join(__dirname, "worker.ts");
   const loaderPath = path.join(projectRoot, "node_modules", "tsx", "dist", "loader.mjs");
@@ -1328,7 +1396,7 @@ ipcMain.handle("agent:message", async (_event, payload = {}) => {
       ...(payload.context || {}),
       projectName: selection.novelName,
       episode: selection.episode,
-      draftProject: Boolean(draftProject?.isDraft),
+      draftProject: draftProject ? Boolean(draftProject.isDraft) : Boolean(payload.context?.draftProject),
     },
   });
   return { accepted, project: draftProject, selection };

@@ -425,7 +425,8 @@
       --claw-yellow: #ffd34e;
       --claw-gradient: linear-gradient(135deg, #ff3b30 0%, #ff7a18 58%, #ffd34e 100%);
       width: min(560px, calc(100% - 32px));
-      max-height: min(760px, calc(100vh - 32px));
+      height: auto;
+      max-height: calc(100vh - 32px);
       padding: 0;
       overflow: hidden;
       border: 1px solid var(--claw-line-strong);
@@ -440,23 +441,28 @@
     #storyclaw-gui-concept .claw-settings-head p { margin-top: 5px; color: var(--claw-muted); font-size: 12px; }
     #storyclaw-gui-concept .claw-settings-close { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 7px; color: var(--claw-muted); }
     #storyclaw-gui-concept .claw-settings-close:hover { background: var(--claw-panel-active); color: var(--claw-text); }
-    #storyclaw-gui-concept .claw-settings-body { display: grid; gap: 16px; max-height: calc(100vh - 180px); overflow-y: auto; padding: 18px 20px; scrollbar-color: #45474b transparent; scrollbar-width: thin; }
+    #storyclaw-gui-concept .claw-settings-form { display: block; }
+    #storyclaw-gui-concept .claw-settings-body { display: grid; max-height: calc(100vh - 190px); gap: 14px; overflow-y: auto; padding: 18px 20px; scrollbar-color: #45474b transparent; scrollbar-width: thin; }
     #storyclaw-gui-concept .claw-settings-field { display: grid; gap: 7px; }
     #storyclaw-gui-concept .claw-settings-field > label { color: var(--claw-muted); font-size: 12px; }
     #storyclaw-gui-concept .claw-settings-field input,
     #storyclaw-gui-concept .claw-settings-field select { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--claw-line-strong); border-radius: 7px; outline: 0; background: #202124; color: var(--claw-text); }
     #storyclaw-gui-concept .claw-settings-template-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 10px; }
-    #storyclaw-gui-concept .claw-settings-segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--claw-line); border-radius: 8px; background: #202124; }
-    #storyclaw-gui-concept .claw-settings-segmented button { min-height: 34px; padding: 7px 8px !important; border-radius: 6px; color: var(--claw-muted) !important; font-size: 12px; }
-    #storyclaw-gui-concept .claw-settings-segmented button[aria-pressed="true"] { background: var(--claw-gradient-soft) !important; color: var(--claw-yellow) !important; }
-    #storyclaw-gui-concept .claw-settings-switch { display: grid; grid-template-columns: minmax(0, 1fr) 42px; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--claw-line); border-radius: 8px; background: #1d1e20; }
+    #storyclaw-gui-concept .claw-settings-choice-field { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; border: 0; }
+    #storyclaw-gui-concept .claw-settings-choice-field legend { grid-column: 1 / -1; color: var(--claw-muted); font-size: 12px; }
+    #storyclaw-gui-concept .claw-settings-choice-field label { display: flex; align-items: center; gap: 7px; min-height: 28px; padding: 2px 0; color: var(--claw-muted); font-size: 12px; cursor: pointer; }
+    #storyclaw-gui-concept .claw-settings-choice-field label:has(input:checked) { color: var(--claw-text); }
+    #storyclaw-gui-concept .claw-settings-choice-field input { accent-color: var(--claw-orange); }
+    #storyclaw-gui-concept .claw-settings-choice-field input[type="radio"] { width: auto; min-height: 0; padding: 0; }
+    #storyclaw-gui-concept .claw-settings-switch { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 42px; align-items: center; gap: 12px; min-height: 44px; padding: 4px 0; }
     #storyclaw-gui-concept .claw-settings-switch strong { display: block; font-size: 13px; font-weight: 500; }
-    #storyclaw-gui-concept .claw-settings-switch span { display: block; margin-top: 4px; color: var(--claw-muted); font-size: 11px; line-height: 1.45; }
-    #storyclaw-gui-concept .claw-settings-switch input { position: absolute; opacity: 0; pointer-events: none; }
-    #storyclaw-gui-concept .claw-settings-toggle { position: relative; display: block; width: 42px; height: 24px; border-radius: 99px; background: #42444a; cursor: pointer; transition: background .16s ease; }
+    #storyclaw-gui-concept .claw-settings-switch > span:first-child > span { display: block; margin-top: 4px; color: var(--claw-muted); font-size: 11px; line-height: 1.45; }
+    #storyclaw-gui-concept .claw-settings-switch input { position: absolute; z-index: 1; top: 50%; right: 0; width: 42px; height: 24px; margin: 0; opacity: 0; cursor: pointer; transform: translateY(-50%); }
+    #storyclaw-gui-concept .claw-settings-toggle { position: relative; display: block; width: 42px; height: 24px; margin: 0; border-radius: 99px; background: #42444a; pointer-events: none; transition: background .16s ease; }
     #storyclaw-gui-concept .claw-settings-toggle::after { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #d8d9dc; content: ""; transition: transform .16s ease; }
     #storyclaw-gui-concept .claw-settings-switch input:checked + .claw-settings-toggle { background: var(--claw-orange); }
     #storyclaw-gui-concept .claw-settings-switch input:checked + .claw-settings-toggle::after { transform: translateX(18px); background: #fff4e4; }
+    #storyclaw-gui-concept .claw-settings-switch input:focus-visible + .claw-settings-toggle { outline: 2px solid var(--claw-yellow); outline-offset: 2px; }
     #storyclaw-gui-concept .claw-settings-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px 18px; border-top: 1px solid var(--claw-line); }
     #storyclaw-gui-concept .claw-settings-secondary,
     #storyclaw-gui-concept .claw-settings-primary { min-height: 38px; padding: 8px 14px !important; border-radius: 7px; }
@@ -1204,18 +1210,19 @@
 
   <dialog class="claw-settings-dialog" data-claw-settings-dialog aria-labelledby="claw-settings-title">
     <div class="claw-settings-head">
-      <div><h2 id="claw-settings-title">制作设置</h2><p>保存为模板，新项目默认采用；单次对话中的明确要求优先。</p></div>
+      <div><h2 id="claw-settings-title">制作设置</h2><p>模板保存在本机全局设置中，新项目默认采用；单次对话中的明确要求优先。</p></div>
       <button type="button" class="claw-settings-close" data-claw-settings-close aria-label="关闭设置"><i data-lucide="x" aria-hidden="true"></i></button>
     </div>
     <form class="claw-settings-form" data-claw-settings-form>
       <div class="claw-settings-body">
-        <div class="claw-settings-field"><label>模板</label><div class="claw-settings-template-row"><select data-claw-settings-template-select aria-label="选择已有模板"></select><input id="claw-settings-template-name" data-claw-settings-template-name value="默认模板" maxlength="40" aria-label="保存模板名称" placeholder="保存为新模板"></div></div>
-        <div class="claw-settings-field"><label for="claw-settings-article-type">文章类型</label><select id="claw-settings-article-type" data-claw-settings-article-type><option value="story">叙事小说</option><option value="essay">议论文 / 科普文</option></select></div>
-        <div class="claw-settings-field"><label>分镜画幅</label><div class="claw-settings-segmented"><button type="button" data-claw-settings-aspect="9:16" aria-pressed="true">竖屏 9:16</button><button type="button" data-claw-settings-aspect="16:9" aria-pressed="false">横屏 16:9</button></div></div>
-        <div class="claw-settings-field"><label>渲染模式</label><div class="claw-settings-segmented"><button type="button" data-claw-settings-render="full" aria-pressed="true">完整渲染</button><button type="button" data-claw-settings-render="images_only" aria-pressed="false">只生成分镜图</button></div></div>
+        <label class="claw-settings-switch"><span><strong>启用模板</strong><span>关闭后，新项目由对话卡片选择制作配置。</span></span><input type="checkbox" data-claw-settings-enabled><span class="claw-settings-toggle" aria-hidden="true"></span></label>
+        <div class="claw-settings-field"><label>当前使用模板</label><div class="claw-settings-template-row"><select data-claw-settings-template-select aria-label="当前使用模板"></select><input id="claw-settings-template-name" data-claw-settings-template-name maxlength="40" aria-label="模板名称" placeholder="输入模板名称"></div></div>
+        <fieldset class="claw-settings-field claw-settings-choice-field"><legend>文章类型</legend><label><input type="radio" name="claw-article-type" data-claw-settings-article-type value="story"> 叙事小说</label><label><input type="radio" name="claw-article-type" data-claw-settings-article-type value="essay"> 议论文 / 科普文</label></fieldset>
+        <fieldset class="claw-settings-field claw-settings-choice-field"><legend>分镜画幅</legend><label><input type="radio" name="claw-aspect" data-claw-settings-aspect-radio value="9:16"> 竖屏 9:16</label><label><input type="radio" name="claw-aspect" data-claw-settings-aspect-radio value="16:9"> 横屏 16:9</label></fieldset>
+        <fieldset class="claw-settings-field claw-settings-choice-field"><legend>渲染模式</legend><label><input type="radio" name="claw-render" data-claw-settings-render-radio value="full"> 完整渲染</label><label><input type="radio" name="claw-render" data-claw-settings-render-radio value="images_only"> 只生成分镜图</label></fieldset>
         <div class="claw-settings-field"><label for="claw-settings-ethnicity">人物风格</label><input id="claw-settings-ethnicity" data-claw-settings-ethnicity maxlength="120" placeholder="按故事推测（自动）"></div>
-        <label class="claw-settings-switch"><span><strong>审核画面预设</strong><span>画面预设生成后暂停，展示表格并等待修改或确认。</span></span><input type="checkbox" data-claw-settings-review checked><span class="claw-settings-toggle" aria-hidden="true"></span></label>
-        <label class="claw-settings-switch"><span><strong>需要用户最终确认</strong><span>项目配置确认后，开始流水线前再等待一次确认。</span></span><input type="checkbox" data-claw-settings-final checked><span class="claw-settings-toggle" aria-hidden="true"></span></label>
+        <label class="claw-settings-switch"><span><strong>审核画面预设</strong><span>画面预设生成后暂停，展示表格并等待修改或确认。</span></span><input type="checkbox" data-claw-settings-review><span class="claw-settings-toggle" aria-hidden="true"></span></label>
+        <label class="claw-settings-switch"><span><strong>需要用户最终确认</strong><span>项目配置确认后，开始流水线前再等待一次确认。</span></span><input type="checkbox" data-claw-settings-final><span class="claw-settings-toggle" aria-hidden="true"></span></label>
       </div>
       <div class="claw-settings-foot"><button type="button" class="claw-settings-secondary" data-claw-settings-close>取消</button><button type="submit" class="claw-settings-primary">保存模板</button></div>
     </form>

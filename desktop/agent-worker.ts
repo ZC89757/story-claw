@@ -21,9 +21,11 @@ type AgentContext = {
   draftProject?: boolean;
   settings?: {
     templateName?: string;
+    templateEnabled?: boolean;
     articleType?: "essay" | "story";
     aspectRatio?: "9:16" | "16:9";
     renderMode?: "full" | "images_only";
+    ethnicity?: string;
     reviewVisualPreset?: boolean;
     requireFinalConfirmation?: boolean;
   };
@@ -332,12 +334,36 @@ const createProjectTool: ToolDefinition = {
     articleType: Type.Optional(Type.Union([Type.Literal("story"), Type.Literal("essay")])),
     aspectRatio: Type.Optional(Type.Union([Type.Literal("9:16"), Type.Literal("16:9")])),
     renderMode: Type.Optional(Type.Union([Type.Literal("full"), Type.Literal("images_only")])),
+    ethnicity: Type.Optional(Type.String({ description: "人物风格或视觉风格要求" })),
+    reviewVisualPreset: Type.Optional(Type.Boolean()),
+    requireFinalConfirmation: Type.Optional(Type.Boolean()),
   }),
   execute: async (_toolCallId, params) => {
     const name = String((params as any)?.name || "").trim();
     if (!name) return toolResult("确认项目失败：项目名称为空。");
     if (!context.inputPath && !String(context.draftText || "").trim()) {
       return toolResult("确认项目失败：还没有章节文件或正文内容。");
+    }
+    const templateEnabled = context.settings?.templateEnabled === true;
+    const projectSettingsReady = context.draftProject !== true
+      && (context.settings?.articleType === "essay" || context.settings?.articleType === "story")
+      && (context.settings?.aspectRatio === "16:9" || context.settings?.aspectRatio === "9:16")
+      && (context.settings?.renderMode === "full" || context.settings?.renderMode === "images_only")
+      && typeof context.settings?.reviewVisualPreset === "boolean"
+      && typeof context.settings?.requireFinalConfirmation === "boolean";
+    const allowContextSettings = templateEnabled || projectSettingsReady;
+    const articleType = (params as any)?.articleType === "essay" || (params as any)?.articleType === "story"
+      ? (params as any).articleType : allowContextSettings ? context.settings?.articleType : undefined;
+    const aspectRatio = (params as any)?.aspectRatio === "16:9" || (params as any)?.aspectRatio === "9:16"
+      ? (params as any).aspectRatio : allowContextSettings ? context.settings?.aspectRatio : undefined;
+    const renderMode = (params as any)?.renderMode === "images_only" || (params as any)?.renderMode === "full"
+      ? (params as any).renderMode : allowContextSettings ? context.settings?.renderMode : undefined;
+    const reviewVisualPreset = typeof (params as any)?.reviewVisualPreset === "boolean"
+      ? (params as any).reviewVisualPreset : allowContextSettings ? context.settings?.reviewVisualPreset : undefined;
+    const requireFinalConfirmation = typeof (params as any)?.requireFinalConfirmation === "boolean"
+      ? (params as any).requireFinalConfirmation : allowContextSettings ? context.settings?.requireFinalConfirmation : undefined;
+    if (!articleType || !aspectRatio || !renderMode || typeof reviewVisualPreset !== "boolean" || typeof requireFinalConfirmation !== "boolean") {
+      return toolResult("确认项目失败：制作配置还不完整。模板未启用时，请先通过选择卡片确认文章类型、画幅、渲染模式、是否审核画面预设和是否需要最终确认，再确认项目。" );
     }
     const id = requestId("create");
     emit({
@@ -346,15 +372,14 @@ const createProjectTool: ToolDefinition = {
       requestId: id,
       payload: {
         name,
-        articleType: (params as any)?.articleType === "essay" || (params as any)?.articleType === "story"
-          ? (params as any).articleType : context.settings?.articleType,
-        aspectRatio: (params as any)?.aspectRatio === "16:9" || (params as any)?.aspectRatio === "9:16"
-          ? (params as any).aspectRatio : context.settings?.aspectRatio,
-        renderMode: (params as any)?.renderMode === "images_only" || (params as any)?.renderMode === "full"
-          ? (params as any).renderMode : context.settings?.renderMode,
-        templateName: context.settings?.templateName,
-        reviewVisualPreset: context.settings?.reviewVisualPreset,
-        requireFinalConfirmation: context.settings?.requireFinalConfirmation,
+        articleType,
+        aspectRatio,
+        renderMode,
+        ethnicity: typeof (params as any)?.ethnicity === "string" ? (params as any).ethnicity : context.settings?.ethnicity,
+        templateName: templateEnabled ? context.settings?.templateName : "",
+        templateEnabled: templateEnabled,
+        reviewVisualPreset,
+        requireFinalConfirmation,
         text: context.inputPath ? "" : String(context.draftText || "").trim(),
         inputPath: context.inputPath || "",
         inputKind: context.inputKind || "",
@@ -371,7 +396,7 @@ const systemPrompt = `你是 Story Claw 的主 Agent，负责协助用户完成�
 你的职责：
 1. 根据桌面端提供的上下文，准确说明当前项目、集数、阶段、GPU 状态和最近日志。
 2. 桌面端会在首条消息后自动建立一个用于保存会话的临时项目。用户只是问候、试探或闲聊时正常对话，不要把临时名称当成用户已确认的正式名称。
-3. 用户提供正文、章节文件或明确的创作需求后，先用 request_user_choice 请求确认正式项目名称。文章类型、画幅、渲染模式和审核开关以桌面端上下文里的 settings 为默认模板，不要重复逐项弹卡片；只有用户明确要求改变时才询问并覆盖。
+3. 对临时项目（draftProject 为 true），用户提供正文、章节文件或明确的创作需求后，先用 request_user_choice 请求确认正式项目名称。若 settings.templateEnabled 为 true，说明当前全局模板已经完整配置，直接沿用模板，不要重复询问这些配置；若为 false，且项目配置尚未确定，绝不能使用默认值，必须通过 request_user_choice 让用户选择文章类型、画幅、渲染模式、是否审核画面预设和是否需要最终确认。配置选择完成后再确认正式项目名称。已确认的正式项目有自己的配置快照，后续对话不要再次要求选择这些配置，除非用户明确要求修改。
 4. 只有用户在卡片中确认正式项目名称和必要配置后，才能调用 create_project；该工具会重命名当前临时项目，不会创建第二个项目。正式确认前禁止调用 start_pipeline。
 5. 项目正式确认后，如果 settings.requireFinalConfirmation 为 true，用户明确确认开始制作时先用 request_user_choice 请求最后确认，再调用 start_pipeline；如果为 false，用户明确提出开始制作即可直接调用 start_pipeline。
 6. 用户询问进度时先读状态，不要编造百分比、文件或已完成的步骤。
