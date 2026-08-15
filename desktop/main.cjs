@@ -12,6 +12,75 @@ const rendererPath = path.join(__dirname, "renderer", "index.html");
 const sessionsFileName = "sessions.json";
 const userConfigRoot = path.join(os.homedir(), ".story-claw");
 const desktopSettingsPath = path.join(userConfigRoot, "desktop_settings.json");
+const SYSTEM_CONFIG_SECTIONS = Object.freeze({
+  llm: {
+    fileName: "config.json",
+    fields: {
+      provider: { type: "string", maxLength: 120 },
+      model: { type: "string", maxLength: 240 },
+      api_key: { type: "string", maxLength: 4096 },
+      base_url: { type: "string", maxLength: 2048 },
+    },
+  },
+  image: {
+    fileName: "image_gen_config.json",
+    fields: {
+      model: { type: "string", maxLength: 240 },
+      api_key: { type: "string", maxLength: 4096 },
+      base_url: { type: "string", maxLength: 2048 },
+      api_format: { type: "string", maxLength: 120 },
+    },
+  },
+  video: {
+    fileName: "video_config.json",
+    fields: {
+      base_url: { type: "string", maxLength: 2048 },
+      workflow_path: { type: "string", maxLength: 2048 },
+      default_duration: { type: "number", min: 0.1, max: 3600 },
+      concurrency: { type: "integer", min: 1, max: 100 },
+      poll_interval_ms: { type: "integer", min: 100, max: 600000 },
+      max_retries: { type: "integer", min: 0, max: 100 },
+      retry_sleep_ms: { type: "integer", min: 0, max: 3600000 },
+    },
+  },
+  tts: {
+    fileName: "tts_config.json",
+    fields: {
+      api_key: { type: "string", maxLength: 4096 },
+      base_url: { type: "string", maxLength: 2048 },
+      resource_id: { type: "string", maxLength: 240 },
+      narrator_voice: { type: "string", maxLength: 240 },
+      voices: { type: "stringMap", maxEntries: 500 },
+      concurrency: { type: "integer", min: 1, max: 100 },
+      assign_character_voice: { type: "boolean" },
+      sfx_enabled: { type: "boolean" },
+      sfx_volume: { type: "number", min: 0, max: 1 },
+    },
+  },
+  bgm: {
+    fileName: "bgm_config.json",
+    fields: {
+      api_key: { type: "string", maxLength: 4096 },
+      base_url: { type: "string", maxLength: 2048 },
+      bgm_dir: { type: "string", maxLength: 2048 },
+      crossfade_sec: { type: "number", min: 0, max: 60 },
+      bgm_volume: { type: "number", min: 0, max: 1 },
+      min_segments: { type: "integer", min: 1, max: 100 },
+      max_segments: { type: "integer", min: 1, max: 100 },
+    },
+  },
+  gpu: {
+    fileName: "gpu_config.json",
+    fields: {
+      provider: { type: "string", maxLength: 120 },
+      public_key: { type: "string", maxLength: 4096 },
+      private_key: { type: "string", maxLength: 4096 },
+      instance_id: { type: "string", maxLength: 240 },
+      start_timeout: { type: "integer", min: 1, max: 86400 },
+      stop_timeout: { type: "integer", min: 1, max: 86400 },
+    },
+  },
+});
 const TEMPLATE_FIELDS = [
   "articleType",
   "aspectRatio",
@@ -326,6 +395,126 @@ async function writeJsonAtomic(filePath, value) {
     await fs.rm(tempPath, { force: true }).catch(() => {});
     throw error;
   }
+}
+
+async function readSystemConfigObject(filePath) {
+  let raw;
+  try {
+    raw = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return { exists: false, value: {} };
+    throw error;
+  }
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error(`${path.basename(filePath)} 不是有效的 JSON，请先修复文件格式`);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${path.basename(filePath)} 的根节点必须是 JSON 对象`);
+  }
+  return { exists: true, value };
+}
+
+function systemConfigValue(fieldName, rule, value) {
+  if (value === null) return { remove: true };
+  if (rule.type === "string") {
+    if (typeof value !== "string") throw new Error(`${fieldName} 必须是文本`);
+    const result = value.trim();
+    if (!result) return { remove: true };
+    if (result.length > rule.maxLength) throw new Error(`${fieldName} 内容过长`);
+    return { value: result };
+  }
+  if (rule.type === "boolean") {
+    if (typeof value !== "boolean") throw new Error(`${fieldName} 必须是开关值`);
+    return { value };
+  }
+  if (rule.type === "number" || rule.type === "integer") {
+    if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${fieldName} 必须是数字`);
+    if (rule.type === "integer" && !Number.isInteger(value)) throw new Error(`${fieldName} 必须是整数`);
+    if (value < rule.min || value > rule.max) throw new Error(`${fieldName} 必须在 ${rule.min} 到 ${rule.max} 之间`);
+    return { value };
+  }
+  if (rule.type === "stringMap") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${fieldName} 必须是 JSON 对象`);
+    const entries = Object.entries(value);
+    if (entries.length > rule.maxEntries) throw new Error(`${fieldName} 条目过多`);
+    const result = {};
+    for (const [key, item] of entries) {
+      const cleanKey = String(key).trim();
+      if (!cleanKey || typeof item !== "string") throw new Error(`${fieldName} 的键和值都必须是非空文本`);
+      result[cleanKey] = item.trim();
+    }
+    return { value: result };
+  }
+  throw new Error(`不支持的系统配置字段：${fieldName}`);
+}
+
+async function readSystemConfig() {
+  const sections = {};
+  for (const [sectionName, descriptor] of Object.entries(SYSTEM_CONFIG_SECTIONS)) {
+    const filePath = path.join(userConfigRoot, descriptor.fileName);
+    const { exists, value } = await readSystemConfigObject(filePath);
+    const values = {};
+    for (const fieldName of Object.keys(descriptor.fields)) {
+      if (Object.prototype.hasOwnProperty.call(value, fieldName)) values[fieldName] = value[fieldName];
+    }
+    sections[sectionName] = { fileName: descriptor.fileName, exists, values };
+  }
+  return { sections };
+}
+
+async function saveSystemConfig(payload = {}) {
+  const requestedSections = payload?.sections;
+  if (!requestedSections || typeof requestedSections !== "object" || Array.isArray(requestedSections)) {
+    throw new Error("系统设置内容无效");
+  }
+  const writes = [];
+  for (const [sectionName, patch] of Object.entries(requestedSections)) {
+    if (!Object.prototype.hasOwnProperty.call(SYSTEM_CONFIG_SECTIONS, sectionName)) {
+      throw new Error(`未知的系统配置分区：${sectionName}`);
+    }
+    const descriptor = SYSTEM_CONFIG_SECTIONS[sectionName];
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error(`${sectionName} 配置无效`);
+    const filePath = path.join(userConfigRoot, descriptor.fileName);
+    const { exists, value: current } = await readSystemConfigObject(filePath);
+    const next = { ...current };
+    for (const [fieldName, input] of Object.entries(patch)) {
+      if (!Object.prototype.hasOwnProperty.call(descriptor.fields, fieldName)) {
+        throw new Error(`${descriptor.fileName} 不支持字段 ${fieldName}`);
+      }
+      const rule = descriptor.fields[fieldName];
+      const normalized = systemConfigValue(fieldName, rule, input);
+      if (normalized.remove) delete next[fieldName];
+      else next[fieldName] = normalized.value;
+    }
+    if (sectionName === "bgm"
+      && Number.isFinite(next.min_segments)
+      && Number.isFinite(next.max_segments)
+      && next.min_segments > next.max_segments) {
+      throw new Error("BGM 最少片段数不能大于最多片段数");
+    }
+    if (exists || Object.keys(next).length) writes.push({ filePath, value: next });
+  }
+
+  await fs.mkdir(userConfigRoot, { recursive: true });
+  for (const write of writes) await writeJsonAtomic(write.filePath, write.value);
+
+  if (Object.prototype.hasOwnProperty.call(requestedSections, "llm") && activeAgent?.child && !activeAgent.child.killed) {
+    const child = activeAgent.child;
+    activeAgent = null;
+    child.kill();
+  }
+  return readSystemConfig();
+}
+
+async function openSystemConfigDirectory(target = "config") {
+  const directory = target === "sfx" ? path.join(userConfigRoot, "sfx") : userConfigRoot;
+  await fs.mkdir(directory, { recursive: true });
+  const error = await shell.openPath(directory);
+  if (error) throw new Error(error);
+  return { opened: true };
 }
 
 function normalizeProjectSession(stored, progress, fallbackName) {
@@ -1353,6 +1542,9 @@ ipcMain.handle("projects:list", () => listProjects());
 ipcMain.handle("settings:get", () => readDesktopSettings());
 ipcMain.handle("settings:save", (_event, payload) => saveDesktopSettings(payload));
 ipcMain.handle("settings:activate", (_event, templateName) => activateDesktopTemplate(templateName));
+ipcMain.handle("system-config:get", () => readSystemConfig());
+ipcMain.handle("system-config:save", (_event, payload) => saveSystemConfig(payload));
+ipcMain.handle("system-config:open-directory", (_event, target) => openSystemConfigDirectory(target));
 ipcMain.handle("assets:list", (_event, novelName) => getAssets(novelName));
 ipcMain.handle("episode:preview", (_event, novelName, episode) => getEpisodePreview(novelName, episode));
 ipcMain.handle("source:choose", (_event, kind) => chooseSource(kind === "file" ? "file" : "directory"));

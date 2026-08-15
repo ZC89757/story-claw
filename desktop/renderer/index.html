@@ -468,6 +468,50 @@
     #storyclaw-gui-concept .claw-settings-primary { min-height: 38px; padding: 8px 14px !important; border-radius: 7px; }
     #storyclaw-gui-concept .claw-settings-secondary { border: 1px solid var(--claw-line-strong) !important; color: var(--claw-muted) !important; }
     #storyclaw-gui-concept .claw-settings-primary { background: var(--claw-gradient) !important; color: #241006 !important; font-weight: 500; }
+    #storyclaw-gui-concept .claw-system-dialog { width: min(880px, calc(100% - 32px)); height: min(720px, calc(100vh - 32px)); }
+    #storyclaw-gui-concept .claw-system-form { display: grid; height: calc(100% - 73px); min-height: 0; grid-template-rows: minmax(0, 1fr) auto; }
+    #storyclaw-gui-concept .claw-system-layout { display: grid; min-height: 0; grid-template-columns: 164px minmax(0, 1fr); }
+    #storyclaw-gui-concept .claw-system-nav { display: flex; flex-direction: column; gap: 3px; padding: 14px 10px; border-right: 1px solid var(--claw-line); background: #141517; }
+    #storyclaw-gui-concept .claw-system-nav button { display: grid; min-height: 38px; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 9px; padding: 8px 10px !important; border-radius: 7px; color: var(--claw-muted) !important; text-align: left; }
+    #storyclaw-gui-concept .claw-system-nav button:hover { background: #202124 !important; color: var(--claw-text) !important; }
+    #storyclaw-gui-concept .claw-system-nav button[aria-selected="true"] { background: #2a2b2f !important; color: var(--claw-text) !important; }
+    #storyclaw-gui-concept .claw-system-nav button[aria-selected="true"] svg { color: var(--claw-orange); }
+    #storyclaw-gui-concept .claw-system-content { min-height: 0; overflow-y: auto; padding: 20px 22px 24px; scrollbar-color: #45474b transparent; scrollbar-width: thin; }
+    #storyclaw-gui-concept .claw-system-pane { display: grid; align-content: start; gap: 18px; }
+    #storyclaw-gui-concept .claw-system-pane-head { display: grid; gap: 5px; padding-bottom: 13px; border-bottom: 1px solid var(--claw-line); }
+    #storyclaw-gui-concept .claw-system-pane-head h3 { font-size: 15px; font-weight: 600; }
+    #storyclaw-gui-concept .claw-system-pane-head p { color: var(--claw-muted); font-size: 11px; line-height: 1.5; }
+    #storyclaw-gui-concept .claw-system-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px 14px; }
+    #storyclaw-gui-concept .claw-system-subhead { grid-column: 1 / -1; margin-top: 4px; padding-bottom: 7px; border-bottom: 1px solid var(--claw-line); color: var(--claw-text); font-size: 12px; font-weight: 600; }
+    #storyclaw-gui-concept .claw-system-field { display: grid; min-width: 0; gap: 7px; }
+    #storyclaw-gui-concept .claw-system-field.is-wide { grid-column: 1 / -1; }
+    #storyclaw-gui-concept .claw-system-field > span { color: var(--claw-muted); font-size: 12px; }
+    #storyclaw-gui-concept .claw-system-field input,
+    #storyclaw-gui-concept .claw-system-field textarea,
+    #storyclaw-gui-concept .claw-system-field select { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--claw-line-strong); border-radius: 7px; outline: 0; background: #202124; color: var(--claw-text); }
+    #storyclaw-gui-concept .claw-system-field input:focus,
+    #storyclaw-gui-concept .claw-system-field textarea:focus,
+    #storyclaw-gui-concept .claw-system-field select:focus { border-color: var(--claw-orange); }
+    #storyclaw-gui-concept .claw-system-field textarea { min-height: 118px; resize: vertical; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; line-height: 1.5; }
+    #storyclaw-gui-concept .claw-secret-input { position: relative; }
+    #storyclaw-gui-concept .claw-secret-input input { padding-right: 40px; }
+    #storyclaw-gui-concept .claw-secret-toggle { position: absolute; top: 3px; right: 3px; display: grid; width: 32px; height: 32px; place-items: center; border-radius: 6px; color: var(--claw-muted) !important; }
+    #storyclaw-gui-concept .claw-secret-toggle:hover { background: #303136 !important; color: var(--claw-text) !important; }
+    #storyclaw-gui-concept .claw-secret-toggle svg { width: 16px; height: 16px; }
+    #storyclaw-gui-concept .claw-system-switches { display: grid; grid-column: 1 / -1; gap: 7px; }
+    #storyclaw-gui-concept .claw-system-switches .claw-settings-switch { border-top: 1px solid var(--claw-line); }
+    #storyclaw-gui-concept .claw-system-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    #storyclaw-gui-concept .claw-system-directory { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; padding: 8px 11px !important; border: 1px solid var(--claw-line-strong) !important; border-radius: 7px; color: var(--claw-text) !important; }
+    #storyclaw-gui-concept .claw-system-directory:hover { border-color: var(--claw-orange) !important; }
+    #storyclaw-gui-concept .claw-system-directory svg { width: 16px; height: 16px; color: var(--claw-yellow); }
+    #storyclaw-gui-concept .claw-system-dialog .claw-settings-foot { align-items: center; }
+    #storyclaw-gui-concept .claw-system-status { min-height: 18px; margin-right: auto; color: var(--claw-muted); font-size: 11px; }
+    @media (max-width: 760px) {
+      #storyclaw-gui-concept .claw-system-layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+      #storyclaw-gui-concept .claw-system-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--claw-line); }
+      #storyclaw-gui-concept .claw-system-nav button { flex: 0 0 auto; }
+      #storyclaw-gui-concept .claw-system-grid { grid-template-columns: 1fr; }
+    }
 
     #storyclaw-gui-concept .claw-floating-nav {
       position: absolute;
@@ -1051,7 +1095,7 @@
         <button type="button" class="claw-nav-item" data-claw-page="projects" aria-pressed="true"><i data-lucide="folder-check" aria-hidden="true"></i><span>项目</span></button>
         <button type="button" class="claw-nav-item" data-claw-page="assets" aria-pressed="false"><i data-lucide="archive" aria-hidden="true"></i><span>资产</span></button>
       </nav>
-      <button type="button" class="claw-settings-trigger" data-claw-settings-open aria-label="制作设置"><i data-lucide="settings-2" aria-hidden="true"></i><span>设置</span></button>
+      <button type="button" class="claw-settings-trigger" data-claw-system-settings-open aria-label="系统设置"><i data-lucide="settings-2" aria-hidden="true"></i><span>系统设置</span></button>
 
       <main class="claw-library-view claw-home-view" data-claw-view="home" hidden>
         <h1 class="claw-home-headline" data-claw-home-landing>说出你的想法，AI帮你一键成片。</h1>
@@ -1074,7 +1118,7 @@
             </div>
           </div>
           <span class="claw-compose-count" data-claw-compose-count>0 / 10000</span>
-          <div class="claw-compose-actions"><div class="claw-compose-tools"><button type="button" class="claw-compact-control" aria-label="添加素材"><i data-lucide="plus" aria-hidden="true"></i></button><button type="button" class="claw-compact-control"><i data-lucide="users" aria-hidden="true"></i><span>自动人物风格</span></button><button type="button" class="claw-compact-control"><i data-lucide="zap" aria-hidden="true"></i><span>完整模式</span></button></div><button type="button" class="claw-create-button" data-claw-create><i data-lucide="sparkles" aria-hidden="true"></i><span>创建</span></button></div>
+          <div class="claw-compose-actions"><div class="claw-compose-tools"><button type="button" class="claw-compact-control" data-claw-production-settings-open><i data-lucide="sliders-horizontal" aria-hidden="true"></i><span>制作设置</span></button></div><button type="button" class="claw-create-button" data-claw-create><i data-lucide="sparkles" aria-hidden="true"></i><span>创建</span></button></div>
         </div>
         <div class="claw-chat-nav" data-chat-nav hidden>
           <button type="button" class="claw-chat-nav-trigger" data-chat-nav-trigger aria-haspopup="menu" aria-expanded="false">
@@ -1170,7 +1214,7 @@
             <i data-lucide="chevron-down" aria-hidden="true"></i>
           </span>
         </div>
-        <div class="claw-editor-topbar-spacer"><button type="button" class="claw-editor-settings" data-claw-settings-open aria-label="制作设置"><i data-lucide="settings-2" aria-hidden="true"></i><span>设置</span></button></div>
+        <div class="claw-editor-topbar-spacer"><button type="button" class="claw-editor-settings" data-claw-system-settings-open aria-label="系统设置"><i data-lucide="settings-2" aria-hidden="true"></i><span>系统设置</span></button></div>
       </header>
 
       <div class="claw-editor-upper">
@@ -1225,6 +1269,106 @@
         <label class="claw-settings-switch"><span><strong>需要用户最终确认</strong><span>项目配置确认后，开始流水线前再等待一次确认。</span></span><input type="checkbox" data-claw-settings-final><span class="claw-settings-toggle" aria-hidden="true"></span></label>
       </div>
       <div class="claw-settings-foot"><button type="button" class="claw-settings-secondary" data-claw-settings-close>取消</button><button type="submit" class="claw-settings-primary">保存模板</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="claw-settings-dialog claw-system-dialog" data-claw-system-settings-dialog aria-labelledby="claw-system-settings-title">
+    <div class="claw-settings-head">
+      <div><h2 id="claw-system-settings-title">系统设置</h2><p>配置保存在本机 ~/.story-claw，下一次 Agent 调用或流水线启动时生效。</p></div>
+      <button type="button" class="claw-settings-close" data-claw-system-settings-close aria-label="关闭系统设置"><i data-lucide="x" aria-hidden="true"></i></button>
+    </div>
+    <form class="claw-system-form" data-claw-system-settings-form>
+      <div class="claw-system-layout">
+        <nav class="claw-system-nav" aria-label="系统设置分类">
+          <button type="button" data-claw-system-tab="llm" aria-selected="true"><i data-lucide="brain-circuit" aria-hidden="true"></i><span>大模型</span></button>
+          <button type="button" data-claw-system-tab="image" aria-selected="false"><i data-lucide="image" aria-hidden="true"></i><span>生图</span></button>
+          <button type="button" data-claw-system-tab="video" aria-selected="false"><i data-lucide="film" aria-hidden="true"></i><span>视频渲染</span></button>
+          <button type="button" data-claw-system-tab="audio" aria-selected="false"><i data-lucide="audio-lines" aria-hidden="true"></i><span>语音与音乐</span></button>
+          <button type="button" data-claw-system-tab="gpu" aria-selected="false"><i data-lucide="cpu" aria-hidden="true"></i><span>GPU</span></button>
+          <button type="button" data-claw-system-tab="advanced" aria-selected="false"><i data-lucide="folder-cog" aria-hidden="true"></i><span>高级</span></button>
+        </nav>
+        <div class="claw-system-content">
+          <section class="claw-system-pane" data-claw-system-pane="llm">
+            <div class="claw-system-pane-head"><h3>大模型</h3><p>主 Agent 与流水线子 Agent 使用的模型服务。</p></div>
+            <div class="claw-system-grid">
+              <label class="claw-system-field"><span>服务商</span><input data-system-field="llm.provider" autocomplete="off"></label>
+              <label class="claw-system-field"><span>模型</span><input data-system-field="llm.model" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>Base URL</span><input data-system-field="llm.base_url" type="url" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>API Key</span><span class="claw-secret-input"><input data-system-field="llm.api_key" type="password" autocomplete="new-password"><button type="button" class="claw-secret-toggle" data-claw-secret-toggle aria-label="显示 API Key" title="显示 API Key"><i data-lucide="eye" aria-hidden="true"></i></button></span></label>
+            </div>
+          </section>
+
+          <section class="claw-system-pane" data-claw-system-pane="image" hidden>
+            <div class="claw-system-pane-head"><h3>生图</h3><p>角色、场景和分镜静态图使用的图像模型。</p></div>
+            <div class="claw-system-grid">
+              <label class="claw-system-field"><span>模型</span><input data-system-field="image.model" autocomplete="off"></label>
+              <label class="claw-system-field"><span>API 格式</span><input data-system-field="image.api_format" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>Base URL</span><input data-system-field="image.base_url" type="url" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>API Key</span><span class="claw-secret-input"><input data-system-field="image.api_key" type="password" autocomplete="new-password"><button type="button" class="claw-secret-toggle" data-claw-secret-toggle aria-label="显示 API Key" title="显示 API Key"><i data-lucide="eye" aria-hidden="true"></i></button></span></label>
+            </div>
+          </section>
+
+          <section class="claw-system-pane" data-claw-system-pane="video" hidden>
+            <div class="claw-system-pane-head"><h3>视频渲染</h3><p>ComfyUI 服务、工作流和任务轮询参数。</p></div>
+            <div class="claw-system-grid">
+              <label class="claw-system-field is-wide"><span>服务地址</span><input data-system-field="video.base_url" type="url" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>工作流路径</span><input data-system-field="video.workflow_path" autocomplete="off"></label>
+              <label class="claw-system-field"><span>默认时长（秒）</span><input data-system-field="video.default_duration" type="number" min="0.1" step="0.1"></label>
+              <label class="claw-system-field"><span>并发数</span><input data-system-field="video.concurrency" type="number" min="1" step="1"></label>
+              <label class="claw-system-field"><span>轮询间隔（毫秒）</span><input data-system-field="video.poll_interval_ms" type="number" min="100" step="100"></label>
+              <label class="claw-system-field"><span>最大重试次数</span><input data-system-field="video.max_retries" type="number" min="0" step="1"></label>
+              <label class="claw-system-field"><span>重试等待（毫秒）</span><input data-system-field="video.retry_sleep_ms" type="number" min="0" step="100"></label>
+            </div>
+          </section>
+
+          <section class="claw-system-pane" data-claw-system-pane="audio" hidden>
+            <div class="claw-system-pane-head"><h3>语音与音乐</h3><p>旁白、角色音色、音效和背景音乐服务。</p></div>
+            <div class="claw-system-grid">
+              <h4 class="claw-system-subhead">文字转语音</h4>
+              <label class="claw-system-field is-wide"><span>TTS Base URL</span><input data-system-field="tts.base_url" type="url" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>TTS API Key</span><span class="claw-secret-input"><input data-system-field="tts.api_key" type="password" autocomplete="new-password"><button type="button" class="claw-secret-toggle" data-claw-secret-toggle aria-label="显示 TTS API Key" title="显示 TTS API Key"><i data-lucide="eye" aria-hidden="true"></i></button></span></label>
+              <label class="claw-system-field"><span>Resource ID</span><input data-system-field="tts.resource_id" autocomplete="off"></label>
+              <label class="claw-system-field"><span>旁白音色</span><input data-system-field="tts.narrator_voice" autocomplete="off"></label>
+              <label class="claw-system-field"><span>TTS 并发数</span><input data-system-field="tts.concurrency" type="number" min="1" step="1"></label>
+              <label class="claw-system-field"><span>音效音量</span><input data-system-field="tts.sfx_volume" type="number" min="0" max="1" step="0.05"></label>
+              <label class="claw-system-field is-wide"><span>可分配音色（JSON）</span><textarea data-system-json-field="tts.voices" spellcheck="false"></textarea></label>
+              <div class="claw-system-switches">
+                <label class="claw-settings-switch"><span><strong>分配角色音色</strong><span>关闭后统一使用旁白音色。</span></span><input type="checkbox" data-system-field="tts.assign_character_voice"><span class="claw-settings-toggle" aria-hidden="true"></span></label>
+                <label class="claw-settings-switch"><span><strong>启用音效</strong><span>按分镜中的音效标记混入本地音效库。</span></span><input type="checkbox" data-system-field="tts.sfx_enabled"><span class="claw-settings-toggle" aria-hidden="true"></span></label>
+              </div>
+              <h4 class="claw-system-subhead">背景音乐</h4>
+              <label class="claw-system-field is-wide"><span>BGM Base URL</span><input data-system-field="bgm.base_url" type="url" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>BGM API Key</span><span class="claw-secret-input"><input data-system-field="bgm.api_key" type="password" autocomplete="new-password"><button type="button" class="claw-secret-toggle" data-claw-secret-toggle aria-label="显示 BGM API Key" title="显示 BGM API Key"><i data-lucide="eye" aria-hidden="true"></i></button></span></label>
+              <label class="claw-system-field is-wide"><span>BGM 目录</span><input data-system-field="bgm.bgm_dir" autocomplete="off"></label>
+              <label class="claw-system-field"><span>交叉淡化（秒）</span><input data-system-field="bgm.crossfade_sec" type="number" min="0" step="0.1"></label>
+              <label class="claw-system-field"><span>BGM 音量</span><input data-system-field="bgm.bgm_volume" type="number" min="0" max="1" step="0.05"></label>
+              <label class="claw-system-field"><span>最少片段数</span><input data-system-field="bgm.min_segments" type="number" min="1" step="1"></label>
+              <label class="claw-system-field"><span>最多片段数</span><input data-system-field="bgm.max_segments" type="number" min="1" step="1"></label>
+            </div>
+          </section>
+
+          <section class="claw-system-pane" data-claw-system-pane="gpu" hidden>
+            <div class="claw-system-pane-head"><h3>GPU</h3><p>CompShare 实例启停所需的凭据和资源标识。</p></div>
+            <div class="claw-system-grid">
+              <label class="claw-system-field"><span>服务商</span><input data-system-field="gpu.provider" autocomplete="off"></label>
+              <label class="claw-system-field"><span>实例 ID</span><input data-system-field="gpu.instance_id" autocomplete="off"></label>
+              <label class="claw-system-field is-wide"><span>公钥</span><span class="claw-secret-input"><input data-system-field="gpu.public_key" type="password" autocomplete="new-password"><button type="button" class="claw-secret-toggle" data-claw-secret-toggle aria-label="显示 GPU 公钥" title="显示 GPU 公钥"><i data-lucide="eye" aria-hidden="true"></i></button></span></label>
+              <label class="claw-system-field is-wide"><span>私钥</span><span class="claw-secret-input"><input data-system-field="gpu.private_key" type="password" autocomplete="new-password"><button type="button" class="claw-secret-toggle" data-claw-secret-toggle aria-label="显示 GPU 私钥" title="显示 GPU 私钥"><i data-lucide="eye" aria-hidden="true"></i></button></span></label>
+              <label class="claw-system-field"><span>启动超时（秒）</span><input data-system-field="gpu.start_timeout" type="number" min="1" step="1"></label>
+              <label class="claw-system-field"><span>关闭超时（秒）</span><input data-system-field="gpu.stop_timeout" type="number" min="1" step="1"></label>
+            </div>
+          </section>
+
+          <section class="claw-system-pane" data-claw-system-pane="advanced" hidden>
+            <div class="claw-system-pane-head"><h3>高级</h3><p>直接查看本机配置文件与音效素材目录。</p></div>
+            <div class="claw-system-actions">
+              <button type="button" class="claw-system-directory" data-claw-system-open-directory="config"><i data-lucide="folder-open" aria-hidden="true"></i><span>打开配置目录</span></button>
+              <button type="button" class="claw-system-directory" data-claw-system-open-directory="sfx"><i data-lucide="music-2" aria-hidden="true"></i><span>打开音效目录</span></button>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="claw-settings-foot"><p class="claw-system-status" data-claw-system-status role="status" aria-live="polite"></p><button type="button" class="claw-settings-secondary" data-claw-system-settings-close>取消</button><button type="submit" class="claw-settings-primary" data-claw-system-save>保存设置</button></div>
     </form>
   </dialog>
 

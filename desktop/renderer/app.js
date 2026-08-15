@@ -884,7 +884,7 @@
   function bindSettingsControls() {
     const dialog = root.querySelector("[data-claw-settings-dialog]");
     if (!dialog) return;
-    root.querySelectorAll("[data-claw-settings-open]").forEach((button) => button.addEventListener("click", () => {
+    root.querySelectorAll("[data-claw-production-settings-open]").forEach((button) => button.addEventListener("click", () => {
       applySettingsForm(activeSettingsTemplate());
       dialog.showModal?.();
     }));
@@ -929,6 +929,146 @@
         showToast(`已保存模板：${state.settings.activeTemplate || "未启用"}`);
       } catch (error) {
         showToast(error instanceof Error ? error.message : "保存制作设置失败");
+      }
+    });
+  }
+
+  function setSystemSettingsTab(tabName) {
+    root.querySelectorAll("[data-claw-system-tab]").forEach((button) => {
+      button.setAttribute("aria-selected", String(button.dataset.clawSystemTab === tabName));
+    });
+    root.querySelectorAll("[data-claw-system-pane]").forEach((pane) => {
+      pane.hidden = pane.dataset.clawSystemPane !== tabName;
+    });
+  }
+
+  function clearSystemSettingsForm(dialog) {
+    dialog.querySelectorAll("[data-system-field], [data-system-json-field]").forEach((input) => {
+      if (input.type === "checkbox") input.checked = false;
+      else input.value = "";
+      input.dataset.systemPresent = "false";
+      input.dataset.systemDirty = "false";
+      if (input.type === "text" && input.dataset.systemSecret === "true") input.type = "password";
+    });
+    dialog.querySelectorAll("[data-claw-secret-toggle]").forEach((button) => {
+      button.setAttribute("aria-label", "显示密钥");
+      button.title = "显示密钥";
+      button.innerHTML = '<i data-lucide="eye" aria-hidden="true"></i>';
+    });
+    const status = dialog.querySelector("[data-claw-system-status]");
+    if (status) status.textContent = "";
+    window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  }
+
+  function applySystemSettingsForm(dialog, config) {
+    dialog.querySelectorAll("[data-system-field], [data-system-json-field]").forEach((input) => {
+      const binding = input.dataset.systemField || input.dataset.systemJsonField || "";
+      const [sectionName, fieldName] = binding.split(".");
+      const values = config?.sections?.[sectionName]?.values;
+      const present = Boolean(values && Object.prototype.hasOwnProperty.call(values, fieldName));
+      const value = present ? values[fieldName] : undefined;
+      if (input.type === "checkbox") input.checked = value === true;
+      else if (input.dataset.systemJsonField) input.value = present ? JSON.stringify(value, null, 2) : "";
+      else input.value = present && value !== null && value !== undefined ? String(value) : "";
+      input.dataset.systemPresent = String(present);
+      input.dataset.systemDirty = "false";
+    });
+  }
+
+  function collectSystemSettings(dialog) {
+    const sections = {};
+    dialog.querySelectorAll("[data-system-field], [data-system-json-field]").forEach((input) => {
+      if (input.dataset.systemPresent !== "true" && input.dataset.systemDirty !== "true") return;
+      const binding = input.dataset.systemField || input.dataset.systemJsonField || "";
+      const [sectionName, fieldName] = binding.split(".");
+      if (!sectionName || !fieldName) return;
+      let value;
+      if (input.type === "checkbox") {
+        value = Boolean(input.checked);
+      } else if (input.dataset.systemJsonField) {
+        const raw = String(input.value || "").trim();
+        if (!raw) value = null;
+        else {
+          try {
+            value = JSON.parse(raw);
+          } catch {
+            throw new Error(`${input.closest("label")?.querySelector(":scope > span")?.textContent || fieldName} 不是有效的 JSON`);
+          }
+        }
+      } else if (input.type === "number") {
+        value = input.value === "" ? null : Number(input.value);
+      } else {
+        value = String(input.value || "").trim() || null;
+      }
+      sections[sectionName] ??= {};
+      sections[sectionName][fieldName] = value;
+    });
+    return { sections };
+  }
+
+  function bindSystemSettingsControls() {
+    const dialog = root.querySelector("[data-claw-system-settings-dialog]");
+    if (!dialog || typeof api.getSystemConfig !== "function") return;
+    const status = dialog.querySelector("[data-claw-system-status]");
+    const saveButton = dialog.querySelector("[data-claw-system-save]");
+    const close = () => dialog.close?.();
+
+    root.querySelectorAll("[data-claw-system-settings-open]").forEach((button) => button.addEventListener("click", async () => {
+      clearSystemSettingsForm(dialog);
+      setSystemSettingsTab("llm");
+      if (status) status.textContent = "正在读取本机配置...";
+      if (saveButton) saveButton.disabled = true;
+      dialog.showModal?.();
+      try {
+        const config = await api.getSystemConfig();
+        applySystemSettingsForm(dialog, config);
+        if (status) status.textContent = "";
+        if (saveButton) saveButton.disabled = false;
+      } catch (error) {
+        if (status) status.textContent = error instanceof Error ? error.message : "读取系统设置失败";
+      }
+    }));
+
+    dialog.querySelectorAll("[data-claw-system-settings-close]").forEach((button) => button.addEventListener("click", close));
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) close(); });
+    dialog.addEventListener("close", () => clearSystemSettingsForm(dialog));
+    dialog.querySelectorAll("[data-claw-system-tab]").forEach((button) => button.addEventListener("click", () => setSystemSettingsTab(button.dataset.clawSystemTab)));
+    dialog.querySelectorAll("[data-system-field], [data-system-json-field]").forEach((input) => {
+      const markDirty = () => { input.dataset.systemDirty = "true"; };
+      input.addEventListener("input", markDirty);
+      input.addEventListener("change", markDirty);
+    });
+    dialog.querySelectorAll("[data-claw-secret-toggle]").forEach((button) => button.addEventListener("click", () => {
+      const input = button.parentElement?.querySelector("input");
+      if (!input) return;
+      const visible = input.type === "text";
+      input.type = visible ? "password" : "text";
+      input.dataset.systemSecret = "true";
+      button.setAttribute("aria-label", visible ? "显示密钥" : "隐藏密钥");
+      button.title = visible ? "显示密钥" : "隐藏密钥";
+      button.innerHTML = `<i data-lucide="${visible ? "eye" : "eye-off"}" aria-hidden="true"></i>`;
+      window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+    }));
+    dialog.querySelectorAll("[data-claw-system-open-directory]").forEach((button) => button.addEventListener("click", async () => {
+      try {
+        await api.openSystemConfigDirectory(button.dataset.clawSystemOpenDirectory);
+      } catch (error) {
+        if (status) status.textContent = error instanceof Error ? error.message : "打开目录失败";
+      }
+    }));
+    dialog.querySelector("[data-claw-system-settings-form]")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!event.currentTarget.reportValidity()) return;
+      if (saveButton) saveButton.disabled = true;
+      if (status) status.textContent = "正在保存...";
+      try {
+        const payload = collectSystemSettings(dialog);
+        await api.saveSystemConfig(payload);
+        dialog.close?.();
+        showToast("系统设置已保存");
+      } catch (error) {
+        if (status) status.textContent = error instanceof Error ? error.message : "保存系统设置失败";
+        if (saveButton) saveButton.disabled = false;
       }
     });
   }
@@ -2393,6 +2533,7 @@
 
   function bindInteractions() {
     bindSettingsControls();
+    bindSystemSettingsControls();
     bindPreviewControls();
     root.querySelector("[data-claw-episode-select]")?.addEventListener("change", (event) => {
       if (!state.selectedProject) return;

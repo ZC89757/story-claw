@@ -220,13 +220,17 @@ async function readConfigSummary(filePath: string, fields: string[]): Promise<Re
   try {
     const value = JSON.parse(await fs.readFile(filePath, "utf8"));
     const summary: Record<string, unknown> = {};
+    const secretFields = new Set(["api_key", "token", "password", "public_key", "private_key"]);
+    const requestedSecrets: string[] = [];
     for (const field of fields) {
-      if (field === "api_key" || field === "token" || field === "password") {
-        summary.configured = Boolean(value?.[field]);
+      if (secretFields.has(field)) {
+        requestedSecrets.push(field);
+        summary[`${field}_configured`] = Boolean(value?.[field]);
       } else if (value?.[field] !== undefined) {
         summary[field] = value[field];
       }
     }
+    if (requestedSecrets.length) summary.configured = requestedSecrets.every((field) => Boolean(value?.[field]));
     return summary;
   } catch {
     return { configured: false, missing: true };
@@ -245,8 +249,11 @@ const getConfigTool: ToolDefinition = {
       : { missing: true };
     const llm = await readConfigSummary(path.join(CONFIG_DIR, "config.json"), ["provider", "model", "base_url", "api_key"]);
     const image = await readConfigSummary(path.join(CONFIG_DIR, "image_gen_config.json"), ["model", "base_url", "api_key"]);
-    const video = await readConfigSummary(path.join(CONFIG_DIR, "video_config.json"), ["base_url", "workflow_path", "duration", "concurrency"]);
-    return toolResult(JSON.stringify({ project: progress, llm, image, video }, null, 2));
+    const video = await readConfigSummary(path.join(CONFIG_DIR, "video_config.json"), ["base_url", "workflow_path", "default_duration", "concurrency"]);
+    const tts = await readConfigSummary(path.join(CONFIG_DIR, "tts_config.json"), ["base_url", "resource_id", "narrator_voice", "concurrency", "assign_character_voice", "sfx_enabled", "api_key"]);
+    const bgm = await readConfigSummary(path.join(CONFIG_DIR, "bgm_config.json"), ["base_url", "bgm_dir", "bgm_volume", "api_key"]);
+    const gpu = await readConfigSummary(path.join(CONFIG_DIR, "gpu_config.json"), ["provider", "instance_id", "start_timeout", "stop_timeout", "public_key", "private_key"]);
+    return toolResult(JSON.stringify({ project: progress, llm, image, video, tts, bgm, gpu }, null, 2));
   },
 };
 
