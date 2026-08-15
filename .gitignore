@@ -8,9 +8,8 @@ __pycache__/
 config.json
 image_gen_config.json
 
-# 含敏感凭据的本地脚本/文档（GPU 抢占 token、邮箱密码、SSH 凭据等），仅本地使用，不入库
-scripts/grab_gpu.py
-scripts/shutdown_gpu.py
+# 含敏感凭据的本地脚本/文档（GPU 控制台 token、邮箱密码、SSH 凭据等），仅本地使用，不入库
+scripts/resize_gpu.py
 字幕去除-最佳方案与复现.md
 ssh_run.py
 .askpass.sh
