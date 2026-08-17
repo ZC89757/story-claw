@@ -66,7 +66,8 @@ function punctuationMatches(actual: string, expected: string): boolean {
 
 /**
  * 按原文中的完整标点序列向前消费豆包 words，返回每条字幕结束的 word。
- * 未触发切分的早期逗号/顿号也必须消费，否则真正边界会误命中更早的同类标点。
+ * 未触发切分的早期逗号/顿号也必须消费；豆包省略数字等格式标点时，
+ * 使用该字幕块最后一个实际返回的标点作为边界。
  */
 export function findSubtitleBoundaryWords(
   words: SubtitleWord[],
@@ -104,10 +105,13 @@ export function findSubtitleBoundaryWords(
     const punctuationSequence = [...chunk.text].filter((ch) => TIMING_SUBTITLE_PUNCT.has(ch));
     let boundaryWord = -1;
     for (const punct of punctuationSequence) {
-      boundaryWord = findNextPunctuation(punct);
-      if (boundaryWord < 0) {
-        throw new Error(`字幕标点未在 TTS 时间戳中找到: 「${punct}」`);
-      }
+      const matchedWord = findNextPunctuation(punct);
+      if (matchedWord >= 0) boundaryWord = matchedWord;
+    }
+    if (boundaryWord < 0) {
+      boundaryWord = Math.min(searchWord, words.length - 1);
+      searchWord = boundaryWord + 1;
+      searchChar = 0;
     }
     boundaries.push(boundaryWord);
   }

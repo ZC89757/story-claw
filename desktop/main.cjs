@@ -97,6 +97,7 @@ const mediaDurationCache = new Map();
 const pendingTitleRequests = new Map();
 const sessionWriteQueues = new Map();
 const projectNameAliases = new Map();
+const pendingVisualPresetDisplays = new Set();
 
 function send(channel, payload) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -209,31 +210,26 @@ function normalizeProgressCards(value) {
       currentIndex: Math.max(0, Math.trunc(Number(item.currentIndex) || 0)),
       pauseNoticeAdded: Boolean(item.pauseNoticeAdded),
       settingsOnly: Boolean(item.settingsOnly),
-      presetReview: item.presetReview && typeof item.presetReview === "object"
-        ? normalizePresetReview(item.presetReview)
-        : null,
       settingsSummary: item.settingsSummary && typeof item.settingsSummary === "object"
         ? settingsSummary(item.settingsSummary)
         : null,
     }));
 }
 
-function normalizePresetReview(value) {
-  if (!value || typeof value !== "object") return null;
-  const rows = Array.isArray(value.rows) ? value.rows.map((row, index) => ({
-    index: Math.max(1, Math.trunc(Number(row?.index) || index + 1)),
-    original: String(row?.original || ""),
-    fields: row?.fields && typeof row.fields === "object"
-      ? Object.fromEntries(Object.entries(row.fields).map(([key, item]) => [String(key), String(item ?? "")]))
-      : {},
-  })).filter((row) => row.original || Object.keys(row.fields).length) : [];
-  return {
-    articleType: value.articleType === "essay" ? "essay" : "story",
-    episode: Math.max(1, Math.trunc(Number(value.episode) || 1)),
-    version: Math.max(1, Math.trunc(Number(value.version) || 1)),
-    status: ["review", "approved", "updated"].includes(value.status) ? value.status : "review",
-    rows,
-  };
+function normalizeVisualPresetCards(value) {
+  if (!Array.isArray(value)) return [];
+  const validStatuses = new Set(["active", "superseded", "approved"]);
+  return value
+    .filter((item) => item && typeof item === "object" && item.id && String(item.text || "").trim())
+    .map((item) => ({
+      id: String(item.id),
+      projectName: String(item.projectName || ""),
+      episode: Math.max(1, Math.trunc(Number(item.episode) || 1)),
+      messageIndex: Math.max(0, Math.trunc(Number(item.messageIndex) || 0)),
+      createdAt: String(item.createdAt || ""),
+      status: validStatuses.has(item.status) ? item.status : "superseded",
+      text: String(item.text || ""),
+    }));
 }
 
 function normalizeProductionSettings(value) {
@@ -517,34 +513,28 @@ async function openSystemConfigDirectory(target = "config") {
   return { opened: true };
 }
 
-function normalizeProjectSession(stored, progress, fallbackName) {
-  const hasStoredMessages = Boolean(stored && Array.isArray(stored.messages));
-  const sessionId = typeof stored?.session_id === "string" && stored.session_id.trim()
-    ? stored.session_id.trim()
-    : typeof progress?.agent_session_id === "string" && progress.agent_session_id.trim()
-    ? progress.agent_session_id.trim()
-    : fallbackName;
+function normalizeProjectSession(stored) {
+  if (!stored || stored.version !== 3) throw new Error("sessions.json 不是当前数据版本");
+  if (typeof stored.session_id !== "string" || !stored.session_id.trim()) throw new Error("sessions.json 缺少 session_id");
+  if (!Array.isArray(stored.messages)) throw new Error("sessions.json 缺少 messages");
+  if (!Array.isArray(stored.progress_cards)) throw new Error("sessions.json 缺少 progress_cards");
+  if (!Array.isArray(stored.visual_preset_cards)) throw new Error("sessions.json 缺少 visual_preset_cards");
+  if (!stored.settings_summary || typeof stored.settings_summary !== "object") throw new Error("sessions.json 缺少 settings_summary");
   return {
-    version: 2,
-    session_id: sessionId,
-    messages: normalizeConversation(hasStoredMessages ? stored.messages : progress?.conversation),
+    version: 3,
+    session_id: stored.session_id.trim(),
+    messages: normalizeConversation(stored.messages),
     progress_cards: normalizeProgressCards(stored?.progress_cards),
-    settings_summary: stored?.settings_summary
-      ? settingsSummary(stored.settings_summary)
-      : settingsFromProgress(progress),
+    visual_preset_cards: normalizeVisualPresetCards(stored?.visual_preset_cards),
+    settings_summary: settingsSummary(stored.settings_summary),
     updated_at: typeof stored?.updated_at === "string" ? stored.updated_at : "",
   };
 }
 
-async function readProjectSession(dir, progress, fallbackName, { migrate = false } = {}) {
+async function readProjectSession(dir) {
   const filePath = projectSessionsPath(dir);
   const stored = await readJson(filePath);
-  const session = normalizeProjectSession(stored, progress, fallbackName);
-  if (migrate && (!stored || stored.version !== 2 || !Array.isArray(stored.messages) || !Array.isArray(stored.progress_cards) || !stored.session_id || !stored.settings_summary)) {
-    session.updated_at = new Date().toISOString();
-    await writeJsonAtomic(filePath, session);
-  }
-  return session;
+  return normalizeProjectSession(stored);
 }
 
 function enqueueSessionWrite(novelName, task) {
@@ -650,7 +640,7 @@ async function listProjects() {
     const progressPath = path.join(dir, "改编进度.json");
     const progress = await readJson(progressPath);
     if (!progress || typeof progress !== "object" || !progress.novel_name) continue;
-    const session = await readProjectSession(dir, progress, name);
+    const session = await readProjectSession(dir);
     const adapted = Array.isArray(progress.adapted) ? progress.adapted : [];
     const episodes = progress.episodes && typeof progress.episodes === "object" ? progress.episodes : {};
     const renderedEpisodes = Object.entries(episodes)
@@ -818,47 +808,6 @@ async function getEpisodePreview(novelName, episode) {
   };
 }
 
-const STORY_PRESET_FIELDS = ["场景", "人物", "景别", "角度", "镜头运动", "光影", "情绪", "语言", "独白"];
-
-async function getVisualPresetReview(novelName, episode) {
-  const resolvedName = resolveProjectName(novelName);
-  const dir = projectDir(resolvedName);
-  const progress = await readJson(path.join(dir, "改编进度.json"));
-  if (!progress || typeof progress !== "object") throw new Error("项目进度不存在");
-  const episodeNumber = Math.max(1, Math.trunc(Number(episode) || 1));
-  const presetPath = path.join(dir, `ep${String(episodeNumber).padStart(2, "0")}`, "画面预设.txt");
-  const content = await fs.readFile(presetPath, "utf8");
-  const articleType = progress.article_type === "essay" ? "essay" : "story";
-  const reviewRecord = progress.episodes?.[String(episodeNumber)]?.visual_preset_review;
-  const rows = content.split(/\r?\n/).map((line, index) => {
-    const text = line.trim();
-    if (!text) return null;
-    const annotationStart = text.lastIndexOf("【");
-    const annotationEnd = text.endsWith("】") ? text.length - 1 : -1;
-    const original = annotationStart > 0 && annotationEnd > annotationStart
-      ? text.slice(0, annotationStart).trim()
-      : text;
-    const annotation = annotationStart > 0 && annotationEnd > annotationStart
-      ? text.slice(annotationStart + 1, annotationEnd).trim()
-      : "";
-    if (articleType === "essay") {
-      const intent = annotation.replace(/^画面\s*[：:]/, "").trim();
-      return { index: index + 1, original, fields: { "画面意图": intent } };
-    }
-    const values = annotation.split("|");
-    const fields = {};
-    STORY_PRESET_FIELDS.forEach((field, fieldIndex) => { fields[field] = String(values[fieldIndex] || "").trim(); });
-    return { index: index + 1, original, fields };
-  }).filter(Boolean);
-  return {
-    articleType,
-    episode: episodeNumber,
-    version: Math.max(1, Math.trunc(Number(reviewRecord?.version) || 1)),
-    status: reviewRecord?.status === "approved" ? "approved" : "review",
-    rows,
-  };
-}
-
 async function approveVisualPreset(novelName, episode) {
   const resolvedName = resolveProjectName(novelName);
   const dir = projectDir(resolvedName);
@@ -965,10 +914,11 @@ async function createProject(payload = {}) {
     agent_session_id: agentSessionId,
   };
   const session = {
-    version: 2,
+    version: 3,
     session_id: agentSessionId,
     messages: normalizeConversation(payload.conversation),
     progress_cards: [],
+    visual_preset_cards: [],
     settings_summary: settingsFromProgress(progress),
     updated_at: new Date().toISOString(),
   };
@@ -1004,7 +954,7 @@ async function finalizeDraftProject(currentName, payload = {}) {
     throw new Error(`项目“${nextName}”已经存在`);
   }
   await flushProjectSessionWrites(oldName);
-  await readProjectSession(oldDir, progress, oldName, { migrate: true });
+  await readProjectSession(oldDir);
 
   let sourcePath = await materializeProjectSource(oldDir, payload, typeof progress.source_path === "string" ? progress.source_path : "");
   if (!sourcePath) throw new Error("请选择章节文件夹、章节文件或输入文稿");
@@ -1028,7 +978,7 @@ async function finalizeDraftProject(currentName, payload = {}) {
   }
   progress.source_path = sourcePath;
   await fs.writeFile(path.join(nextDir, "改编进度.json"), JSON.stringify(progress, null, 4), "utf8");
-  const session = await readProjectSession(nextDir, progress, nextName, { migrate: true });
+  const session = await readProjectSession(nextDir);
   session.settings_summary = settingsFromProgress(progress);
   session.updated_at = new Date().toISOString();
   await writeJsonAtomic(projectSessionsPath(nextDir), session);
@@ -1041,24 +991,59 @@ async function getProjectConversation(novelName) {
   const dir = projectDir(resolvedName);
   const progress = await readJson(path.join(dir, "改编进度.json"));
   if (!progress || typeof progress !== "object") throw new Error("项目进度不存在");
-  const session = await readProjectSession(dir, progress, resolvedName, { migrate: true });
-  return { messages: session.messages, progressCards: session.progress_cards };
+  const session = await readProjectSession(dir);
+  const reviewEpisode = Object.entries(progress.episodes || {})
+    .find(([, record]) => record?.stages?.visualPreset === "review")?.[0];
+  const hasActivePresetCard = session.visual_preset_cards.some((card) => (
+    card.status === "active" && Number(card.episode) === Number(reviewEpisode)
+  ));
+  if (reviewEpisode && !hasActivePresetCard) {
+    const project = {
+      id: resolvedName,
+      novelName: String(progress.novel_name || resolvedName),
+      sourcePath: String(progress.source_path || ""),
+      nextChapter: Number(progress.next_chapter) || Number(reviewEpisode),
+      adaptedCount: Array.isArray(progress.adapted) ? progress.adapted.length : 0,
+      articleType: progress.article_type,
+      aspectRatio: progress.aspect_ratio,
+      renderMode: progress.render_mode,
+      ethnicity: progress.ethnicity,
+      reviewVisualPreset: progress.review_visual_preset,
+      requireFinalConfirmation: progress.require_final_confirmation,
+      agentSessionId: session.session_id,
+    };
+    queueMicrotask(() => requestVisualPresetDisplay({
+      ...selectionForProject(project),
+      episode: Math.max(1, Number(reviewEpisode) || 1),
+    }));
+  }
+  return {
+    messages: session.messages,
+    progressCards: session.progress_cards,
+    visualPresetCards: session.visual_preset_cards,
+  };
 }
 
 async function updateProjectConversation(novelName, payload) {
   const snapshot = normalizeConversation(payload?.messages);
   const progressCards = normalizeProgressCards(payload?.progressCards);
+  const visualPresetCards = normalizeVisualPresetCards(payload?.visualPresetCards);
   return enqueueSessionWrite(novelName, async () => {
     const resolvedName = resolveProjectName(novelName);
     const dir = projectDir(resolvedName);
     const progress = await readJson(path.join(dir, "改编进度.json"));
     if (!progress || typeof progress !== "object") throw new Error("项目进度不存在");
-    const session = await readProjectSession(dir, progress, resolvedName);
+    const session = await readProjectSession(dir);
     session.messages = snapshot;
     session.progress_cards = progressCards;
+    session.visual_preset_cards = visualPresetCards;
     session.updated_at = new Date().toISOString();
     await writeJsonAtomic(projectSessionsPath(dir), session);
-    return { messages: session.messages, progressCards: session.progress_cards };
+    return {
+      messages: session.messages,
+      progressCards: session.progress_cards,
+      visualPresetCards: session.visual_preset_cards,
+    };
   });
 }
 
@@ -1086,7 +1071,6 @@ function runContext(run = activeRun) {
     phaseLabel: run.phaseLabel || "规划中",
     phaseDetail: run.phaseDetail || "",
     runStatus: run.status,
-    visualPresetReview: run.review || null,
     settings: settingsForSelection(selection),
     recentLogs: Array.isArray(run.logs) ? run.logs.slice(-20) : [],
   };
@@ -1121,6 +1105,40 @@ function sendAgentInput(payload) {
 function updateAgentContext() {
   if (!activeAgent) return;
   sendAgentInput({ type: "context", context: runContext(activeRun) });
+}
+
+function visualPresetDisplayKey(selection) {
+  return `${resolveProjectName(selection?.novelName || "")}:${Math.max(1, Math.trunc(Number(selection?.episode) || 1))}`;
+}
+
+function clearPendingVisualPresetDisplay(selection) {
+  if (!String(selection?.novelName || "").trim()) return;
+  pendingVisualPresetDisplays.delete(visualPresetDisplayKey(selection));
+}
+
+function requestVisualPresetDisplay(selection) {
+  const key = visualPresetDisplayKey(selection);
+  if (pendingVisualPresetDisplays.has(key)) return false;
+  try {
+    ensureAgentWorker(selection);
+    const accepted = sendAgentInput({
+      type: "review_ready",
+      context: {
+        projectName: selection.novelName,
+        episode: selection.episode,
+        phase: "visual_preset_review",
+        phaseLabel: "等待审核画面预设",
+        phaseDetail: "画面预设已生成，请确认或提出修改意见",
+        runStatus: "review",
+        settings: settingsForSelection(selection),
+      },
+    });
+    if (accepted) pendingVisualPresetDisplays.add(key);
+    return accepted;
+  } catch (error) {
+    sendAgentEvent({ type: "error", message: `画面预设展示请求失败：${error instanceof Error ? error.message : String(error)}` });
+    return false;
+  }
 }
 
 function selectionForProject(project) {
@@ -1281,6 +1299,25 @@ function handleAgentWorkerLine(line) {
     }
     return;
   }
+  if (payload?.type === "visual_preset") {
+    const selection = activeAgent?.selection;
+    const text = String(payload.text || "");
+    if (!selection || !text.trim()) {
+      sendAgentEvent({ type: "error", message: "画面预设展示内容为空。" });
+      return;
+    }
+    clearPendingVisualPresetDisplay(selection);
+    sendAgentEvent({
+      type: "visual_preset",
+      text,
+      projectName: selection.novelName,
+      episode: Math.max(1, Math.trunc(Number(selection.episode) || 1)),
+    });
+    return;
+  }
+  if (["assistant_end", "error"].includes(payload?.type)) {
+    clearPendingVisualPresetDisplay(activeAgent?.selection);
+  }
   if (payload?.type === "command") {
     if (payload.command === "create_project") {
       handleAgentCreateProject(payload).catch((error) => sendAgentEvent({ type: "error", message: error.message }));
@@ -1346,8 +1383,12 @@ function ensureAgentWorker(selection) {
   activeAgent = { key, child, selection };
   forwardAgentStream(child.stdout, "stdout");
   forwardAgentStream(child.stderr, "stderr");
-  child.once("error", (error) => sendAgentEvent({ type: "error", message: error.message }));
+  child.once("error", (error) => {
+    clearPendingVisualPresetDisplay(selection);
+    sendAgentEvent({ type: "error", message: error.message });
+  });
   child.once("close", () => {
+    clearPendingVisualPresetDisplay(selection);
     if (activeAgent?.child === child) activeAgent = null;
   });
   sendAgentInput({ type: "init", context: runContext(activeRun), sessionFile: agentSessionPath(selection) });
@@ -1393,16 +1434,14 @@ function handleRunOutputLine(line, streamName, run = activeRun) {
       if (run) {
         run.reviewPending = true;
         run.status = "review";
-        getVisualPresetReview(run.selection.novelName, marker.episode || run.selection.episode)
-          .then((review) => {
-            run.review = review;
-            send("run:review", { runId: run.id, selection: run.selection, review });
-            sendAgentInput({
-              type: "context",
-              context: { ...runContext(run), visualPresetReview: review },
-            });
-          })
-          .catch((error) => sendAgentEvent({ type: "error", message: error instanceof Error ? error.message : String(error) }));
+        run.phase = "visual_preset_review";
+        run.phaseLabel = "等待审核画面预设";
+        run.phaseDetail = "画面预设已生成，请确认或提出修改意见";
+        run.selection = {
+          ...run.selection,
+          episode: Math.max(1, Math.trunc(Number(marker.episode) || Number(run.selection.episode) || 1)),
+        };
+        requestVisualPresetDisplay(run.selection);
       }
       return;
     } catch {
@@ -1483,7 +1522,7 @@ function startRun(selection) {
     const status = run?.reviewPending ? "review" : stopped ? "stopped" : code === 0 ? "done" : "failed";
     if (["failed", "stopped"].includes(status)) await shutdownGpuOnce(run);
     if (run) run.status = status;
-    send("run:state", { runId, status, code, signal, review: run?.review || null, selection: run?.selection });
+    send("run:state", { runId, status, code, signal, selection: run?.selection });
     if (activeAgent?.selection?.novelName === run?.selection?.novelName) updateAgentContext();
     if (status === "review") {
       if (run) {
@@ -1562,14 +1601,7 @@ ipcMain.handle("run:active", () => activeRun ? {
   phaseLabel: activeRun.phaseLabel,
   phaseDetail: activeRun.phaseDetail,
   logs: activeRun.logs,
-  review: activeRun.review || null,
 } : null);
-ipcMain.handle("visual-preset:get", (_event, novelName, episode) => getVisualPresetReview(novelName, episode));
-ipcMain.handle("visual-preset:approve", async (_event, novelName, episode) => {
-  if (activeRun && activeRun.status !== "review") throw new Error("当前已经有任务正在运行");
-  const run = activeRun?.status === "review" ? activeRun : null;
-  return approveAndResumeVisualPreset(novelName, episode, run);
-});
 ipcMain.handle("agent:message", async (_event, payload = {}) => {
   const text = String(payload.text || "").trim();
   let selection = payload.selection || null;

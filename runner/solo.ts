@@ -178,10 +178,10 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     if (!sel.imagesOnly) {
       reportPhase({
         phase: "gpu_queued",
-        label: "正在抢 GPU",
-        detail: "分镜规划已完成，正在申请渲染 GPU",
+        label: "GPU 启动与预热中",
+        detail: "正在申请 GPU 实例，并等待渲染服务完成预热与自检",
       });
-      console.log(`\n  正在开启 GPU 实例...`);
+      console.log(`\n  正在启动 GPU；实例启动后会自动等待渲染服务预热...`);
       // 从发起抢占起就接管生命周期，确保就绪探测失败时也会进入 finally 关机。
       gpuStarted = true;
       execSync("python -u scripts/grab_gpu.py", { stdio: "inherit" });

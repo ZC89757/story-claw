@@ -25,8 +25,6 @@ contextBridge.exposeInMainWorld("storyClaw", {
   startRun: (selection) => ipcRenderer.invoke("run:start", selection),
   stopRun: () => ipcRenderer.invoke("run:stop"),
   getActiveRun: () => ipcRenderer.invoke("run:active"),
-  getVisualPreset: (novelName, episode) => ipcRenderer.invoke("visual-preset:get", novelName, episode),
-  approveVisualPreset: (novelName, episode) => ipcRenderer.invoke("visual-preset:approve", novelName, episode),
   sendAgentMessage: (payload) => ipcRenderer.invoke("agent:message", payload),
   sendAgentChoice: (payload) => ipcRenderer.invoke("agent:choice", payload),
   stopAgent: () => ipcRenderer.invoke("agent:stop"),
@@ -35,7 +33,6 @@ contextBridge.exposeInMainWorld("storyClaw", {
   onRunLog: (callback) => subscribe("run:log", callback),
   onRunState: (callback) => subscribe("run:state", callback),
   onRunPhase: (callback) => subscribe("run:phase", callback),
-  onRunReview: (callback) => subscribe("run:review", callback),
   onRunReviewApproved: (callback) => subscribe("run:review-approved", callback),
   onAgentEvent: (callback) => subscribe("agent:event", callback),
 });

@@ -71,7 +71,7 @@ def wait_comfyui_ready():
     workflow["320:305"]["inputs"]["frames_number"] = 9
 
     now_str = lambda: datetime.now().strftime("%H:%M:%S")
-    print(f"[{now_str()}] 提交测试任务，等待视频实际生成完毕再开始正式任务...")
+    print(f"[{now_str()}] GPU 实例已启动，渲染服务正在预热；就绪后将自动运行轻量视频自检...")
     attempt = 0
 
     # 1. 提交测试任务，拿到 prompt_id
@@ -88,11 +88,11 @@ def wait_comfyui_ready():
             if resp.status_code == 200:
                 pid = resp.json().get("prompt_id")
                 if pid:
-                    print(f"[{now_str()}] 测试任务已入队 prompt_id={pid}，等待生成完毕...")
+                    print(f"[{now_str()}] 渲染服务已连接，轻量自检任务已入队，正在确认视频生成功能...")
                     break
-            print(f"[{now_str()}] 第 {attempt} 次 · 入队失败 HTTP {resp.status_code} → 5s 后重试")
+            print(f"[{now_str()}] 渲染服务暂未就绪（第 {attempt} 次检测，HTTP {resp.status_code}），5s 后自动继续...")
         except Exception as e:
-            print(f"[{now_str()}] 第 {attempt} 次 · wrapper 未响应: {e} → 5s 后重试")
+            print(f"[{now_str()}] 渲染服务正在预热（第 {attempt} 次检测），5s 后自动继续...")
         time.sleep(5)
 
     # 2. 轮询直到测试任务完成（视频真正生成好）
@@ -114,7 +114,7 @@ def wait_comfyui_ready():
                     missing_since = time.time()
                 elapsed = time.time() - missing_since
                 if elapsed >= MISSING_TIMEOUT:
-                    print(f"[{now_str()}] pid={pid} 消失 {elapsed:.0f}s，ComfyUI 可能已重启，重新提交测试任务...")
+                    print(f"[{now_str()}] 暂未查询到自检任务，渲染服务可能已重启，正在自动重新提交...")
                     pid = None
                     missing_since = None
                     attempt = 0
@@ -131,32 +131,32 @@ def wait_comfyui_ready():
                             if resp.status_code == 200:
                                 pid = resp.json().get("prompt_id")
                                 if pid:
-                                    print(f"[{now_str()}] 重新入队 prompt_id={pid}")
+                                    print(f"[{now_str()}] 渲染服务已恢复，轻量自检任务已重新入队")
                                     break
-                            print(f"[{now_str()}] 第 {attempt} 次 · 入队失败 HTTP {resp.status_code} → 5s 后重试")
+                            print(f"[{now_str()}] 渲染服务暂未就绪（第 {attempt} 次检测，HTTP {resp.status_code}），5s 后自动继续...")
                         except Exception as e2:
-                            print(f"[{now_str()}] 第 {attempt} 次 · wrapper 未响应: {e2} → 5s 后重试")
+                            print(f"[{now_str()}] 渲染服务正在恢复（第 {attempt} 次检测），5s 后自动继续...")
                         time.sleep(5)
                     poll = 0
                 elif int(elapsed) % 30 == 0 and int(elapsed) > 0:
-                    print(f"[{now_str()}] 等待 history 出现 pid={pid}... ({elapsed:.0f}s)")
+                    print(f"[{now_str()}] 正在等待渲染服务登记自检任务...（已等待 {elapsed:.0f}s）")
                 continue
             missing_since = None  # pid 出现了，重置计时
             status = entry.get("status", {}).get("status_str", "")
             if status == "success":
-                print(f"[{now_str()}] ★ 测试视频生成完毕，GPU 确认就绪（等待 {poll * 5}s）")
+                print(f"[{now_str()}] ★ 轻量视频自检完成，GPU 已就绪（自检耗时 {poll * 5}s）")
                 return
             # queued_sttn / sttn = ComfyUI 已完成 i2v，GPU 确认可用，无需等 LaMa
             if status in ("queued_sttn", "sttn"):
-                print(f"[{now_str()}] ★ ComfyUI i2v 已完成（{status}），GPU 确认就绪")
+                print(f"[{now_str()}] ★ 视频生成服务已通过自检（{status}），GPU 已就绪")
                 return
             if status == "error":
                 print(f"[{now_str()}] 测试任务失败: {entry.get('status')}，但继续（可能是 IC-LoRA 暂时异常）")
                 return
             if poll % 6 == 0:
-                print(f"[{now_str()}] 测试任务进行中 status={status}... ({poll * 5}s)")
+                print(f"[{now_str()}] 轻量视频自检进行中...（已运行 {poll * 5}s，状态 {status}）")
         except Exception as e:
-            print(f"[{now_str()}] 轮询异常: {e}")
+            print(f"[{now_str()}] 自检状态暂时无法查询，系统将自动继续检测...")
 
 
 def main():

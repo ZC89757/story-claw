@@ -43,3 +43,14 @@ test("matches equivalent Chinese and ASCII punctuation in sequence", () => {
 
   assert.deepEqual(findSubtitleBoundaryWords(words, chunks), [1, 2]);
 });
+
+test("uses the spoken clause comma when TTS omits a numeric comma", () => {
+  const text = "协调式群体在 2,700 万 token 的运行中找到 266 个漏洞，独立并行方式在 650 万 token 中找到 21 个。";
+  const chunks = splitSubtitleText(text.replace(/\s/g, ""), 18);
+  const words = [
+    { word: "协调式群体在两千七百万token的运行中找到二百六十六个漏洞，", startTime: 0, endTime: 6 },
+    { word: "独立并行方式在六百五十万token中找到二十一个。", startTime: 6, endTime: 11 },
+  ];
+
+  assert.deepEqual(findSubtitleBoundaryWords(words, chunks), [0, 1]);
+});
