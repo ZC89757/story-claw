@@ -1331,7 +1331,7 @@
               <label class="claw-system-field"><span>Resource ID</span><input data-system-field="tts.resource_id" autocomplete="off"></label>
               <label class="claw-system-field"><span>旁白音色</span><input data-system-field="tts.narrator_voice" autocomplete="off"></label>
               <label class="claw-system-field"><span>TTS 并发数</span><input data-system-field="tts.concurrency" type="number" min="1" step="1"></label>
-              <label class="claw-system-field"><span>音效音量</span><input data-system-field="tts.sfx_volume" type="number" min="0" max="1" step="0.05"></label>
+              <label class="claw-system-field"><span>音效音量</span><input data-system-field="tts.sfx_volume" type="number" min="0" max="1" step="any"></label>
               <label class="claw-system-field is-wide"><span>可分配音色（JSON）</span><textarea data-system-json-field="tts.voices" spellcheck="false"></textarea></label>
               <div class="claw-system-switches">
                 <label class="claw-settings-switch"><span><strong>分配角色音色</strong><span>关闭后统一使用旁白音色。</span></span><input type="checkbox" data-system-field="tts.assign_character_voice"><span class="claw-settings-toggle" aria-hidden="true"></span></label>
@@ -1342,7 +1342,7 @@
               <label class="claw-system-field is-wide"><span>BGM API Key</span><span class="claw-secret-input"><input data-system-field="bgm.api_key" type="password" autocomplete="new-password"><button type="button" class="claw-secret-toggle" data-claw-secret-toggle aria-label="显示 BGM API Key" title="显示 BGM API Key"><i data-lucide="eye" aria-hidden="true"></i></button></span></label>
               <label class="claw-system-field is-wide"><span>BGM 目录</span><input data-system-field="bgm.bgm_dir" autocomplete="off"></label>
               <label class="claw-system-field"><span>交叉淡化（秒）</span><input data-system-field="bgm.crossfade_sec" type="number" min="0" step="0.1"></label>
-              <label class="claw-system-field"><span>BGM 音量</span><input data-system-field="bgm.bgm_volume" type="number" min="0" max="1" step="0.05"></label>
+              <label class="claw-system-field"><span>BGM 音量</span><input data-system-field="bgm.bgm_volume" type="number" min="0" max="1" step="any"></label>
               <label class="claw-system-field"><span>最少片段数</span><input data-system-field="bgm.min_segments" type="number" min="1" step="1"></label>
               <label class="claw-system-field"><span>最多片段数</span><input data-system-field="bgm.max_segments" type="number" min="1" step="1"></label>
             </div>

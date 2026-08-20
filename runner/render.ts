@@ -78,6 +78,7 @@ const IMAGE_MAX_RETRIES = 3;
 const IMAGE_RETRY_SLEEP = 3000; // ms
 
 // 资源选择器（selectResources，LLM 偶发返回非 JSON 需要重试兜底）
+const SELECT_CONCURRENCY = Math.max(1, Number(llmCfg.select_concurrency ?? 2));
 const SELECT_MAX_RETRIES = 3;
 const SELECT_RETRY_SLEEP = 2000; // ms
 const SOFTEN_MAX = 2; // 被内容安全系统拒绝时，提示词递进软化的最大档数
@@ -475,14 +476,19 @@ async function selectResources(
   for (let attempt = 1; attempt <= SELECT_MAX_RETRIES; attempt++) {
     let resp: any;
     try {
-      resp = await client.chat.completions.create({
-        model: LLM_MODEL,
-        max_tokens: LLM_MAX_TOKENS,
-        messages: [
-          { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
-          { role: "user",   content: parts.join("\n") },
-        ],
-      });
+      await _globalSelectSem.acquire();
+      try {
+        resp = await client.chat.completions.create({
+          model: LLM_MODEL,
+          max_tokens: LLM_MAX_TOKENS,
+          messages: [
+            { role: "system", content: RESOURCE_SELECTOR_SYSTEM },
+            { role: "user",   content: parts.join("\n") },
+          ],
+        });
+      } finally {
+        _globalSelectSem.release();
+      }
     } catch (e: any) {
       lastErr = e;
       console.error(
@@ -492,7 +498,7 @@ async function selectResources(
         `cause=${e?.cause?.code ?? e?.cause?.message ?? "-"}`,
         `msg=${e?.message}`,
       );
-      if (attempt < SELECT_MAX_RETRIES) await sleep(SELECT_RETRY_SLEEP);
+      if (attempt < SELECT_MAX_RETRIES) await sleep(SELECT_RETRY_SLEEP * attempt);
       continue;
     }
 
@@ -810,6 +816,7 @@ class Semaphore {
 // （之前每个 renderScene 各自 new 一次，N 个场景并行时实际并发被乘 N 倍。）
 const _globalImgSem = new Semaphore(IMAGE_CONCURRENCY);
 const _globalVidSem = new Semaphore(VIDEO_CONCURRENCY);
+const _globalSelectSem = new Semaphore(SELECT_CONCURRENCY);
 
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────

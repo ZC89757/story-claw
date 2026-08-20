@@ -37,7 +37,7 @@ const SYSTEM_CONFIG_SECTIONS = Object.freeze({
       base_url: { type: "string", maxLength: 2048 },
       workflow_path: { type: "string", maxLength: 2048 },
       default_duration: { type: "number", min: 0.1, max: 3600 },
-      concurrency: { type: "integer", min: 1, max: 100 },
+      concurrency: { type: "integer", min: 1 },
       poll_interval_ms: { type: "integer", min: 100, max: 600000 },
       max_retries: { type: "integer", min: 0, max: 100 },
       retry_sleep_ms: { type: "integer", min: 0, max: 3600000 },
@@ -429,7 +429,13 @@ function systemConfigValue(fieldName, rule, value) {
   if (rule.type === "number" || rule.type === "integer") {
     if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${fieldName} 必须是数字`);
     if (rule.type === "integer" && !Number.isInteger(value)) throw new Error(`${fieldName} 必须是整数`);
-    if (value < rule.min || value > rule.max) throw new Error(`${fieldName} 必须在 ${rule.min} 到 ${rule.max} 之间`);
+    const hasMin = Number.isFinite(rule.min);
+    const hasMax = Number.isFinite(rule.max);
+    if (hasMin && hasMax && (value < rule.min || value > rule.max)) {
+      throw new Error(`${fieldName} 必须在 ${rule.min} 到 ${rule.max} 之间`);
+    }
+    if (hasMin && value < rule.min) throw new Error(`${fieldName} 不能小于 ${rule.min}`);
+    if (hasMax && value > rule.max) throw new Error(`${fieldName} 不能大于 ${rule.max}`);
     return { value };
   }
   if (rule.type === "stringMap") {
