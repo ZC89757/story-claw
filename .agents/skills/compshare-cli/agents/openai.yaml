@@ -1,0 +1,4 @@
+interface:
+  display_name: "CompShare CLI"
+  short_description: "Manage CompShare GPU resources from the CLI"
+  default_prompt: "Use $compshare-cli to find and manage a CompShare GPU instance safely."

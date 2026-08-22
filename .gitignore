@@ -19,6 +19,15 @@ ssh_run.py
 workspace/
 agent-data/
 agent-logs/
+graphify-out/
+output/
+output_videos/
+bgm/
+*.log
+*.tsbuildinfo
+
+# 已由官方 compshare CLI 流程替代；旧脚本含本地会话凭据
+scripts/shutdown-gpu.sh
 
 # 编辑器
 .idea/
