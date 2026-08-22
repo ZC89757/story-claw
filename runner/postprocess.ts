@@ -59,10 +59,6 @@ async function postprocessStory(sel: NovelSelection, episodeVideo: string): Prom
   // 故事继续使用现有 ACE-Step 阶段生成 BGM；失败时仍对原始集视频执行标题与倍速。
   try {
     execFileSync(process.execPath, ["--import", "tsx", GENERATE_BGM_SCRIPT, cleanTextPath], { stdio: "inherit" });
-    const bgmVideo = path.join(epDir, `ep${String(sel.episode).padStart(2, "0")}_with_bgm.mp4`);
-    if (fsSync.existsSync(bgmVideo)) {
-      await fs.copyFile(bgmVideo, episodeVideo);
-    }
   } catch (err) {
     console.warn(`  [BGM] ACE-Step 生成失败或跳过，将继续处理原始集视频: ${err}`);
   }

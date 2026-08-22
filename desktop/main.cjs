@@ -519,13 +519,66 @@ async function openSystemConfigDirectory(target = "config") {
   return { opened: true };
 }
 
-function normalizeProjectSession(stored) {
-  if (!stored || stored.version !== 3) throw new Error("sessions.json 不是当前数据版本");
-  if (typeof stored.session_id !== "string" || !stored.session_id.trim()) throw new Error("sessions.json 缺少 session_id");
-  if (!Array.isArray(stored.messages)) throw new Error("sessions.json 缺少 messages");
-  if (!Array.isArray(stored.progress_cards)) throw new Error("sessions.json 缺少 progress_cards");
-  if (!Array.isArray(stored.visual_preset_cards)) throw new Error("sessions.json 缺少 visual_preset_cards");
-  if (!stored.settings_summary || typeof stored.settings_summary !== "object") throw new Error("sessions.json 缺少 settings_summary");
+function projectSessionId(progress, fallbackName) {
+  const progressSessionId = typeof progress?.agent_session_id === "string"
+    ? progress.agent_session_id.trim()
+    : "";
+  return progressSessionId || String(fallbackName || "").trim();
+}
+
+function defaultProjectSession(progress, fallbackName) {
+  const sessionId = projectSessionId(progress, fallbackName);
+  if (!sessionId) throw new Error("无法确定项目会话标识");
+  return {
+    version: 3,
+    session_id: sessionId,
+    messages: [],
+    progress_cards: [],
+    visual_preset_cards: [],
+    settings_summary: settingsFromProgress(progress),
+    updated_at: "",
+  };
+}
+
+function projectSessionError(projectName, detail) {
+  return new Error(`项目“${projectName}”的 sessions.json ${detail}`);
+}
+
+function normalizeProjectSession(stored, progress, fallbackName) {
+  const projectName = String(fallbackName || "未知项目");
+  const fallback = defaultProjectSession(progress, fallbackName);
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    throw projectSessionError(projectName, "内容无效");
+  }
+  if (stored.version === 2) {
+    return {
+      ...fallback,
+      session_id: typeof stored.session_id === "string" && stored.session_id.trim()
+        ? stored.session_id.trim()
+        : fallback.session_id,
+      messages: normalizeConversation(Array.isArray(stored.messages) ? stored.messages : progress?.conversation),
+      progress_cards: normalizeProgressCards(stored.progress_cards),
+      settings_summary: stored.settings_summary && typeof stored.settings_summary === "object" && !Array.isArray(stored.settings_summary)
+        ? settingsSummary(stored.settings_summary)
+        : fallback.settings_summary,
+      updated_at: typeof stored.updated_at === "string" ? stored.updated_at : "",
+    };
+  }
+  if (stored.version !== 3) {
+    if (typeof stored.version === "number" && stored.version > 3) {
+      throw projectSessionError(projectName, `版本 v${stored.version} 高于当前桌面端支持的 v3`);
+    }
+    throw projectSessionError(projectName, "数据版本不受支持（仅支持 v2/v3）");
+  }
+  if (typeof stored.session_id !== "string" || !stored.session_id.trim()) {
+    throw projectSessionError(projectName, "缺少 session_id");
+  }
+  if (!Array.isArray(stored.messages)) throw projectSessionError(projectName, "缺少 messages");
+  if (!Array.isArray(stored.progress_cards)) throw projectSessionError(projectName, "缺少 progress_cards");
+  if (!Array.isArray(stored.visual_preset_cards)) throw projectSessionError(projectName, "缺少 visual_preset_cards");
+  if (!stored.settings_summary || typeof stored.settings_summary !== "object" || Array.isArray(stored.settings_summary)) {
+    throw projectSessionError(projectName, "缺少 settings_summary");
+  }
   return {
     version: 3,
     session_id: stored.session_id.trim(),
@@ -537,10 +590,22 @@ function normalizeProjectSession(stored) {
   };
 }
 
-async function readProjectSession(dir) {
+async function readProjectSession(dir, progress, fallbackName = path.basename(dir)) {
   const filePath = projectSessionsPath(dir);
-  const stored = await readJson(filePath);
-  return normalizeProjectSession(stored);
+  let source;
+  try {
+    source = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return defaultProjectSession(progress, fallbackName);
+    throw projectSessionError(fallbackName, `无法读取：${error?.message || error}`);
+  }
+  let stored;
+  try {
+    stored = JSON.parse(source);
+  } catch (error) {
+    throw projectSessionError(fallbackName, `不是有效 JSON：${error?.message || error}`);
+  }
+  return normalizeProjectSession(stored, progress, fallbackName);
 }
 
 function enqueueSessionWrite(novelName, task) {
@@ -646,7 +711,6 @@ async function listProjects() {
     const progressPath = path.join(dir, "改编进度.json");
     const progress = await readJson(progressPath);
     if (!progress || typeof progress !== "object" || !progress.novel_name) continue;
-    const session = await readProjectSession(dir);
     const adapted = Array.isArray(progress.adapted) ? progress.adapted : [];
     const episodes = progress.episodes && typeof progress.episodes === "object" ? progress.episodes : {};
     const renderedEpisodes = Object.entries(episodes)
@@ -713,8 +777,8 @@ async function listProjects() {
       updatedAt,
       cover,
       isDraft: Boolean(progress.draft_project),
-      agentSessionId: session.session_id,
-      settingsSummary: session.settings_summary,
+      agentSessionId: projectSessionId(progress, name),
+      settingsSummary: settingsFromProgress(progress),
     });
   }
   return projects.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
@@ -960,7 +1024,7 @@ async function finalizeDraftProject(currentName, payload = {}) {
     throw new Error(`项目“${nextName}”已经存在`);
   }
   await flushProjectSessionWrites(oldName);
-  await readProjectSession(oldDir);
+  await readProjectSession(oldDir, progress, oldName);
 
   let sourcePath = await materializeProjectSource(oldDir, payload, typeof progress.source_path === "string" ? progress.source_path : "");
   if (!sourcePath) throw new Error("请选择章节文件夹、章节文件或输入文稿");
@@ -984,7 +1048,7 @@ async function finalizeDraftProject(currentName, payload = {}) {
   }
   progress.source_path = sourcePath;
   await fs.writeFile(path.join(nextDir, "改编进度.json"), JSON.stringify(progress, null, 4), "utf8");
-  const session = await readProjectSession(nextDir);
+  const session = await readProjectSession(nextDir, progress, nextName);
   session.settings_summary = settingsFromProgress(progress);
   session.updated_at = new Date().toISOString();
   await writeJsonAtomic(projectSessionsPath(nextDir), session);
@@ -997,7 +1061,7 @@ async function getProjectConversation(novelName) {
   const dir = projectDir(resolvedName);
   const progress = await readJson(path.join(dir, "改编进度.json"));
   if (!progress || typeof progress !== "object") throw new Error("项目进度不存在");
-  const session = await readProjectSession(dir);
+  const session = await readProjectSession(dir, progress, resolvedName);
   const reviewEpisode = Object.entries(progress.episodes || {})
     .find(([, record]) => record?.stages?.visualPreset === "review")?.[0];
   const hasActivePresetCard = session.visual_preset_cards.some((card) => (
@@ -1039,7 +1103,7 @@ async function updateProjectConversation(novelName, payload) {
     const dir = projectDir(resolvedName);
     const progress = await readJson(path.join(dir, "改编进度.json"));
     if (!progress || typeof progress !== "object") throw new Error("项目进度不存在");
-    const session = await readProjectSession(dir);
+    const session = await readProjectSession(dir, progress, resolvedName);
     session.messages = snapshot;
     session.progress_cards = progressCards;
     session.visual_preset_cards = visualPresetCards;
