@@ -26,6 +26,15 @@ import { generateCharacterTool } from "../tools/generate-character.js";
 import { generateSceneTool } from "../tools/generate-scene.js";
 import { assignVoices, loadSfxCatalog } from "./render.js";
 
+/** 工具作为普通函数由流水线直调时，不存在 agent 扩展上下文。 */
+function executePipelineTool(tool: ToolDefinition, params: Record<string, unknown>): Promise<any> {
+  const execute = tool.execute as unknown as (
+    toolCallId: string,
+    values: Record<string, unknown>,
+  ) => Promise<any>;
+  return execute("", params);
+}
+
 // ── Sub-agent 系统提示 ────────────────────────────────────────
 
 const VISUAL_PRESET_SYSTEM = `你是分镜预设专员。任务：为小说原文的每一句话标注画面语言，辅助后续分镜制作。
@@ -555,7 +564,7 @@ export interface ArchiveResult {
 
 export async function archive(sel: NovelSelection, visualPresetPath: string): Promise<ArchiveResult> {
   const presetText = await fs.readFile(visualPresetPath, "utf-8");
-  const listResult = await listResourcesTool.execute("", { novel_name: sel.novelName });
+  const listResult = await executePipelineTool(listResourcesTool, { novel_name: sel.novelName });
   const listText   = (listResult.content[0] as any).text as string;
 
   // 角色姓名未点明/造型连续性判断不了时，给建档 agent 一个按需查后续章节原文的工具，
@@ -634,7 +643,7 @@ export async function archive(sel: NovelSelection, visualPresetPath: string): Pr
   // ── Step 1：原型图 + 场景底图 + 已有场景新软阶段，完全并行 ──────
   await Promise.all([
     ...newChars.map((c: any) =>
-      generateCharacterTool.execute("", {
+      executePipelineTool(generateCharacterTool, {
         novel_name: sel.novelName,
         name:       c.name,
         prompt:     c.prompt,
@@ -642,7 +651,7 @@ export async function archive(sel: NovelSelection, visualPresetPath: string): Pr
       }),
     ),
     ...newScenes.map((s: any) =>
-      generateSceneTool.execute("", {
+      executePipelineTool(generateSceneTool, {
         novel_name:    sel.novelName,
         location_name: s.location_name,
         base_prompt:   s.base_prompt,
@@ -651,7 +660,7 @@ export async function archive(sel: NovelSelection, visualPresetPath: string): Pr
       }),
     ),
     ...existingSceneStages.map((s: any) =>
-      generateSceneTool.execute("", {
+      executePipelineTool(generateSceneTool, {
         novel_name:    sel.novelName,
         location_name: s.location_name,
         base_prompt:   s.base_prompt,
@@ -682,7 +691,7 @@ export async function archive(sel: NovelSelection, visualPresetPath: string): Pr
   if (stageTasks.length > 0) {
     await Promise.all(
       stageTasks.map((st) =>
-        generateCharacterTool.execute("", {
+        executePipelineTool(generateCharacterTool, {
           novel_name: sel.novelName,
           name:       st.name,
           prompt:     st.prompt,

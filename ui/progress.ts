@@ -22,8 +22,8 @@ export function progressBar(done: number, total: number, width = 16): string {
   return "█".repeat(filled) + "░".repeat(width - filled) + ` ${done}/${total}`;
 }
 
-export function createProgress() {
-  const stages: StageInfo[] = STAGE_LABELS.map((label) => ({
+export function createProgress(stageLabels: readonly string[] = STAGE_LABELS) {
+  const stages: StageInfo[] = stageLabels.map((label) => ({
     label,
     status: "pending" as StageStatus,
   }));

@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-**Story Claw** is an AI-powered pipeline that transforms web novel chapters into short-form drama videos. It runs five sequential stages — each driven by LLM sub-agents or direct API calls — to produce a fully rendered episode with narration, image panels, and video clips.
+**Story Claw** is an AI-powered pipeline that transforms stories or argumentative articles into short-form videos. Story projects use the original storyboard pipeline; essay projects add an HTML-driven MG planning and rendering phase after the original footage is ready.
 
 ## Commands
 
@@ -19,7 +19,7 @@ npm start
 npm install -g .
 ```
 
-There are no automated tests or lint scripts defined in package.json. TypeScript is run directly via `tsx` at runtime (no compile step).
+TypeScript is run directly via `tsx` at runtime. Use `npm run typecheck` for the project type check and `npm run test:mg` for MG template and orchestration tests.
 
 ## Pipeline Stages
 
@@ -27,12 +27,20 @@ Defined in `runner/pipeline.ts`, orchestrated by `runner/solo.ts`（**唯一模�
 
 | 阶段 | 函数 | 描述 |
 |------|------|------|
+| 原文清理 | `cleanText()` | LLM sub-agent 清理原文，输出 `原文_clean.txt` |
+| MG 语义标注（仅议论文） | `annotateEssayMg()` | 第一次 AI 调用。把完整清稿逐字保留在 HTML 中，只添加 MG 标签及 `group`、`mode=together\|split`、`value`；此阶段禁止输出 `at` |
 | 画面预设 | `visualPreset()` | LLM sub-agent 逐句标注【场景\|人物\|景别\|角度\|镜头运动\|光影\|情绪\|语言\|独白】，输出 `画面预设.txt` |
 | 资源建档 | `archive()` | LLM sub-agent 识别角色/场景，输出 `archive-tasks` JSON；代码据此**批量分配音色**（`assignVoices`，写 `voice_map.json`）并调 `generateCharacterTool` / `generateSceneTool` 直接生图（并行） |
 | 剧本分场 | `segment()` | LLM sub-agent 按场景将原文切分为多个 `.md`；sub-agent 的 cwd 设为 `scripts/`，只写裸文件名 `{场景名}.md` |
 | 分镜制作 | `storyboard()` | 每个场景独立 LLM sub-agent，喂入角色名单**与音效库标签清单**，用 `append_group` 工具逐句写入 `storyboards/*.jsonl`；`image_prompt` 用 `[角色名·阶段]` 内联标注人物身份；可选在 group 加 `sfx` 字段标注字级音效（见「音效（SFX）」） |
 | 全局排序 | `assignGlobalOrder()` | storyboard 完成后、render 前调用。读取 `画面预设.txt` 的原文行序，与各 JSONL group 的 `text` 做子串匹配，为每个 group 写入 `global_order` 字段；未匹配的 group 打印警告日志并置为 999 |
-| 渲染合成 | `renderScene()` | 无 LLM agent。**先逐 group 配音**（`runGroupTtsPipeline`）拿真实音频时长 `d_g`，**再以 `d_g` 驱动该组 panel 视频时长**；各场景并行，组内 TTS→视频串行。配音时按 group `sfx` 字段在子片段层叠入字级音效（见「音效（SFX）」） |
+| 原画渲染 | `renderScene()` | **先逐 group 配音**拿真实音频时长 `d_g`，再以 `d_g` 驱动 panel 视频时长。议论文同时保留字级时间，供整集时间轴使用 |
+| 原画母版 | `buildEpisodeMaster()` | 拼接无声原画为不可覆盖的 `epXX_raw.mp4`，输出对齐音轨、`article_timeline.json` 和全局字幕；此时尚未加入 MG、字幕或音轨 |
+| MG Function Calling（仅议论文） | `planEssayMg()` | 第二次 AI 调用。AI 直接读取完整 HTML 与真实字级时间轴，每个 `group` 恰好调用一次模板函数，并为根及逐步元素填写绝对 `at` |
+| MG 渲染（仅议论文） | `renderAndAssembleEssayMg()` | 按 `mode` 编译动画窗口：`together` 连续渲染，`split` 只在节点运动区间显示；支持标题/重点大字嵌套覆盖，输出 `mg/epXX_mg_raw.mp4` |
+| 最终封装 | `finalizeEpisodeMedia()` | 在 MG 原片上烧字幕、合入对齐音轨，再执行议论文 BGM/倍速或故事后处理；绝不修改 `epXX_raw.mp4` |
+
+议论文的画面预设仍只读取 `原文_clean.txt`，不传入或解析 MG HTML。当前阶段结构按新项目数据设计，不提供旧 `改编进度.json` 或旧 MG 产物迁移。
 
 ## Architecture
 
@@ -100,6 +108,19 @@ workspace/
     │   └── {location}.png
     └── ep{XX}/
         ├── 画面预设.txt
+        ├── mg_annotation.html      # 议论文第一次 AI 的 MG 标签 HTML
+        ├── article_timeline.json   # 最终倍速前的整集字级绝对时间轴
+        ├── global_subtitles.json
+        ├── global_subtitles.ass
+        ├── ep{XX}_raw.mp4          # 不可覆盖：无 MG、无字幕、无音轨、无倍速
+        ├── ep{XX}_aligned_audio.wav
+        ├── mg/
+        │   ├── function_calls.json
+        │   ├── mg_plan.json
+        │   ├── render_bundle.json
+        │   ├── specs/
+        │   ├── clips/
+        │   └── ep{XX}_mg_raw.mp4   # 已插 MG，仍无字幕/音轨/倍速
         ├── scripts/
         │   └── {sceneName}.md
         ├── storyboards/
@@ -138,7 +159,7 @@ Chapter files: `第{N}章 {title}.txt`，放在用户指定的小说文件夹中
    - `is_continuation=true`：跳过生图，等待 `videoEvents` 前驱事件，提取尾帧后生视频
    - 生视频：`generateVideo()`（vidSem，默认并发 6），**duration 传入 `d_g` 派生的分数秒**，调用 ComfyUI LTX i2v workflow（时长→帧数换算见「视频时长控制」）
 3. **group 拼接**（顺序）：按 group 顺序将 panel 视频拼为 group 视频，再拼成 `_video_only.mp4`
-4. **全局对齐**（`globalAlignAndMerge`，在 `solo.ts` 调用）：收集各场景的 `_video_only.mp4` + `_tts_{scene}.mp3`，相向调速后拼为集视频。因逐组时长已精确贴合（每组误差 ≤ 半个帧栅格），调速比趋近 ×1.00，听感不受影响。
+4. **整集母版与最终封装**：`buildEpisodeMaster()` 收集各场景 group，保持视频原速拼成无声母版，只对音频做轻微 `atempo` 对齐。故事由 `globalAlignAndMerge()` 立即调用 `finalizeEpisodeMedia()`；议论文先生成字级时间轴并插入 MG，之后才烧字幕和 mux 音轨。
 
 > 注意：`imagesOnly` 模式（用户在 `/solo` 选「只生分镜图」）会跳过 TTS、生视频、拼接与合并，只产出 panel 静态图，且不推进进度，便于 ComfyUI 未就绪时先出图、之后重跑补视频。
 
@@ -190,9 +211,10 @@ LTX 帧数必须为 `8k+1`（latent 时间维 8× 压缩，模型架构属性，
 - **续跑/兜底**：group 音频已存在则直接跳过（含音效的旧文件天然复用）；库为空或 `sfx_enabled=false` 时全程跳过，行为与未加该功能时一致。
 
 ### 进度记录与续跑（`utils/progress.ts`）
-- `改编进度.json` 的 `episodes[ep].stages` 记录五阶段完成状态（`visualPreset`/`archive`/`segment`/`storyboard`/`render`）；`render` 取值 `images_only` 或 `done`。
-- `solo.ts` 每阶段完成调 `markStage`；整集完整渲染后调 `finalizeEpisode`（`render=done` + 追加 `adapted` + `next_chapter+1`）。
-- 重跑同一集：已 `done` 的阶段跳过（`archive` 跳过时其 `sceneNames` 从记录重建）；`render=images_only` 时重跑会补视频。`images_only` 不推进进度，故集号停留可原地续跑。
+- 故事阶段：`clean` / `visualPreset` / `archive` / `segment` / `storyboard` / `render`；`render` 是整集终态。
+- 议论文额外阶段：`mgAnnotate` / `mgPlan` / `mgRender` / `finalize`。其中 `render=done` 只表示原画母版、对齐音轨和时间轴就绪，只有 `finalize=done` 才推进章节。
+- `finalizeEpisode()` 在一次写入中设置对应终态、追加 `adapted` 并执行 `next_chapter+1`。`images_only` 不生成母版、不执行 MG，也不推进进度。
+- 议论文原画完成后立即关闭远端 GPU；仅续跑 `mgPlan` / `mgRender` / `finalize` 时不会再次申请 GPU。
 
 ### Agent Data
 - `agent-data/`: pi-coding-agent 框架自动创建的 session 状态

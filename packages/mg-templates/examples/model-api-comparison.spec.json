@@ -1,0 +1,14 @@
+{
+  "title": "自建模型与 API 调用",
+  "leftLabel": "自建模型",
+  "rightLabel": "API 调用",
+  "events": [
+    {"at": 1.0, "action": "add", "side": "left", "text": "数据和部署完全自主", "weight": 5},
+    {"at": 2.2, "action": "add", "side": "right", "text": "接入速度快，前期投入低", "weight": 4},
+    {"at": 3.4, "action": "add", "side": "left", "text": "需要持续承担训练和运维成本", "weight": 2},
+    {"at": 4.6, "action": "add", "side": "right", "text": "能力升级由供应商直接提供", "weight": 3},
+    {"at": 5.8, "action": "add", "side": "left", "text": "适合高度定制和敏感数据场景", "weight": 4},
+    {"at": 7.0, "action": "add", "side": "right", "text": "受价格、额度和平台能力约束", "weight": 2},
+    {"at": 8.3, "action": "highlight", "side": "left"}
+  ]
+}

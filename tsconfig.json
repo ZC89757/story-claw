@@ -3,11 +3,12 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "agent-data"]
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist", "agent-data", "experiments", "zenmux-doc"]
 }

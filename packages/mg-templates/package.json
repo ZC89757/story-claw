@@ -1,0 +1,56 @@
+{
+  "name": "@story-claw/mg-templates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Schema-driven Remotion MG templates for Story Claw.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./xy-chart": "./src/xy-chart/index.ts",
+    "./progress-timeline": "./src/progress-timeline/index.ts",
+    "./directed-graph": "./src/directed-graph/index.ts",
+    "./title": "./src/title/index.ts",
+    "./emphasis": "./src/emphasis/index.ts",
+    "./timed-table": "./src/timed-table/index.ts",
+    "./multi-series-chart": "./src/multi-series-chart/index.ts",
+    "./containment": "./src/containment/index.ts",
+    "./decomposition": "./src/decomposition/index.ts",
+    "./weighted-comparison": "./src/weighted-comparison/index.ts",
+    "./collage-network": "./src/collage-network/index.ts"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.5"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/xy-chart.test.ts tests/progress-timeline.test.ts tests/directed-graph.test.ts tests/title.test.ts tests/emphasis.test.ts tests/timed-table.test.ts tests/multi-series-chart.test.ts tests/containment.test.ts tests/decomposition.test.ts tests/weighted-comparison.test.ts tests/collage-network.test.ts tests/function-calling.test.ts",
+    "render:progress": "remotion render demo/render-entry.tsx ProgressTimelineDemo out/progress-timeline-demo.mp4",
+    "render:progress:vertical": "remotion render demo/render-entry.tsx VerticalProgressTimelineDemo out/progress-timeline-vertical-demo.mp4",
+    "render:directed-graph": "remotion render demo/render-entry.tsx DirectedGraphDemo out/directed-graph-demo.mp4",
+    "render:directed-graph:nvidia": "remotion render demo/render-entry.tsx NvidiaDirectedGraphDemo out/nvidia-directed-graph-demo.mp4",
+    "render:timed-table": "remotion render demo/render-entry.tsx TimedTableDemo out/gemini-gpt-table-demo.mp4",
+    "render:multi-series-chart": "remotion render demo/render-entry.tsx MultiSeriesChartDemo out/multi-series-bar-chart-demo.mp4",
+    "render:multi-series-line-chart": "remotion render demo/render-entry.tsx MultiSeriesLineChartDemo out/multi-series-line-chart-demo.mp4",
+    "render:containment": "remotion render demo/render-entry.tsx ContainmentDemo out/containment-demo.mp4",
+    "render:radial-relation": "remotion render demo/render-entry.tsx RadialRelationDemo out/radial-relation-demo.mp4",
+    "render:decomposition": "remotion render demo/render-entry.tsx DecompositionDemo out/decomposition-demo.mp4",
+    "render:balance-comparison": "remotion render demo/render-entry.tsx BalanceComparisonDemo out/balance-comparison-demo.mp4",
+    "render:side-comparison": "remotion render demo/render-entry.tsx SideComparisonDemo out/side-comparison-demo.mp4",
+    "render:ai-company-network": "remotion render demo/render-entry.tsx AiCompanyCollageNetworkDemo out/ai-company-collage-network-demo.mp4"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.512",
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "@types/node": "22.15.30",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.512",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  }
+}

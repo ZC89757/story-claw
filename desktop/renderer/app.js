@@ -660,9 +660,12 @@
     }
     #storyclaw-gui-concept .claw-library.is-chat-surface .claw-settings-summary-card { width: min(100%, 680px); }
     #storyclaw-gui-concept .claw-preset-review-card { display: grid; align-self: start; width: 100%; min-width: 0; overflow: hidden; border: 1px solid #3d3f44; border-radius: 8px; background: #191a1d; }
-    #storyclaw-gui-concept .claw-preset-review-head { padding: 18px 20px 16px; border-bottom: 1px solid #34363a; }
-    #storyclaw-gui-concept .claw-preset-review-copy { display: flex; align-items: baseline; min-width: 0; }
+    #storyclaw-gui-concept .claw-preset-review-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 20px 16px; border-bottom: 1px solid #34363a; }
+    #storyclaw-gui-concept .claw-preset-review-copy { display: flex; flex: 1 1 auto; align-items: baseline; min-width: 0; }
     #storyclaw-gui-concept .claw-preset-review-copy strong { color: #f0f0f1; font-size: 15px; font-weight: 600; line-height: 1.4; }
+    #storyclaw-gui-concept .claw-mg-open { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 3px 0; border: 0; background: transparent; color: #d5a46a; font-size: 12px; font-weight: 600; line-height: 1.5; }
+    #storyclaw-gui-concept .claw-mg-open:hover { color: #f0c18a; }
+    #storyclaw-gui-concept .claw-mg-open:disabled { cursor: wait; opacity: .55; }
     #storyclaw-gui-concept .claw-preset-review-card[data-status="superseded"] { border-color: #34363a; background: #151618; opacity: .68; }
     #storyclaw-gui-concept .claw-preset-table-wrap { min-width: 0; overflow: visible; }
     #storyclaw-gui-concept .claw-preset-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
@@ -685,7 +688,7 @@
       #storyclaw-gui-concept .claw-library.is-chat-surface .claw-pipeline-card,
       #storyclaw-gui-concept .claw-library.is-chat-surface .claw-choice-card,
       #storyclaw-gui-concept .claw-library.is-chat-surface .claw-settings-summary-card { margin-right: 0; margin-left: 0; }
-      #storyclaw-gui-concept .claw-preset-review-head { padding: 15px 14px 13px; }
+      #storyclaw-gui-concept .claw-preset-review-head { align-items: flex-start; padding: 15px 14px 13px; }
       #storyclaw-gui-concept .claw-preset-table { font-size: 11px; }
       #storyclaw-gui-concept .claw-preset-table th { padding: 9px 7px; font-size: 10px; }
       #storyclaw-gui-concept .claw-preset-table td { padding: 11px 7px; }
@@ -716,6 +719,20 @@
 
   function cleanLine(value) {
     return String(value || "").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").trim();
+  }
+
+  function reviewPhaseCopy(articleType) {
+    return articleType === "essay"
+      ? {
+        label: "等待审核画面与 MG 标注",
+        detail: "画面预设和 MG 标注已生成，请确认或提出修改意见",
+        activity: "等待你审核画面与 MG 标注",
+      }
+      : {
+        label: "等待审核画面预设",
+        detail: "画面预设已生成，请确认或提出修改意见",
+        activity: "等待你审核画面预设",
+      };
   }
 
   function normalizeConversation(value) {
@@ -772,6 +789,7 @@
         messageIndex: Math.max(0, Math.trunc(Number(item.messageIndex) || 0)),
         createdAt: String(item.createdAt || ""),
         status: validStatuses.has(item.status) ? item.status : "superseded",
+        ...(item.articleType === "essay" || item.articleType === "story" ? { articleType: item.articleType } : {}),
         text: String(item.text || ""),
       }));
   }
@@ -801,7 +819,7 @@
   }
 
   function isRenderPhase(phase) {
-    return ["gpu_queued", "gpu_ready", "rendering", "merging", "postprocessing", "gpu_stopped", "completed", "failed", "stopped"].includes(phase);
+    return ["gpu_queued", "gpu_ready", "rendering", "merging", "mg_planning", "mg_rendering", "finalizing", "postprocessing", "gpu_stopped", "completed", "failed", "stopped"].includes(phase);
   }
 
   function projectHasRenderedEpisode(project, episode) {
@@ -1679,25 +1697,26 @@
     const persistedReviewCard = state.progressCards.find((card) => card.status === "review");
     const reviewEpisode = Number(persistedReviewCard?.episode || project.reviewEpisodes?.[0] || 0);
     if (reviewEpisode > 0 && (!activeRunProject || state.running?.status === "review")) {
+      const reviewCopy = reviewPhaseCopy(project.articleType);
       state.running = {
         ...(activeRunProject ? state.running : {}),
         runId: String(state.running?.runId || persistedReviewCard?.runId || `review_${project.id}_${reviewEpisode}`),
         status: "review",
         selection: state.running?.selection || { ...makeSelection(), episode: reviewEpisode },
         phase: "visual_preset_review",
-        phaseLabel: "等待审核画面预设",
-        phaseDetail: "画面预设已生成，请确认或提出修改意见",
+        phaseLabel: reviewCopy.label,
+        phaseDetail: reviewCopy.detail,
         logs: [],
       };
       if (persistedReviewCard) {
         persistedReviewCard.status = "review";
         persistedReviewCard.phase = "visual_preset_review";
-        persistedReviewCard.label = "等待审核画面预设";
-        persistedReviewCard.detail = "画面预设已生成，请确认或提出修改意见";
+        persistedReviewCard.label = reviewCopy.label;
+        persistedReviewCard.detail = reviewCopy.detail;
       }
       state.runPhase = "visual_preset_review";
-      state.runPhaseLabel = "等待审核画面预设";
-      state.runPhaseDetail = "画面预设已生成，请确认或提出修改意见";
+      state.runPhaseLabel = reviewCopy.label;
+      state.runPhaseDetail = reviewCopy.detail;
       state.runStepIndex = pipelineStepIndex(state.runPhase);
       ensureProgressCard(state.running);
     }
@@ -1765,7 +1784,7 @@
   }
 
   function agentPhaseVisible() {
-    if (["gpu_queued", "gpu_ready", "rendering", "merging", "postprocessing", "gpu_stopped"].includes(state.runPhase)) return true;
+    if (["gpu_queued", "gpu_ready", "rendering", "merging", "mg_planning", "mg_rendering", "finalizing", "postprocessing", "gpu_stopped"].includes(state.runPhase)) return true;
     return state.agentMonitorActivated && ["completed", "failed", "stopped"].includes(state.runPhase);
   }
 
@@ -1811,6 +1830,7 @@
     const stepId = {
       planning: "prepare",
       preparing: "prepare",
+      mg_annotating: "prepare",
       visual_preset: "preset",
       archiving: "archive",
       segmenting: "storyboard",
@@ -1820,6 +1840,9 @@
       gpu_ready: "gpu",
       rendering: "render",
       merging: "render",
+      mg_planning: "render",
+      mg_rendering: "render",
+      finalizing: "render",
       postprocessing: "render",
       gpu_stopped: "render",
       completed: "render",
@@ -1889,6 +1912,9 @@
     const paused = card.status === "paused";
     const review = card.status === "review";
     const completeAll = card.status === "completed";
+    const reviewCopy = reviewPhaseCopy(
+      state.running?.selection?.articleType || state.selectedProject?.articleType,
+    );
     const currentIndex = completeAll
       ? steps.length - 1
       : Math.max(card.currentIndex || 0, pipelineStepIndex(card.phase, steps, card.currentIndex || 0));
@@ -1908,11 +1934,11 @@
       id: card.id,
       status: card.status,
       tone,
-      label: stopping ? "正在暂停" : review ? "等待审核画面预设" : paused ? "已暂停" : (card.label || "流水线运行中"),
+      label: stopping ? "正在暂停" : review ? reviewCopy.label : paused ? "已暂停" : (card.label || "流水线运行中"),
       detail: stopping
         ? "正在保存当前进度并关闭 GPU"
         : review
-        ? "画面预设已生成，请确认或提出修改意见"
+        ? reviewCopy.detail
         : paused
         ? "当前进度已保存，发送“继续运行”可恢复"
         : (card.detail || "正在处理当前任务"),
@@ -2024,21 +2050,44 @@
 
   function renderVisualPresetCard(card) {
     const parsed = parseVisualPresetText(card?.text);
+    const articleType = card?.articleType === "essay" || card?.articleType === "story"
+      ? card.articleType
+      : parsed.articleType;
     const wrapper = document.createElement("section");
     wrapper.className = "claw-preset-review-card";
     wrapper.dataset.presetReviewId = card?.id || "";
     wrapper.dataset.status = card?.status || "superseded";
-    wrapper.dataset.articleType = parsed.articleType;
+    wrapper.dataset.articleType = articleType;
     wrapper.setAttribute("role", "region");
-    wrapper.setAttribute("aria-label", `画面预设审核，共 ${parsed.rows.length} 条`);
+    wrapper.setAttribute("aria-label", `${articleType === "essay" ? "画面与 MG 标注" : "画面预设"}审核，共 ${parsed.rows.length} 条画面预设`);
     const head = document.createElement("div");
     head.className = "claw-preset-review-head";
     const copy = document.createElement("div");
     copy.className = "claw-preset-review-copy";
     const title = document.createElement("strong");
-    title.textContent = `画面预设 · ${parsed.rows.length} 条`;
+    title.textContent = articleType === "essay"
+      ? `画面与 MG 标注审核 · ${parsed.rows.length} 条画面预设`
+      : `画面预设 · ${parsed.rows.length} 条`;
     copy.appendChild(title);
     head.appendChild(copy);
+    if (articleType === "essay") {
+      const openMg = document.createElement("button");
+      openMg.type = "button";
+      openMg.className = "claw-mg-open";
+      openMg.innerHTML = '<i data-lucide="external-link" aria-hidden="true"></i><span>在浏览器中查看 MG 标注</span>';
+      openMg.addEventListener("click", async () => {
+        if (openMg.disabled) return;
+        openMg.disabled = true;
+        try {
+          await api.openMgAnnotation(card?.projectName || "", card?.episode || 1);
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : "MG 标注暂时无法打开");
+        } finally {
+          openMg.disabled = false;
+        }
+      });
+      head.appendChild(openMg);
+    }
     wrapper.appendChild(head);
 
     const tableWrap = document.createElement("div");
@@ -2073,6 +2122,7 @@
       actions.appendChild(approve);
       wrapper.appendChild(actions);
     }
+    queueMicrotask(() => window.lucide?.createIcons({ attrs: { width: 16, height: 16 } }));
     return wrapper;
   }
 
@@ -2111,7 +2161,11 @@
       settings?.aspectRatio || "画幅待选择",
       mode,
       settings?.ethnicity ? `人物风格：${settings.ethnicity}` : "人物风格：自动",
-      typeof settings?.reviewVisualPreset === "boolean" ? (settings.reviewVisualPreset ? "审核画面预设" : "不审核画面预设") : "审核选项待选择",
+      typeof settings?.reviewVisualPreset === "boolean"
+        ? settings.reviewVisualPreset
+          ? settings?.articleType === "essay" ? "审核画面与 MG 标注" : "审核画面预设"
+          : settings?.articleType === "essay" ? "不审核画面与 MG 标注" : "不审核画面预设"
+        : "审核选项待选择",
       typeof settings?.requireFinalConfirmation === "boolean" ? (settings.requireFinalConfirmation ? "需要最终确认" : "最终确认选项待选择") : "最终确认选项待选择",
     ].filter(Boolean);
     values.forEach((value) => { const item = document.createElement("span"); item.textContent = value; meta.appendChild(item); });
@@ -2767,7 +2821,7 @@
     if (!["failed", "stopped"].includes(state.runPhase)) {
       state.runStepIndex = Math.max(state.runStepIndex || 0, pipelineStepIndex(state.runPhase));
     }
-    const renderStarted = ["gpu_queued", "gpu_ready", "rendering", "merging", "postprocessing", "gpu_stopped"].includes(state.runPhase);
+    const renderStarted = ["gpu_queued", "gpu_ready", "rendering", "merging", "mg_planning", "mg_rendering", "finalizing", "postprocessing", "gpu_stopped"].includes(state.runPhase);
     if (renderStarted) {
       state.renderWorkspaceActivated = true;
       state.agentMonitorActivated = true;
@@ -2853,6 +2907,7 @@
         pause_pipeline: "正在暂停流水线",
         show_visual_preset: "正在展示画面预设",
         revise_visual_preset: "正在根据意见修改画面预设",
+        revise_mg_annotation: "正在根据意见修改 MG 标注",
       };
       state.agentActivityLabel = event.status === "error"
         ? "操作未完成"
@@ -2876,18 +2931,24 @@
         messageIndex: state.agentMessages.length,
         createdAt: new Date().toISOString(),
         status: "active",
+        articleType: event.articleType === "essay" ? "essay" : "story",
         text: String(event.text),
       };
       state.visualPresetCards.push(card);
+      const reviewCopy = reviewPhaseCopy(card.articleType);
       const progressCard = progressCardForRun(state.running?.runId);
       if (progressCard) {
         progressCard.status = "review";
         progressCard.phase = "visual_preset_review";
-        progressCard.label = "等待审核画面预设";
-        progressCard.detail = "画面预设已展示，请确认或继续提出修改意见";
+        progressCard.label = reviewCopy.label;
+        progressCard.detail = card.articleType === "essay"
+          ? "画面预设已展示，可打开 MG 标注并确认或继续提出修改意见"
+          : "画面预设已展示，请确认或继续提出修改意见";
       }
-      state.agentActivityLabel = "等待你审核画面预设";
-      state.agentActivityDetail = "可以确认，也可以继续提出修改意见";
+      state.agentActivityLabel = reviewCopy.activity;
+      state.agentActivityDetail = card.articleType === "essay"
+        ? "可以浏览 MG 标注、确认，或继续提出修改意见"
+        : "可以确认，也可以继续提出修改意见";
       scheduleConversationPersist();
       renderAgentMessages();
       renderHomeConversation();
@@ -2972,9 +3033,10 @@
       }
     } else if (event.status === "review") {
       state.running = { ...(state.running || {}), runId: event.runId, status: "review", selection: event.selection || state.running?.selection };
+      const reviewCopy = reviewPhaseCopy(state.running?.selection?.articleType || state.selectedProject?.articleType);
       state.runPhase = "visual_preset_review";
-      state.runPhaseLabel = "等待审核画面预设";
-      state.runPhaseDetail = "画面预设已生成，请确认或提出修改意见";
+      state.runPhaseLabel = reviewCopy.label;
+      state.runPhaseDetail = reviewCopy.detail;
       const card = progressCardForRun(event.runId) || ensureProgressCard(state.running);
       if (card) {
         card.status = "review";
@@ -2982,7 +3044,7 @@
         card.label = state.runPhaseLabel;
         card.detail = state.runPhaseDetail;
       }
-      state.agentActivityLabel = "等待你审核画面预设";
+      state.agentActivityLabel = reviewCopy.activity;
       state.agentActivityDetail = "可以确认，也可以直接提出修改意见";
       scheduleConversationPersist();
     } else if (["stopping", "stopped"].includes(event.status)) {
@@ -3041,10 +3103,11 @@
       renderAssetProjectOptions();
       const activeRun = await api.getActiveRun();
       if (activeRun) {
+        const reviewCopy = reviewPhaseCopy(activeRun.selection?.articleType);
         state.running = {
           runId: activeRun.runId,
           status: activeRun.status === "stopping" ? "stopping" : activeRun.status === "review" ? "review" : "running",
-          statusText: activeRun.status === "stopping" ? "正在暂停任务…" : activeRun.status === "review" ? "等待审核画面预设" : "运行中…",
+          statusText: activeRun.status === "stopping" ? "正在暂停任务…" : activeRun.status === "review" ? reviewCopy.label : "运行中…",
           selection: activeRun.selection,
           phase: activeRun.phase,
           phaseLabel: activeRun.phaseLabel,
@@ -3058,8 +3121,8 @@
         state.agentMonitorActivated = isRenderPhase(state.runPhase);
         if (activeRun.status === "review") {
           state.runPhase = "visual_preset_review";
-          state.runPhaseLabel = "等待审核画面预设";
-          state.runPhaseDetail = "画面预设已生成，请确认或提出修改意见";
+          state.runPhaseLabel = reviewCopy.label;
+          state.runPhaseDetail = reviewCopy.detail;
           state.runStepIndex = pipelineStepIndex(state.runPhase);
           ensureProgressCard(state.running);
         }

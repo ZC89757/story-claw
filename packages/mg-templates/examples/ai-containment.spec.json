@@ -1,0 +1,8 @@
+{
+  "events": [
+    {"at": 1.2, "action": "contain", "parent": "人工智能", "child": "机器学习"},
+    {"at": 3.5, "action": "contain", "parent": "机器学习", "child": "深度学习"},
+    {"at": 5.8, "action": "contain", "parent": "深度学习", "child": "生成式 AI"},
+    {"at": 8.0, "action": "highlight", "target": "生成式 AI"}
+  ]
+}

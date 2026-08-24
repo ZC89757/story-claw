@@ -99,6 +99,18 @@ const sessionWriteQueues = new Map();
 const projectNameAliases = new Map();
 const pendingVisualPresetDisplays = new Set();
 
+function reviewPhaseCopy(articleType) {
+  return articleType === "essay"
+    ? {
+      label: "等待审核画面与 MG 标注",
+      detail: "画面预设和 MG 标注已生成，请确认或提出修改意见",
+    }
+    : {
+      label: "等待审核画面预设",
+      detail: "画面预设已生成，请确认或提出修改意见",
+    };
+}
+
 function send(channel, payload) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(channel, payload);
@@ -228,6 +240,7 @@ function normalizeVisualPresetCards(value) {
       messageIndex: Math.max(0, Math.trunc(Number(item.messageIndex) || 0)),
       createdAt: String(item.createdAt || ""),
       status: validStatuses.has(item.status) ? item.status : "superseded",
+      ...(item.articleType === "essay" || item.articleType === "story" ? { articleType: item.articleType } : {}),
       text: String(item.text || ""),
     }));
 }
@@ -894,6 +907,13 @@ async function approveVisualPreset(novelName, episode) {
     version: Math.max(1, Math.trunc(Number(record.visual_preset_review?.version) || 1)),
     status: "approved",
   };
+  if (progress.article_type === "essay") {
+    record.mg_annotation_review = {
+      ...(record.mg_annotation_review || {}),
+      version: Math.max(1, Math.trunc(Number(record.mg_annotation_review?.version) || 1)),
+      status: "approved",
+    };
+  }
   record.updated_at = new Date().toISOString();
   progress.episodes[key] = record;
   await writeJsonAtomic(progressPath, progress);
@@ -917,6 +937,22 @@ async function inspectSource(inputPath) {
   const stat = await fs.stat(resolvedPath);
   if (!stat.isDirectory() && !stat.isFile()) return null;
   return { kind: stat.isDirectory() ? "directory" : "file", path: resolvedPath };
+}
+
+async function openMgAnnotation(novelName, episode) {
+  const resolvedName = resolveProjectName(novelName);
+  const dir = projectDir(resolvedName);
+  const progress = await readJson(path.join(dir, "改编进度.json"));
+  if (!progress || typeof progress !== "object") throw new Error("项目进度不存在");
+  if (progress.article_type !== "essay") throw new Error("只有议论文项目包含 MG 标注");
+  const episodeNumber = Math.max(1, Math.trunc(Number(episode) || 1));
+  const target = path.join(dir, `ep${String(episodeNumber).padStart(2, "0")}`, "mg_annotation.html");
+  if (!isWithin(dir, target)) throw new Error("MG 标注路径无效");
+  const stat = await fs.stat(target).catch(() => null);
+  if (!stat?.isFile()) throw new Error("MG 标注 HTML 尚未生成");
+  const error = await shell.openPath(target);
+  if (error) throw new Error(error);
+  return { opened: true, novelName: resolvedName, episode: episodeNumber };
 }
 
 function chapterFileName(originalName) {
@@ -1191,14 +1227,15 @@ function requestVisualPresetDisplay(selection) {
   if (pendingVisualPresetDisplays.has(key)) return false;
   try {
     ensureAgentWorker(selection);
+    const reviewCopy = reviewPhaseCopy(selection.articleType);
     const accepted = sendAgentInput({
       type: "review_ready",
       context: {
         projectName: selection.novelName,
         episode: selection.episode,
         phase: "visual_preset_review",
-        phaseLabel: "等待审核画面预设",
-        phaseDetail: "画面预设已生成，请确认或提出修改意见",
+        phaseLabel: reviewCopy.label,
+        phaseDetail: reviewCopy.detail,
         runStatus: "review",
         settings: settingsForSelection(selection),
       },
@@ -1382,6 +1419,7 @@ function handleAgentWorkerLine(line) {
       text,
       projectName: selection.novelName,
       episode: Math.max(1, Math.trunc(Number(selection.episode) || 1)),
+      articleType: selection.articleType === "essay" ? "essay" : "story",
     });
     return;
   }
@@ -1502,13 +1540,16 @@ function handleRunOutputLine(line, streamName, run = activeRun) {
     try {
       const marker = JSON.parse(trimmed.slice(reviewPrefix.length));
       if (run) {
+        const articleType = marker.articleType === "essay" || run.selection?.articleType === "essay" ? "essay" : "story";
+        const reviewCopy = reviewPhaseCopy(articleType);
         run.reviewPending = true;
         run.status = "review";
         run.phase = "visual_preset_review";
-        run.phaseLabel = "等待审核画面预设";
-        run.phaseDetail = "画面预设已生成，请确认或提出修改意见";
+        run.phaseLabel = reviewCopy.label;
+        run.phaseDetail = reviewCopy.detail;
         run.selection = {
           ...run.selection,
+          articleType,
           episode: Math.max(1, Math.trunc(Number(marker.episode) || Number(run.selection.episode) || 1)),
         };
         requestVisualPresetDisplay(run.selection);
@@ -1540,7 +1581,10 @@ function shutdownGpuOnce(run) {
 }
 
 function startRun(selection) {
-  if (activeRun) throw new Error(activeRun.status === "review" ? "画面预设正在等待审核" : "已有任务正在运行");
+  if (activeRun) {
+    const reviewCopy = reviewPhaseCopy(activeRun.selection?.articleType);
+    throw new Error(activeRun.status === "review" ? `${reviewCopy.label.replace(/^等待审核/, "")}正在等待审核` : "已有任务正在运行");
+  }
   if (!selection || typeof selection.novelName !== "string") throw new Error("运行参数无效");
   if (!selection.sourcePath) throw new Error("项目还没有章节源目录");
   if (selection.articleType !== "essay" && selection.articleType !== "story") throw new Error("项目文章类型尚未确定");
@@ -1658,6 +1702,7 @@ ipcMain.handle("assets:list", (_event, novelName) => getAssets(novelName));
 ipcMain.handle("episode:preview", (_event, novelName, episode) => getEpisodePreview(novelName, episode));
 ipcMain.handle("source:choose", (_event, kind) => chooseSource(kind === "file" ? "file" : "directory"));
 ipcMain.handle("source:inspect", (_event, inputPath) => inspectSource(inputPath));
+ipcMain.handle("mg-annotation:open", (_event, novelName, episode) => openMgAnnotation(novelName, episode));
 ipcMain.handle("project:create", (_event, payload) => createProject(payload));
 ipcMain.handle("project:conversation:get", (_event, novelName) => getProjectConversation(novelName));
 ipcMain.handle("project:conversation", (_event, novelName, messages) => updateProjectConversation(novelName, messages));

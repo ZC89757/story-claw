@@ -159,7 +159,7 @@ const SFX_ENABLED = (ttsCfg.sfx_enabled ?? true) as boolean;
 const SFX_VOLUME  = (ttsCfg.sfx_volume ?? 0.7) as number;   // 音效相对音量 0–1
 const SFX_DIR     = path.join(CONFIG_DIR, "sfx");           // 全局音效库
 
-// 字幕（逐 group 烧制到视频）
+// 字幕（TTS 阶段生成局部事件，整集拼接后统一烧录）
 const SUBTITLES_ENABLED    = (ttsCfg.subtitles_enabled             ?? true) as boolean;
 const SUBTITLES_CHARS_PORT = (ttsCfg.subtitles_max_chars_portrait  ?? 12)   as number;
 const SUBTITLES_CHARS_LAND = (ttsCfg.subtitles_max_chars_landscape ?? 18)   as number;
@@ -821,7 +821,232 @@ const _globalSelectSem = new Semaphore(SELECT_CONCURRENCY);
 
 // ── TTS 管线 ──────────────────────────────────────────────────────────────────
 
-interface TtsWord { word: string; startTime: number; endTime: number; }
+export interface TtsWord { word: string; startTime: number; endTime: number; }
+
+export interface LocalCharTiming {
+  char: string;
+  start: number;
+  end: number;
+}
+
+export interface ArticleTimelineEntry {
+  index: number;
+  char: string;
+  group_order: number;
+  start: number;
+  end: number;
+}
+
+export interface SubtitleEvent {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface GlobalSubtitleEvent extends SubtitleEvent {
+  group_order: number;
+}
+
+interface TimedChar extends LocalCharTiming {}
+
+function normalizeTimingChar(char: string): string {
+  if (/\s/u.test(char)) return "";
+  return char.normalize("NFKC").toLocaleLowerCase("en-US");
+}
+
+function expandTimedWords(words: TtsWord[]): TimedChar[] {
+  const result: TimedChar[] = [];
+  for (const word of words) {
+    const chars = [...String(word.word ?? "")];
+    if (chars.length === 0) continue;
+    const start = Number.isFinite(word.startTime) ? Math.max(0, word.startTime) : 0;
+    const rawEnd = Number.isFinite(word.endTime) ? word.endTime : start;
+    const end = Math.max(start, rawEnd);
+    const step = (end - start) / chars.length;
+    for (let i = 0; i < chars.length; i++) {
+      result.push({
+        char: chars[i],
+        start: start + step * i,
+        end: i === chars.length - 1 ? end : start + step * (i + 1),
+      });
+    }
+  }
+  return result;
+}
+
+function timingCharsMatch(source: string, timed: string): boolean {
+  const a = normalizeTimingChar(source);
+  const b = normalizeTimingChar(timed);
+  return a.length > 0 && a === b;
+}
+
+/**
+ * 将豆包 token 时间映射回原文的每个 Unicode 字符。完全匹配的字符沿用真实时间；
+ * 数字 TN、英文读法和被 TTS 省略的标点，使用相邻匹配字符之间的时间均分补齐。
+ */
+export function buildLocalCharTimeline(
+  sourceText: string,
+  words: TtsWord[],
+  duration: number,
+): LocalCharTiming[] {
+  const sourceChars = [...sourceText];
+  if (sourceChars.length === 0) return [];
+
+  const timedChars = expandTimedWords(words);
+  const safeDuration = Math.max(
+    Number.isFinite(duration) ? duration : 0,
+    timedChars[timedChars.length - 1]?.end ?? 0,
+  );
+
+  // group 通常只有几十个字，LCS 足以稳定处理重复字、英文和数字 TN 差异。
+  const dp: Uint16Array[] = Array.from(
+    { length: sourceChars.length + 1 },
+    () => new Uint16Array(timedChars.length + 1),
+  );
+  for (let i = 1; i <= sourceChars.length; i++) {
+    for (let j = 1; j <= timedChars.length; j++) {
+      dp[i][j] = timingCharsMatch(sourceChars[i - 1], timedChars[j - 1].char)
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  const matches: Array<{ source: number; timed: number }> = [];
+  let si = sourceChars.length;
+  let ti = timedChars.length;
+  while (si > 0 && ti > 0) {
+    if (
+      timingCharsMatch(sourceChars[si - 1], timedChars[ti - 1].char) &&
+      dp[si][ti] === dp[si - 1][ti - 1] + 1
+    ) {
+      matches.push({ source: si - 1, timed: ti - 1 });
+      si--;
+      ti--;
+    } else if (dp[si - 1][ti] >= dp[si][ti - 1]) {
+      si--;
+    } else {
+      ti--;
+    }
+  }
+  matches.reverse();
+
+  const result: Array<LocalCharTiming | undefined> = sourceChars.map(() => undefined);
+  for (const match of matches) {
+    const timed = timedChars[match.timed];
+    result[match.source] = { char: sourceChars[match.source], start: timed.start, end: timed.end };
+  }
+
+  const anchors = [
+    { source: -1, timed: -1 },
+    ...matches,
+    { source: sourceChars.length, timed: timedChars.length },
+  ];
+  for (let ai = 0; ai < anchors.length - 1; ai++) {
+    const prev = anchors[ai];
+    const next = anchors[ai + 1];
+    const from = prev.source + 1;
+    const count = next.source - from;
+    if (count <= 0) continue;
+
+    const rangeStart = prev.timed >= 0 ? timedChars[prev.timed].end : 0;
+    const rawRangeEnd = next.timed < timedChars.length
+      ? timedChars[next.timed].start
+      : safeDuration;
+    const rangeEnd = Math.max(rangeStart, rawRangeEnd);
+    const step = (rangeEnd - rangeStart) / count;
+    for (let i = 0; i < count; i++) {
+      result[from + i] = {
+        char: sourceChars[from + i],
+        start: rangeStart + step * i,
+        end: i === count - 1 ? rangeEnd : rangeStart + step * (i + 1),
+      };
+    }
+  }
+
+  return result as LocalCharTiming[];
+}
+
+export function buildGlobalArticleTimeline(
+  groups: Array<{ globalOrder: number; charTimings: LocalCharTiming[] }>,
+  groupDurations: number[],
+  audioSpeed: number,
+): ArticleTimelineEntry[] {
+  if (groups.length !== groupDurations.length) {
+    throw new Error("生成全文时间轴失败：group 与音频时长数量不一致");
+  }
+  if (!Number.isFinite(audioSpeed) || audioSpeed <= 0) {
+    throw new Error(`生成全文时间轴失败：无效音频速度 ${audioSpeed}`);
+  }
+
+  const result: ArticleTimelineEntry[] = [];
+  let index = 0;
+  let groupOffset = 0;
+  const round = (value: number) => Number(value.toFixed(3));
+
+  for (let gi = 0; gi < groups.length; gi++) {
+    const group = groups[gi];
+    const rawDuration = groupDurations[gi];
+    const duration = Number.isFinite(rawDuration) ? Math.max(0, rawDuration) : 0;
+    for (const item of group.charTimings) {
+      const localStart = Math.min(duration, Math.max(0, item.start));
+      const localEnd = Math.min(duration, Math.max(localStart, item.end));
+      const start = Math.max(0, (groupOffset + localStart) / audioSpeed);
+      const end = Math.max(start, (groupOffset + localEnd) / audioSpeed);
+      result.push({
+        index: index++,
+        char: item.char,
+        group_order: group.globalOrder,
+        start: round(start),
+        end: round(end),
+      });
+    }
+    groupOffset += duration;
+  }
+
+  return result;
+}
+
+export function buildGlobalSubtitleTimeline(
+  groups: Array<{ globalOrder: number; subtitleEvents: SubtitleEvent[] }>,
+  groupDurations: number[],
+  audioSpeed: number,
+): GlobalSubtitleEvent[] {
+  if (groups.length !== groupDurations.length) {
+    throw new Error("生成全局字幕失败：group 与音频时长数量不一致");
+  }
+  if (!Number.isFinite(audioSpeed) || audioSpeed <= 0) {
+    throw new Error(`生成全局字幕失败：无效音频速度 ${audioSpeed}`);
+  }
+
+  const result: GlobalSubtitleEvent[] = [];
+  const round = (value: number) => Number(value.toFixed(3));
+  let groupOffset = 0;
+  let previousEnd = 0;
+
+  for (let gi = 0; gi < groups.length; gi++) {
+    const group = groups[gi];
+    const rawDuration = groupDurations[gi];
+    const duration = Number.isFinite(rawDuration) ? Math.max(0, rawDuration) : 0;
+
+    for (const event of group.subtitleEvents) {
+      const localStart = Math.min(duration, Math.max(0, event.start));
+      const localEnd = Math.min(duration, Math.max(localStart, event.end));
+      const start = Math.max(previousEnd, round((groupOffset + localStart) / audioSpeed));
+      const end = Math.max(start, round((groupOffset + localEnd) / audioSpeed));
+      result.push({
+        group_order: group.globalOrder,
+        start,
+        end,
+        text: event.text,
+      });
+      previousEnd = end;
+    }
+
+    groupOffset += duration;
+  }
+
+  return result;
+}
 
 export async function ttsExecApi(
   text: string,
@@ -1010,9 +1235,20 @@ const GROUP_TTS_SYSTEM = `你是配音切分助手。给定剧本中的一句话
 只输出 JSON 数组，不要任何其他文字：
 [{"text":"...","voice":"音色名","style":"..."}]`;
 
+interface GroupTtsResult {
+  duration: number;
+  charTimings?: LocalCharTiming[];
+  subtitleEvents?: SubtitleEvent[];
+}
+
+interface EssayGroupTimingCache extends GroupTtsResult {
+  version: 1;
+  sourceText: string;
+}
+
 /**
- * 阶段二：逐 group 配音。每个 group 由 LLM 按说话人切分 → 并行合成子片段 → 拼成组音频。
- * 返回每个 group 的真实音频时长（秒），并把全部组音频按序拼成场景音频 _tts_{scene}.mp3。
+ * 阶段二：逐 group 配音。故事文按说话人切分；议论文整组直接使用旁白。
+ * 返回每个 group 的音频时长和可选字级时间，并把全部组音频拼成场景音频。
  */
 async function runGroupTtsPipeline(
   groups: any[],
@@ -1020,7 +1256,8 @@ async function runGroupTtsPipeline(
   outputDir: string,
   sceneName: string,
   aspectRatio: string,
-): Promise<number[]> {
+  isEssay: boolean,
+): Promise<GroupTtsResult[]> {
   const tmpDir = path.join(outputDir, "tts_segments");
   await fs.mkdir(tmpDir, { recursive: true });
 
@@ -1032,44 +1269,87 @@ async function runGroupTtsPipeline(
   const llmSem = new Semaphore(TTS_CONCURRENCY);
   const ttsSem = new Semaphore(TTS_CONCURRENCY);
   const groupAudio = (gi: number) => path.join(outputDir, `g${String(gi).padStart(2, "0")}_tts.mp3`);
+  const essayTiming = (gi: number) => path.join(outputDir, `g${String(gi).padStart(2, "0")}_timing.json`);
   // 音效库（一次性加载）：group.sfx 里的 sound 标签据此解析为文件路径
   const sfxCatalog = SFX_ENABLED ? loadSfxCatalog() : new Map<string, string>();
 
-  const durations = await Promise.all(groups.map(async (group: any, gi: number): Promise<number> => {
+  const results = await Promise.all(groups.map(async (group: any, gi: number): Promise<GroupTtsResult> => {
     const ga = groupAudio(gi);
-    if (fsSync.existsSync(ga)) return getMediaDuration(ga);  // 续跑：已存在直接量时长
-
     const text = String(group.text ?? "").trim();
-
-    // 从本 group 的【】里抽出【语言】字段（画面预设标注的「(说话人)台词」），显式拼给切分 LLM 作参考
-    const langRefs: string[] = [];
-    for (const mm of text.matchAll(/【([^】]*)】/g)) {
-      const f = mm[1].split("|").map((s) => s.trim());
-      if (f.length >= 8 && f[7] && f[7] !== "无") langRefs.push(f[7]);
+    if (fsSync.existsSync(ga) && isEssay && fsSync.existsSync(essayTiming(gi))) {
+      try {
+        const cached = JSON.parse(await fs.readFile(essayTiming(gi), "utf-8")) as EssayGroupTimingCache;
+        const actualDuration = await getMediaDuration(ga);
+        if (
+          cached.version === 1 &&
+          cached.sourceText === text &&
+          Array.isArray(cached.charTimings) &&
+          (!SUBTITLES_ENABLED || Array.isArray(cached.subtitleEvents)) &&
+          Math.abs(cached.duration - actualDuration) <= 0.05
+        ) {
+          return {
+            duration: actualDuration,
+            charTimings: cached.charTimings,
+            subtitleEvents: cached.subtitleEvents,
+          };
+        }
+      } catch { /* 不完整的本次缓存重新合成 */ }
+      console.log(`[groupTTS g${String(gi).padStart(2, "0")}] 时间缓存与原文或音频不一致，重新合成`);
     }
-    const langRef = langRefs.join("　");
+    if (fsSync.existsSync(ga) && !isEssay) {
+      const subtitlesPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_subtitles.json`);
+      if (!SUBTITLES_ENABLED) {
+        return {
+          duration: await getMediaDuration(ga),
+        };
+      }
+      if (fsSync.existsSync(subtitlesPath)) {
+        try {
+          const subtitleEvents = JSON.parse(await fs.readFile(subtitlesPath, "utf-8"));
+          if (Array.isArray(subtitleEvents)) {
+            return {
+              duration: await getMediaDuration(ga),
+              subtitleEvents: subtitleEvents as SubtitleEvent[],
+            };
+          }
+        } catch { /* 损坏或未写完则重新合成 */ }
+      }
+      console.log(`[groupTTS g${String(gi).padStart(2, "0")}] 已有音频但缺少本版字幕事件，重新合成`);
+    }
 
-    // 1. LLM 按说话人切分
-    let segs: Array<{ text: string; voice: string; style?: string }> = [];
-    await llmSem.acquire();
-    try {
-      const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
-      const resp = await client.chat.completions.create({
-        model: LLM_MODEL,
-        max_tokens: LLM_MAX_TOKENS,
-        messages: [
-          { role: "system", content: GROUP_TTS_SYSTEM },
-          { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${DOUBAO_NARRATOR}\n\n句子：${text}${langRef ? `\n\n说话人参考（画面预设已标注的「(说话人)台词」，据此判断台词归谁；名字对不上就回旁白）：${langRef}` : ""}` },
-        ],
-      });
-      let raw = resp.choices[0].message.content?.trim() ?? "[]";
-      const m = raw.match(/\[[\s\S]*\]/);
-      if (m) raw = m[0];
-      segs = JSON.parse(raw);
-    } catch (e) {
-      console.error(`[groupTTS g${String(gi).padStart(2, "0")}] 切分失败，整句用旁白: ${e}`);
-    } finally {
-      llmSem.release();
+    // 议论文没有角色对白：一整个 group 直接作为一次旁白 TTS，时间戳天然从 group 0 秒开始。
+    let segs: Array<{ text: string; voice: string; style?: string }> = isEssay
+      ? [{ text, voice: DOUBAO_NARRATOR, style: "平稳叙述" }]
+      : [];
+    if (!isEssay) {
+      // 从本 group 的【】里抽出【语言】字段，显式拼给切分 LLM 作参考。
+      const langRefs: string[] = [];
+      for (const mm of text.matchAll(/【([^】]*)】/g)) {
+        const f = mm[1].split("|").map((s) => s.trim());
+        if (f.length >= 8 && f[7] && f[7] !== "无") langRefs.push(f[7]);
+      }
+      const langRef = langRefs.join("　");
+
+      await llmSem.acquire();
+      try {
+        const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
+        const resp = await client.chat.completions.create({
+          model: LLM_MODEL,
+          max_tokens: LLM_MAX_TOKENS,
+          messages: [
+            { role: "system", content: GROUP_TTS_SYSTEM },
+            { role: "user", content: `voice_map：${JSON.stringify(voiceMap)}\nnarrator_voice：${DOUBAO_NARRATOR}\n\n句子：${text}${langRef ? `\n\n说话人参考（画面预设已标注的「(说话人)台词」，据此判断台词归谁；名字对不上就回旁白）：${langRef}` : ""}` },
+          ],
+        });
+        let raw = resp.choices[0].message.content?.trim() ?? "[]";
+        const m = raw.match(/\[[\s\S]*\]/);
+        if (m) raw = m[0];
+        segs = JSON.parse(raw);
+      } catch (e) {
+        console.error(`[groupTTS g${String(gi).padStart(2, "0")}] 切分失败，整句用旁白: ${e}`);
+      } finally {
+        llmSem.release();
+      }
     }
     if (!Array.isArray(segs) || !segs.length) {
       segs = [{ text: text.replace(/【[^】]*】/g, "").trim(), voice: DOUBAO_NARRATOR, style: "平稳叙述" }];
@@ -1086,13 +1366,23 @@ async function runGroupTtsPipeline(
         "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
         "-t", "0.3", "-c:a", "libmp3lame", "-q:a", "9", ga,
       ]);
-      return getMediaDuration(ga);
+      const duration = await getMediaDuration(ga);
+      const result: GroupTtsResult = {
+        duration,
+        charTimings: isEssay ? buildLocalCharTimeline(text, [], duration) : undefined,
+        subtitleEvents: SUBTITLES_ENABLED ? [] : undefined,
+      };
+      if (isEssay) {
+        const cache: EssayGroupTimingCache = {version: 1, sourceText: text, ...result};
+        await fs.writeFile(essayTiming(gi), `${JSON.stringify(cache, null, 2)}\n`, "utf-8");
+      }
+      return result;
     }
 
     // 该 group 的音效任务：仅当启用、有 sfx、库非空时开字级时间戳
     const sfxList: Array<{ anchor: string; sound: string }> =
       (SFX_ENABLED && sfxCatalog.size > 0 && Array.isArray(group.sfx)) ? group.sfx : [];
-    const wantTs = sfxList.length > 0 || SUBTITLES_ENABLED;
+    const wantTs = isEssay || sfxList.length > 0 || SUBTITLES_ENABLED;
 
     // 2. 并行合成各子片段
     const usedVoices: string[] = [];
@@ -1200,9 +1490,10 @@ async function runGroupTtsPipeline(
 
     // 字幕显示文字取传给 TTS 的原始 synthSegs.text，切换时间取豆包对应标点所在 word 的真实时间戳。
     // 这样既保留 V4、GPT-5.6 等原文写法，也不再按字幕条数平均分配 words。
+    let subtitleEvents: SubtitleEvent[] | undefined;
     if (SUBTITLES_ENABLED) {
       const maxChars = aspectRatio === "9:16" ? SUBTITLES_CHARS_PORT : SUBTITLES_CHARS_LAND;
-      const events: Array<{ start: number; end: number; text: string }> = [];
+      const events: SubtitleEvent[] = [];
       let groupOffset = 0;
       for (let j = 0; j < segResults.length; j++) {
         const { p, words } = segResults[j];
@@ -1228,6 +1519,7 @@ async function runGroupTtsPipeline(
         }
         groupOffset += segDur;
       }
+      subtitleEvents = events;
       const subsPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_subtitles.json`);
       await fs.writeFile(subsPath, JSON.stringify(events), "utf-8");
     }
@@ -1247,17 +1539,28 @@ async function runGroupTtsPipeline(
     await ttsPhase4Concat(segPaths, ga);
     const d = await getMediaDuration(ga);
     console.log(`[groupTTS g${String(gi).padStart(2, "0")}] ${segs.length}段 → ${d.toFixed(1)}s`);
-    return d;
+    const result: GroupTtsResult = {
+      duration: d,
+      charTimings: isEssay
+        ? buildLocalCharTimeline(text, segResults[0]?.words ?? [], d)
+        : undefined,
+      subtitleEvents,
+    };
+    if (isEssay) {
+      const cache: EssayGroupTimingCache = {version: 1, sourceText: text, ...result};
+      await fs.writeFile(essayTiming(gi), `${JSON.stringify(cache, null, 2)}\n`, "utf-8");
+    }
+    return result;
   }));
 
   // 全部组音频按序拼成场景音频
   const sceneAudio = path.join(outputDir, `_tts_${sceneName}.mp3`);
   await ttsPhase4Concat(groups.map((_: any, gi: number) => groupAudio(gi)), sceneAudio);
   console.log(`[groupTTS] 场景音频 → ${path.basename(sceneAudio)}`);
-  return durations;
+  return results;
 }
 
-// ── 字幕 ASS 生成 + group 视频烧录 ───────────────────────────────────────────
+// ── 字幕 ASS 生成 + panel 视频拼接 ────────────────────────────────────────────
 
 /** 秒 → ASS 时间戳 H:MM:SS.cc */
 function toAssTime(sec: number): string {
@@ -1295,10 +1598,10 @@ function buildAss(
 }
 
 /**
- * panel 视频先统一尺寸，再拼接并烧录字幕。
- * 非标准比例等比放大后居中裁切，不加黑边；字幕在裁切完成后烧录，避免字幕被后续裁掉。
+ * panel 视频先统一尺寸，再拼成无字幕的 group 视频。
+ * 字幕会在所有 group 按全局顺序拼成整集视频后统一烧录。
  */
-export async function concatAndBurnSubs(
+export async function concatPanels(
   panelVids: string[],
   outputDir: string,
   gi: number,
@@ -1306,9 +1609,6 @@ export async function concatAndBurnSubs(
   aspectRatio: string,
 ): Promise<void> {
   const gtag       = `g${String(gi).padStart(2, "0")}`;
-  const subsJson   = path.join(outputDir, `${gtag}_subtitles.json`);
-  const assRelName = `${gtag}_subtitles.ass`;
-  const assPath    = path.join(outputDir, assRelName);
   const listName   = `_concat_${gtag}.txt`;
   const listPath   = path.join(outputDir, listName);
   const buildName  = `_building_${gtag}.mp4`;
@@ -1319,13 +1619,6 @@ export async function concatAndBurnSubs(
   const normalizedVids = panelVids.map((_, pi) =>
     path.join(outputDir, `_normalized_${gtag}_p${String(pi).padStart(2, "0")}.mp4`),
   );
-
-  let events: Array<{ start: number; end: number; text: string }> | null = null;
-  if (SUBTITLES_ENABLED && fsSync.existsSync(subsJson)) {
-    try {
-      events = JSON.parse(await fs.readFile(subsJson, "utf-8"));
-    } catch { /* 解析失败则不烧字幕 */ }
-  }
 
   const normalizeFilter = [
     `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase`,
@@ -1343,20 +1636,11 @@ export async function concatAndBurnSubs(
       normalizedVids[pi],
     ])));
 
-    if (events && events.length > 0) {
-      // ASS 画布与标准化后的视频尺寸一致，且后续不再裁切字幕区域。
-      await fs.writeFile(assPath, buildAss(events, aspectRatio), "utf-8");
-    }
-
-    const vfArgs = events && events.length > 0
-      ? ["-vf", `subtitles=${assRelName}`]
-      : [];
     const outDir = path.dirname(groupVidPath);
 
     if (normalizedVids.length === 1) {
       await execFileAsync("ffmpeg", [
         "-y", "-i", path.basename(normalizedVids[0]),
-        ...vfArgs,
         "-c:v", "libx264", "-preset", "fast", "-crf", "18",
         "-pix_fmt", "yuv420p", "-an", buildName,
       ], { cwd: outDir });
@@ -1369,7 +1653,6 @@ export async function concatAndBurnSubs(
       await execFileAsync("ffmpeg", [
         "-y", "-f", "concat", "-safe", "0",
         "-i", listName,
-        ...vfArgs,
         "-c:v", "libx264", "-preset", "fast", "-crf", "18",
         "-pix_fmt", "yuv420p", "-an", buildName,
       ], { cwd: outDir });
@@ -1391,7 +1674,6 @@ export async function concatAndBurnSubs(
   } finally {
     await fs.unlink(buildPath).catch(() => {});
     if (fsSync.existsSync(groupVidPath)) await fs.unlink(backupPath).catch(() => {});
-    await fs.unlink(assPath).catch(() => {});
     await fs.unlink(listPath).catch(() => {});
     await Promise.all(normalizedVids.map((p) => fs.unlink(p).catch(() => {})));
   }
@@ -1410,7 +1692,12 @@ export interface SceneRenderResult {
     globalOrder: number;
     videoPath: string;
     ttsPath: string;
+    charTimings?: LocalCharTiming[];
+    subtitleEvents?: SubtitleEvent[];
   }>;
+  articleTimelinePath?: string;
+  globalSubtitlesJsonPath?: string;
+  globalSubtitlesAssPath?: string;
 }
 
 export async function renderScene(
@@ -1447,12 +1734,21 @@ export async function renderScene(
 
   // ── 阶段二:先逐 group 配音，拿到每组真实时长 d_g 驱动视频（imagesOnly 跳过）──
   let groupDurations: number[] = groups.map(() => VIDEO_DEFAULT_DURATION);
+  let groupTtsResults: GroupTtsResult[] = groups.map((_, gi) => ({ duration: groupDurations[gi] }));
   if (!sel.imagesOnly) {
     let voiceMap: Record<string, string> = {};
     if (fsSync.existsSync(voiceMapPath)) {
       voiceMap = JSON.parse(await fs.readFile(voiceMapPath, "utf-8"));
     }
-    groupDurations = await runGroupTtsPipeline(groups, voiceMap, outputDir, sceneName, sel.aspectRatio);
+    groupTtsResults = await runGroupTtsPipeline(
+      groups,
+      voiceMap,
+      outputDir,
+      sceneName,
+      sel.aspectRatio,
+      isEssay,
+    );
+    groupDurations = groupTtsResults.map((result) => result.duration);
   }
 
   // ── 视频管线（时长由 d_g 驱动）──
@@ -1648,7 +1944,7 @@ export async function renderScene(
         }
         console.log(
           `\n[group ${String(gi).padStart(2, "0")}] 旧视频尺寸 ${dims.width}x${dims.height}，` +
-          `按 ${targetW}x${targetH} 重新拼接并烧录字幕`,
+          `按 ${targetW}x${targetH} 重新标准化并拼接`,
         );
       }
 
@@ -1662,7 +1958,7 @@ export async function renderScene(
         continue;
       }
 
-      await concatAndBurnSubs(panelVids, outputDir, gi, groupVidPath, sel.aspectRatio);
+      await concatPanels(panelVids, outputDir, gi, groupVidPath, sel.aspectRatio);
       console.log(`  拼接完成: ${path.basename(groupVidPath)}`);
       groupVideos.push(groupVidPath);
       onProgress?.({ scene: sceneName, done: gi + 1, total: groups.length });
@@ -1678,20 +1974,35 @@ export async function renderScene(
   const groupVideoPaths = await videoTask;
 
   // 收集所有 group 的 TTS 音频路径和 global_order
-  const resultGroups: Array<{ globalOrder: number; videoPath: string; ttsPath: string }> = [];
+  const resultGroups: SceneRenderResult["groups"] = [];
   for (let gi = 0; gi < groups.length; gi++) {
     const videoPath = groupVideoPaths[gi];
     const ttsPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_tts.mp3`);
     const globalOrder = groups[gi].global_order ?? gi;
 
     if (videoPath && fsSync.existsSync(videoPath) && fsSync.existsSync(ttsPath)) {
-      resultGroups.push({ globalOrder, videoPath, ttsPath });
+      resultGroups.push({
+        globalOrder,
+        videoPath,
+        ttsPath,
+        charTimings: groupTtsResults[gi]?.charTimings,
+        subtitleEvents: groupTtsResults[gi]?.subtitleEvents,
+      });
     }
   }
 
   console.log(`\n[场景完成] ${sceneName}  共 ${resultGroups.length} 个有效 group`);
 
-  return { groups: resultGroups };
+  return {
+    groups: resultGroups,
+    articleTimelinePath: isEssay ? novelPaths.articleTimeline(sel.novelName, ep) : undefined,
+    globalSubtitlesJsonPath: SUBTITLES_ENABLED
+      ? novelPaths.globalSubtitlesJson(sel.novelName, ep)
+      : undefined,
+    globalSubtitlesAssPath: SUBTITLES_ENABLED
+      ? novelPaths.globalSubtitlesAss(sel.novelName, ep)
+      : undefined,
+  };
 }
 
 // ── 全局音视频对齐合并 ────────────────────────────────────────────────────────
@@ -1721,35 +2032,41 @@ function computeAlignTarget(totalVideo: number, totalAudio: number): {
   return { T, videoSpeed, audioSpeed, note };
 }
 
+export interface EpisodeMasterResult {
+  rawVideoPath: string;
+  alignedAudioPath: string;
+  articleTimelinePath?: string;
+  globalSubtitlesJsonPath?: string;
+  globalSubtitlesAssPath?: string;
+  width: number;
+  height: number;
+  fps: number;
+  duration: number;
+  audioSpeed: number;
+}
+
 /**
- * 全局对齐：收集所有 group 的视频和音频，按 globalOrder 排列，统一调整速度后拼接为集视频。
- *
- * 步骤：
- *   1. 收集所有场景的 group（已按 globalOrder 排序）
- *   2. 量取所有 group 的视频/音频总时长
- *   3. 用 computeAlignTarget 估算视频调速比例
- *   4. 调整每个 group 视频 setpts → 拼接 → ffprobe 量出真实总时长（LTX 帧栅格 +
- *      fps 重采样会引入量化误差，实际时长无法在编码前精确预测）
- *   5. 用真实视频时长反推精确的音频速度（而非用理论目标时长），调整每个 group
- *      音频 atempo → 拼接
- *   6. ffmpeg mux 合成视频 + 合成音频 → 集最终 mp4（此时两者时长已精确对齐，
- *      -shortest 仅作安全网，不会再产生可感知的截断）
+ * 构建统一时基的原画母版和旁白音轨，并在同一时基上输出字级时间轴与字幕。
+ * 此阶段不烧字幕、不 mux 音轨，给议论文 MG Function Calling 留出插入点。
  */
-export async function globalAlignAndMerge(
+export async function buildEpisodeMaster(
   results: SceneRenderResult[],
-  episodeVideoPath: string,
   epDir: string,
-): Promise<void> {
+  rawVideoPath: string,
+  alignedAudioPath: string,
+): Promise<EpisodeMasterResult> {
   if (results.length === 0) {
-    console.log("[全局对齐] 无场景，跳过");
-    return;
+    throw new Error("[原画母版] 无场景结果，无法生成母版");
   }
 
   // ── 收集所有 group 并按 globalOrder 排序 ──
-  const allGroups: Array<{ globalOrder: number; videoPath: string; ttsPath: string }> = [];
+  const allGroups: SceneRenderResult["groups"] = [];
   for (const result of results) {
     allGroups.push(...result.groups);
   }
+  const articleTimelinePath = results.find((result) => result.articleTimelinePath)?.articleTimelinePath;
+  const globalSubtitlesJsonPath = results.find((result) => result.globalSubtitlesJsonPath)?.globalSubtitlesJsonPath;
+  const globalSubtitlesAssPath = results.find((result) => result.globalSubtitlesAssPath)?.globalSubtitlesAssPath;
 
   allGroups.sort((a, b) => a.globalOrder - b.globalOrder);
 
@@ -1760,8 +2077,7 @@ export async function globalAlignAndMerge(
   );
 
   if (validGroups.length === 0) {
-    console.log("[全局对齐] 无有效的 group 文件，跳过");
-    return;
+    throw new Error("[原画母版] 无有效的 group 文件");
   }
 
   console.log(`[全局对齐] 共 ${validGroups.length} 个有效 group`);
@@ -1771,10 +2087,13 @@ export async function globalAlignAndMerge(
   console.log("\n[全局对齐] 量取各 group 时长...");
   let totalVideo = 0;
   let totalAudio = 0;
+  const groupAudioDurations: number[] = [];
   const videoDims: VideoDims[] = [];
   for (const group of validGroups) {
     totalVideo += await getMediaDuration(group.videoPath);
-    totalAudio += await getAudioDurationReal(group.ttsPath);  // mp3 ffprobe 虚高，用解码真实时长
+    const audioDuration = await getAudioDurationReal(group.ttsPath);  // mp3 ffprobe 虚高，用解码真实时长
+    groupAudioDurations.push(audioDuration);
+    totalAudio += audioDuration;
     videoDims.push(await probeVideoDims(group.videoPath));
   }
 
@@ -1800,6 +2119,7 @@ export async function globalAlignAndMerge(
   console.log(`[全局对齐] ${note}`);
 
   const tmpDir = path.join(epDir, "_align_tmp");
+  await fs.rm(tmpDir, {recursive: true, force: true});
   await fs.mkdir(tmpDir, { recursive: true });
 
   // ── 阶段一：视频原速拼接，零量化。
@@ -1813,7 +2133,7 @@ export async function globalAlignAndMerge(
     const needReencode = dims.width !== targetW || dims.height !== targetH || dims.sar !== "1:1";
 
     if (needReencode) {
-      // 旧产物兜底：统一分辨率和 SAR；新产物已在字幕烧录前完成此步骤。
+      // 旧产物兜底：统一分辨率和 SAR；新产物已在 group 拼接前完成此步骤。
       const vf = `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase,crop=${targetW}:${targetH},setsar=1`;
       await execFileAsync("ffmpeg", [
         "-y", "-i", group.videoPath,
@@ -1849,9 +2169,16 @@ export async function globalAlignAndMerge(
     mergedVideo,
   ]);
 
+  if (!fsSync.existsSync(rawVideoPath)) {
+    await fs.copyFile(mergedVideo, rawVideoPath);
+    console.log(`[全局对齐] 无字幕原画已保留 → ${path.basename(rawVideoPath)}`);
+  } else {
+    console.log(`[全局对齐] 原画母版已存在，保持不变 → ${path.basename(rawVideoPath)}`);
+  }
+
   // ── 阶段二：视频已原速零量化拼接，这里量出视频真实时长（=各 group 帧数之和/25），
   //    反推音频速度让其精确贴合，避免最终 mux 时 -shortest 截断 ──
-  const videoActual    = await getMediaDuration(mergedVideo);
+  const videoActual    = await getMediaDuration(rawVideoPath);
   const audioSpeedRaw   = totalAudio / videoActual;
   const audioSpeed      = Math.min(Math.max(audioSpeedRaw, GLOBAL_AUDIO_SPEED_MIN), GLOBAL_AUDIO_SPEED_MAX);
   console.log(`[全局对齐] 视频真实时长: ${videoActual.toFixed(3)}s（音频总时长 ${totalAudio.toFixed(3)}s，atempo ×${audioSpeedRaw.toFixed(4)} 贴合）`);
@@ -1859,6 +2186,55 @@ export async function globalAlignAndMerge(
     console.log(`[全局对齐] 音频速度 ×${audioSpeedRaw.toFixed(3)} 超出范围 [${GLOBAL_AUDIO_SPEED_MIN}, ${GLOBAL_AUDIO_SPEED_MAX}]，已夹到 ×${audioSpeed.toFixed(3)}`);
   }
   console.log(`[全局对齐] 音频速度: ×${audioSpeed.toFixed(4)}（贴合视频真实时长，视频原速零量化）`);
+
+  let articleTimeline: ArticleTimelineEntry[] | null = null;
+  if (articleTimelinePath) {
+    if (validGroups.every((group) => group.charTimings !== undefined)) {
+      articleTimeline = buildGlobalArticleTimeline(
+        validGroups.map((group) => ({
+          globalOrder: group.globalOrder,
+          charTimings: group.charTimings!,
+        })),
+        groupAudioDurations,
+        audioSpeed,
+      );
+    } else {
+      console.warn("[全文时间轴] 部分 group 没有本次 TTS 字级时间，跳过输出");
+    }
+  }
+
+  if (globalSubtitlesJsonPath || globalSubtitlesAssPath) {
+    if (!globalSubtitlesJsonPath || !globalSubtitlesAssPath) {
+      throw new Error("生成全局字幕失败：JSON 与 ASS 输出路径不完整");
+    }
+    if (!validGroups.every((group) => group.subtitleEvents !== undefined)) {
+      throw new Error("生成全局字幕失败：部分 group 没有本次 TTS 字幕时间");
+    }
+
+    const globalSubtitleEvents = buildGlobalSubtitleTimeline(
+      validGroups.map((group) => ({
+        globalOrder: group.globalOrder,
+        subtitleEvents: group.subtitleEvents!,
+      })),
+      groupAudioDurations,
+      audioSpeed,
+    );
+    await fs.writeFile(
+      globalSubtitlesJsonPath,
+      `${JSON.stringify(globalSubtitleEvents, null, 2)}\n`,
+      "utf-8",
+    );
+    await fs.writeFile(
+      globalSubtitlesAssPath,
+      buildAss(globalSubtitleEvents, targetW >= targetH ? "16:9" : "9:16"),
+      "utf-8",
+    );
+    console.log(
+      `[全局字幕] ${globalSubtitleEvents.length} 条事件 → ` +
+      `${path.basename(globalSubtitlesJsonPath)} / ${path.basename(globalSubtitlesAssPath)}`,
+    );
+
+  }
 
   const adjustedAudios: string[] = [];
   await Promise.all(validGroups.map(async (group, i) => {
@@ -1877,7 +2253,7 @@ export async function globalAlignAndMerge(
   }));
 
   // concat filter：逐段解码后拼帧，避免 mp3 concat demuxer 的帧间隙丢段
-  const mergedAudio = path.join(tmpDir, "_merged_audio.mp3");
+  const mergedAudio = path.join(tmpDir, "_merged_audio.wav");
   console.log("[全局对齐] 拼接音频...");
   const audInputs: string[] = [];
   for (const a of adjustedAudios) audInputs.push("-i", a);
@@ -1888,28 +2264,98 @@ export async function globalAlignAndMerge(
     "-y", ...audInputs,
     "-filter_complex", concatExpr,
     "-map", "[a]",
-    "-c:a", "libmp3lame", "-q:a", "2",
+    "-c:a", "pcm_s16le",
     mergedAudio,
   ]);
+  await fs.rm(alignedAudioPath, {force: true});
+  await fs.rename(mergedAudio, alignedAudioPath);
+  console.log(`[全局对齐] 对齐音轨 → ${path.basename(alignedAudioPath)}`);
 
-  // ── mux 合并（此时视频/音频时长已精确对齐，-shortest 仅作安全网，
-  //    实际差距应在毫秒级，不会再产生可感知的截断）──
-  console.log("[全局对齐] mux 合并视频+音频...");
-  await execFileAsync("ffmpeg", [
-    "-y",
-    "-i", mergedVideo,
-    "-i", mergedAudio,
-    "-map", "0:v", "-map", "1:a",
-    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-    "-shortest",
-    episodeVideoPath,
-  ]);
+  if (articleTimelinePath && articleTimeline) {
+    await fs.writeFile(articleTimelinePath, `${JSON.stringify(articleTimeline, null, 2)}\n`, "utf-8");
+    console.log(`[全文时间轴] ${articleTimeline.length} 个字符 → ${path.basename(articleTimelinePath)}`);
+  }
 
   // 清理临时目录
   await fs.rm(tmpDir, { recursive: true, force: true });
 
-  console.log(`[全局对齐] 完成 → ${path.basename(episodeVideoPath)}`);
+  console.log(`[全局对齐] 原画母版与时间轴完成 → ${path.basename(rawVideoPath)}`);
   console.log(`  视频原速: ${totalVideo.toFixed(1)}s → 实际: ${videoActual.toFixed(3)}s（零量化，视频不动）  音频 atempo ×${audioSpeed.toFixed(4)}`);
+
+  return {
+    rawVideoPath,
+    alignedAudioPath,
+    articleTimelinePath,
+    globalSubtitlesJsonPath,
+    globalSubtitlesAssPath,
+    width: targetW,
+    height: targetH,
+    fps: targetFps,
+    duration: videoActual,
+    audioSpeed,
+  };
+}
+
+/** 将选定的无声画面母版烧上字幕并合入已经对齐的旁白音轨。 */
+export async function finalizeEpisodeMedia(
+  videoPath: string,
+  alignedAudioPath: string,
+  episodeVideoPath: string,
+  globalSubtitlesAssPath?: string,
+): Promise<void> {
+  if (!fsSync.existsSync(videoPath)) throw new Error(`最终合成找不到视频母版: ${videoPath}`);
+  if (!fsSync.existsSync(alignedAudioPath)) throw new Error(`最终合成找不到对齐音轨: ${alignedAudioPath}`);
+
+  const nextPath = `${episodeVideoPath}.finalize-next.mp4`;
+  await fs.rm(nextPath, {force: true});
+  const hasSubtitles = Boolean(
+    globalSubtitlesAssPath &&
+    fsSync.existsSync(globalSubtitlesAssPath) &&
+    (await fs.readFile(globalSubtitlesAssPath!, "utf-8")).includes("Dialogue:"),
+  );
+  const args = ["-y", "-i", videoPath, "-i", alignedAudioPath];
+  if (hasSubtitles) args.push("-vf", `subtitles=${path.basename(globalSubtitlesAssPath!)}`);
+  args.push(
+    "-map", "0:v:0",
+    "-map", "1:a:0",
+    ...(hasSubtitles
+      ? ["-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p"]
+      : ["-c:v", "copy"]),
+    "-c:a", "aac",
+    "-b:a", "192k",
+    "-shortest",
+    nextPath,
+  );
+  await execFileAsync("ffmpeg", args, hasSubtitles ? {cwd: path.dirname(globalSubtitlesAssPath!)} : undefined);
+
+  const backupPath = `${episodeVideoPath}.finalize-backup`;
+  await fs.rm(backupPath, {force: true});
+  if (fsSync.existsSync(episodeVideoPath)) await fs.rename(episodeVideoPath, backupPath);
+  try {
+    await fs.rename(nextPath, episodeVideoPath);
+    await fs.rm(backupPath, {force: true});
+  } catch (error) {
+    if (fsSync.existsSync(backupPath)) await fs.rename(backupPath, episodeVideoPath).catch(() => {});
+    throw error;
+  }
+  console.log(`[最终合成] 完成 → ${path.basename(episodeVideoPath)}`);
+}
+
+/** 故事流水线保留的一步式封装；议论文使用 build → MG → finalize 三段式流程。 */
+export async function globalAlignAndMerge(
+  results: SceneRenderResult[],
+  episodeVideoPath: string,
+  epDir: string,
+  rawVideoPath = path.join(epDir, "_raw_master.mp4"),
+): Promise<void> {
+  const alignedAudioPath = path.join(epDir, "_aligned_audio.wav");
+  const master = await buildEpisodeMaster(results, epDir, rawVideoPath, alignedAudioPath);
+  await finalizeEpisodeMedia(
+    master.rawVideoPath,
+    master.alignedAudioPath,
+    episodeVideoPath,
+    master.globalSubtitlesAssPath,
+  );
 }
 
 // ── JSONL 解析 ───────────────────────────────────────────────────────────────

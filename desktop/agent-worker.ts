@@ -5,7 +5,8 @@ import { Type } from "@sinclair/typebox";
 import { complete, type UserMessage } from "@mariozechner/pi-ai";
 import { createSession, getSharedResources } from "../agent.js";
 import { CONFIG_DIR } from "../utils/run-python.js";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
+import {prepareMgAnnotationHtml, stripMgAnnotationDecoration} from "../runner/mg/html.js";
+import type { AgentSession, ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 type AgentContext = {
   projectName?: string;
@@ -41,8 +42,8 @@ type AgentInput =
   | { type: "command_result"; requestId: string; ok: boolean; result?: unknown; error?: string };
 
 let context: AgentContext = {};
-let session: Awaited<ReturnType<typeof createSession>> | null = null;
-let sessionPromise: Promise<NonNullable<typeof session>> | null = null;
+let session: AgentSession | null = null;
+let sessionPromise: Promise<AgentSession> | null = null;
 let sessionFile = path.join(process.cwd(), "agent-data", "supervisor.jsonl");
 let queue = Promise.resolve();
 const pendingChoices = new Map<string, (value: { optionId: string; optionLabel?: string }) => void>();
@@ -168,6 +169,73 @@ async function reviseVisualPreset(instruction: string): Promise<{ version: numbe
   await fs.rename(progressTemp, progressPath);
 
   return { version };
+}
+
+async function reviseMgAnnotation(
+  instruction: string,
+): Promise<{version: number; groupCount: number; tagCount: number}> {
+  const projectName = String(context.projectName || "").trim();
+  const episode = Math.max(1, Math.trunc(Number(context.episode) || 1));
+  if (!projectName || context.runStatus !== "review") throw new Error("当前不在画面与 MG 标注审核阶段");
+
+  const progressPath = path.resolve(process.cwd(), "workspace", projectName, "改编进度.json");
+  const progress = JSON.parse(await fs.readFile(progressPath, "utf8"));
+  const record = progress?.episodes?.[String(episode)];
+  if (progress?.article_type !== "essay") throw new Error("只有议论文项目包含 MG 标注");
+  if (record?.stages?.visualPreset !== "review") throw new Error("当前不在画面与 MG 标注审核阶段");
+
+  const annotationPath = safeProjectPath(projectName, episode, "mg_annotation.html");
+  const articlePath = safeProjectPath(projectName, episode, "原文_clean.txt");
+  const [currentHtml, article] = await Promise.all([
+    fs.readFile(annotationPath, "utf8"),
+    fs.readFile(articlePath, "utf8"),
+  ]);
+  const semanticHtml = stripMgAnnotationDecoration(currentHtml);
+  const { model, modelRegistry } = await getSharedResources();
+  const apiKey = await modelRegistry.getApiKey(model);
+  const userMessage: UserMessage = {
+    role: "user",
+    content: [{
+      type: "text",
+      text: `修改意见：\n${instruction}\n\n当前 MG 标注 HTML：\n${semanticHtml}`,
+    }],
+    timestamp: Date.now(),
+  };
+  const response = await complete(model, {
+    systemPrompt: `你只负责根据修改意见修订已有的 MG 标注 HTML。
+
+允许修改：MG 标签类型、包裹范围，以及 group、mode、value 三个属性。
+可用标签：progress-timeline、timed-table、directed-graph、side-by-side-comparison、weighted-comparison、decomposition、xy-chart、multi-series-chart、containment、collage-network、mg-title、emphasis。
+
+要求：
+- 输出从 <!DOCTYPE html> 到 </html> 的完整 HTML
+- 去掉 MG 标签后，正文、段落、字序和标点必须与当前 HTML 完全一致
+- 同一 group 使用相同标签和 mode，value 按正文顺序从 1 连续编号
+- mode 只能是 together 或 split；标签可以嵌套，但不能用同一 group 嵌套自身
+- 不添加说明、Markdown、CSS、JavaScript 或其他属性
+- 只输出修订后的 HTML`,
+    messages: [userMessage],
+  }, { apiKey, maxTokens: 24000, reasoningEffort: "low" });
+
+  const prepared = prepareMgAnnotationHtml(responseText(response), article);
+  const tempPath = `${annotationPath}.${process.pid}.${Date.now().toString(36)}.tmp`;
+  await fs.writeFile(tempPath, prepared.html, "utf8");
+  await fs.rename(tempPath, annotationPath);
+
+  const version = Math.max(1, Math.trunc(Number(record.mg_annotation_review?.version) || 1)) + 1;
+  record.mg_annotation_review = {
+    ...(record.mg_annotation_review || {}),
+    version,
+    status: "updated",
+    groupCount: prepared.groupCount,
+    tagCount: prepared.tagCount,
+  };
+  record.updated_at = new Date().toISOString();
+  const progressTemp = `${progressPath}.${process.pid}.${Date.now().toString(36)}.tmp`;
+  await fs.writeFile(progressTemp, JSON.stringify(progress, null, 4), "utf8");
+  await fs.rename(progressTemp, progressPath);
+
+  return {version, groupCount: prepared.groupCount, tagCount: prepared.tagCount};
 }
 
 function clipTitle(value: string): string {
@@ -309,6 +377,29 @@ const reviseVisualPresetTool: ToolDefinition = {
   },
 };
 
+const reviseMgAnnotationTool: ToolDefinition = {
+  name: "revise_mg_annotation",
+  label: "修改 MG 标注",
+  description: "仅在议论文等待联合审核时使用。根据用户意见修改 MG 标签、group、mode、value 或包裹范围，正文和审核样式保持不变。用户没有提出 MG 修改意见时不要调用。",
+  parameters: Type.Object({
+    instruction: Type.String({ description: "用户对 MG 标签、模板选择、分组方式或包裹范围的具体修改意见" }),
+  }),
+  execute: async (_toolCallId, params) => {
+    try {
+      const instruction = String((params as any)?.instruction || "").trim();
+      if (!instruction) return toolResult("没有收到具体的 MG 修改意见。");
+      const result = await reviseMgAnnotation(instruction);
+      return toolResult(JSON.stringify({
+        updated: true,
+        ...result,
+        next: "请提醒用户刷新已打开的 MG 审核页，或再次点击审核卡中的浏览链接",
+      }, null, 2));
+    } catch (error) {
+      return toolResult(`修改 MG 标注失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  },
+};
+
 const requestUserChoiceTool: ToolDefinition = {
   name: "request_user_choice",
   label: "请求用户选择",
@@ -422,19 +513,19 @@ const systemPrompt = `你是 Story Claw 的主 Agent，负责协助用户完成�
 8. 流水线运行期间，桌面端会锁定输入框并把发送键切换为暂停键。用户暂停后可以继续对话；用户说“继续运行”时调用 start_pipeline，桌面端会从磁盘已有阶段继续，但这不是内存或帧级挂起。
 9. 明确要求暂停、停止或取消时才调用 pause_pipeline。关闭客户端会暂停整个流程并执行关 GPU，不支持后台运行。
 10. 流水线进度卡由桌面端依据真实运行事件自动创建和更新。不要用文字虚构进度条、百分比或阶段完成情况；一次新的启动或继续运行会产生一张新的进度卡。
-11. 收到“画面预设已生成”的桌面端系统事件时，必须先调用 show_visual_preset，把磁盘上的原始画面预设交给桌面端转换为表格；不要在文字回复中粘贴或复述画面预设。
-12. 如果上下文 phase 为 visual_preset_review，流水线已经暂停在画面预设审核点：用户提出修改意见时先调用 revise_visual_preset，修改成功后必须在同一轮继续调用 show_visual_preset，重新展示完整表格；用户明确说“就这样吧”“确认”“按这个继续”等才调用 start_pipeline。
+11. 收到审核阶段的桌面端系统事件时，必须先调用 show_visual_preset，把磁盘上的原始画面预设交给桌面端转换为表格；不要在文字回复中粘贴或复述画面预设。议论文的审核卡会同时提供 MG 标注浏览入口。
+12. 如果上下文 phase 为 visual_preset_review，流水线已经暂停在审核点：画面、镜头或画面意图的意见调用 revise_visual_preset，成功后在同一轮调用 show_visual_preset；MG 模板、标签、group、mode、value 或包裹范围的意见调用 revise_mg_annotation，成功后提醒用户刷新 MG 审核页；同时涉及两者时依次调用两个工具。意见无法判断属于哪一项时先询问，不要擅自修改。用户明确说“就这样吧”“确认”“按这个继续”等才调用 start_pipeline。
 13. 对配置缺失、接口错误、GPU 排队等问题给出下一步建议，但不要直接改写配置、删除文件或执行任意命令。
 14. 只用简洁、自然的中文回答。工具调用后说明已经发送了什么请求，不要声称已经完成尚未返回的动作。
 
 当前桌面端上下文会随每条消息附上。`;
 
-async function getSession(): Promise<NonNullable<typeof session>> {
+async function getSession(): Promise<AgentSession> {
   if (session) return session;
   if (!sessionPromise) {
     sessionPromise = createSession(
       sessionFile,
-      [getStatusTool, getConfigTool, requestUserChoiceTool, createProjectTool, startPipelineTool, pausePipelineTool, showVisualPresetTool, reviseVisualPresetTool],
+      [getStatusTool, getConfigTool, requestUserChoiceTool, createProjectTool, startPipelineTool, pausePipelineTool, showVisualPresetTool, reviseVisualPresetTool, reviseMgAnnotationTool],
       systemPrompt,
       [],
       process.cwd(),
@@ -446,7 +537,7 @@ async function getSession(): Promise<NonNullable<typeof session>> {
   return sessionPromise;
 }
 
-function installSubscription(activeSession: NonNullable<typeof session>): void {
+function installSubscription(activeSession: AgentSession): void {
   activeSession.subscribe((event: any) => {
     if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
       const delta = event.assistantMessageEvent.delta;
@@ -483,7 +574,10 @@ async function handleMessage(input: AgentInput): Promise<void> {
       installSubscription(activeSession);
       (activeSession as any).__storyClawSubscribed = true;
     }
-    await activeSession.prompt("桌面端系统事件：当前集的画面预设已经生成并进入审核阶段。立即调用 show_visual_preset 展示原始画面预设表格，然后简短提醒用户可以确认或提出修改意见。不要调用其他工具。");
+    const isEssay = context.settings?.articleType === "essay";
+    await activeSession.prompt(isEssay
+      ? "桌面端系统事件：当前集的画面预设和 MG 标注已经生成并进入联合审核阶段。立即调用 show_visual_preset 展示原始画面预设表格；审核卡会提供 MG 标注浏览入口。然后简短提醒用户可以确认，也可以分别提出画面或 MG 修改意见。不要调用其他工具。"
+      : "桌面端系统事件：当前集的画面预设已经生成并进入审核阶段。立即调用 show_visual_preset 展示原始画面预设表格，然后简短提醒用户可以确认或提出修改意见。不要调用其他工具。");
     return;
   }
   if (input.type === "title_request") {

@@ -1,0 +1,10 @@
+{
+  "whole": "产品竞争力",
+  "events": [
+    {"at": 1.0, "action": "extract", "part": "技术能力"},
+    {"at": 2.8, "action": "extract", "part": "用户体验"},
+    {"at": 4.6, "action": "extract", "part": "商业模式"},
+    {"at": 6.4, "action": "extract", "part": "品牌信任"},
+    {"at": 8.2, "action": "highlight", "target": "用户体验"}
+  ]
+}

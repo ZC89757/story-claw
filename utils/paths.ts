@@ -94,6 +94,22 @@ export const novelPaths = {
   cleanedText: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "原文_clean.txt"),
 
+  /** 议论文第一阶段 MG 标注 HTML */
+  mgAnnotation: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg_annotation.html"),
+
+  /** 议论文全文字级时间轴：workspace/{名}/ep{XX}/article_timeline.json */
+  articleTimeline: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "article_timeline.json"),
+
+  /** 整集全局字幕事件：workspace/{名}/ep{XX}/global_subtitles.json */
+  globalSubtitlesJson: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "global_subtitles.json"),
+
+  /** 整集全局字幕 ASS：workspace/{名}/ep{XX}/global_subtitles.ass */
+  globalSubtitlesAss: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "global_subtitles.ass"),
+
   /** 分镜 JSONL 目录：workspace/{名}/ep{XX}/storyboards/ */
   storyboardsDir: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "storyboards"),
@@ -122,6 +138,55 @@ export const novelPaths = {
   episodeVideo: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `ep${String(episodeNum).padStart(2, "0")}.mp4`),
 
+  /** 集原画视频：无音轨、无字幕、无倍速 */
+  episodeRawVideo: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `ep${String(episodeNum).padStart(2, "0")}_raw.mp4`),
+
+  /** 与原画母版时长精确对齐的旁白音轨 */
+  episodeAlignedAudio: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, `ep${String(episodeNum).padStart(2, "0")}_aligned_audio.wav`),
+
+  /** 本集 MG 中间产物目录 */
+  mgDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg"),
+
+  /** 第二阶段 AI 的最终 Function Calls */
+  mgFunctionCalls: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "function_calls.json"),
+
+  /** 经校验、可执行的 MG 计划 */
+  mgPlan: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "mg_plan.json"),
+
+  /** Remotion 渲染所需的完整场景数据 */
+  mgRenderBundle: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "render_bundle.json"),
+
+  mgSpecsDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "specs"),
+
+  mgClipsDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "clips"),
+
+  mgPropsDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "render-props"),
+
+  mgPublicDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "public"),
+
+  mgNormalizedDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "normalized"),
+
+  /** 已插入 MG、仍无音轨/字幕/倍速的原片 */
+  episodeMgRawVideo: (novelName: string, episodeNum: number) =>
+    path.join(
+      PATHS.workspace,
+      novelName,
+      `ep${String(episodeNum).padStart(2, "0")}`,
+      "mg",
+      `ep${String(episodeNum).padStart(2, "0")}_mg_raw.mp4`,
+    ),
+
   /** 视频后处理临时输出：workspace/{名}/ep{XX}/.postprocess.mp4 */
   postprocessTempVideo: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, ".postprocess.mp4"),
@@ -145,6 +210,26 @@ export const novelPaths = {
       novelName,
       `ep${String(episodeNum).padStart(2, "0")}`,
       `ep${String(episodeNum).padStart(2, "0")}_subtitle_fixed_no_bgm.mp4`,
+    ),
+
+  /** 字幕重建测试的全局字幕事件 */
+  subtitleRebuildGlobalSubtitlesJson: (novelName: string, episodeNum: number) =>
+    path.join(
+      PATHS.workspace,
+      novelName,
+      `ep${String(episodeNum).padStart(2, "0")}`,
+      "subtitle_rebuild",
+      "global_subtitles.json",
+    ),
+
+  /** 字幕重建测试的全局字幕 ASS */
+  subtitleRebuildGlobalSubtitlesAss: (novelName: string, episodeNum: number) =>
+    path.join(
+      PATHS.workspace,
+      novelName,
+      `ep${String(episodeNum).padStart(2, "0")}`,
+      "subtitle_rebuild",
+      "global_subtitles.ass",
     ),
 
   /** voice_map：workspace/{名}/voice_map.json（跨集共享） */

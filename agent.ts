@@ -18,6 +18,7 @@ import {
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type AgentSessionEvent,
   writeTool,
   readTool,
 } from "@mariozechner/pi-coding-agent";
@@ -176,26 +177,6 @@ export async function createSession(
   return session;
 }
 
-// ─── 事件类型 ──────────────────────────────────────────────────
-
-type AgentEvent = {
-  type: string;
-  message?: { role?: string; content?: Array<{ type: string; text?: string }> };
-  assistantMessageEvent?: { type: string; delta?: string; content?: string };
-  toolCallId?: string;
-  toolName?: string;
-  args?: unknown;
-  result?: unknown;
-  isError?: boolean;
-  // auto_retry_start / auto_retry_end 事件字段
-  attempt?: number;
-  maxAttempts?: number;
-  delayMs?: number;
-  errorMessage?: string;
-  success?: boolean;
-  finalError?: string;
-};
-
 // ─── Sub-agent 运行器 ──────────────────────────────────────────
 
 export async function runSubAgent(
@@ -221,7 +202,7 @@ export async function runSubAgent(
   let lastText = "";
   let currentText = "";
 
-  const unsub = session.subscribe((evt: AgentEvent) => {
+  const unsub = session.subscribe((evt: AgentSessionEvent) => {
     if (evt.type === "message_update" && evt.assistantMessageEvent) {
       const ame = evt.assistantMessageEvent;
       if (ame.type === "text_delta" && ame.delta) {

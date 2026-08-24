@@ -23,6 +23,10 @@
   "files": [
     "bin/",
     "runner/",
+    "packages/mg-templates/package.json",
+    "packages/mg-templates/src/",
+    "packages/mg-templates/runtime/",
+    "packages/mg-templates/public/",
     "tools/",
     "ui/",
     "utils/",
@@ -34,16 +38,28 @@
   ],
   "scripts": {
     "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts",
-    "desktop": "electron desktop/main.cjs"
+    "desktop": "electron desktop/main.cjs",
+    "typecheck": "tsc --noEmit",
+    "test:mg": "npm test --prefix packages/mg-templates && tsx --test runner/mg/pipeline.test.ts runner/mg/assembler.integration.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.52.8",
     "@mariozechner/pi-ai": "0.52.8",
     "@mariozechner/pi-coding-agent": "0.52.8",
+    "@remotion/bundler": "^4.0.512",
+    "@remotion/renderer": "^4.0.512",
+    "@story-claw/mg-templates": "file:packages/mg-templates",
+    "parse5": "^5.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.512",
     "tsx": "^4.21.0",
     "undici": "^6.28.0"
   },
   "devDependencies": {
-    "electron": "^43.3.0"
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "electron": "^43.3.0",
+    "typescript": "^5.9.3"
   }
 }

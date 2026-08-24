@@ -7,12 +7,13 @@ import { fileURLToPath } from "node:url";
 import { CONFIG_DIR } from "../utils/run-python.js";
 import { novelPaths } from "../utils/paths.js";
 import {
-  concatAndBurnSubs,
+  concatPanels,
   getMediaDuration,
   globalAlignAndMerge,
   ttsExecApi,
   ttsPhase4Concat,
   type SceneRenderResult,
+  type SubtitleEvent,
 } from "../runner/render.js";
 import {
   findSubtitleBoundaryWords,
@@ -79,7 +80,7 @@ async function loadTasks(novelName: string, episode: number, rebuildDir: string)
       const panelVideos = (group.panels ?? []).map((_: unknown, pi: number) =>
         path.join(sourceRenderDir, `${gtag}_p${String(pi).padStart(2, "0")}.mp4`),
       );
-      const missingPanels = panelVideos.filter((file) => !fsSync.existsSync(file));
+      const missingPanels = panelVideos.filter((file: string) => !fsSync.existsSync(file));
       if (missingPanels.length > 0) {
         throw new Error(`${sceneName}/${gtag} 缺少 panel 视频: ${missingPanels.join(", ")}`);
       }
@@ -114,7 +115,7 @@ async function synthesizeGroup(
   narratorVoice: string,
   aspectRatio: string,
   maxChars: number,
-): Promise<{ task: RebuildTask; groupAudio: string }> {
+): Promise<{ task: RebuildTask; groupAudio: string; subtitleEvents: SubtitleEvent[] }> {
   await fs.mkdir(task.targetRenderDir, { recursive: true });
   const gtag = `g${String(task.groupIndex).padStart(2, "0")}`;
   const segmentDir = path.join(task.targetRenderDir, "tts_segments");
@@ -128,7 +129,7 @@ async function synthesizeGroup(
     segmentResults.push({ path: output, words: result.words, text: source.text });
   }
 
-  const events: Array<{ start: number; end: number; text: string }> = [];
+  const events: SubtitleEvent[] = [];
   let groupOffset = 0;
   for (const segment of segmentResults) {
     const duration = await getMediaDuration(segment.path);
@@ -154,15 +155,16 @@ async function synthesizeGroup(
   const groupAudio = path.join(task.targetRenderDir, `${gtag}_tts.mp3`);
   await ttsPhase4Concat(segmentResults.map((segment) => segment.path), groupAudio);
   console.log(`[字幕重建] ${task.sceneName}/${gtag}: ${events.length} 条字幕`);
-  return { task, groupAudio };
+  return { task, groupAudio, subtitleEvents: events };
 }
 
 async function main(): Promise<void> {
   const novelName = process.argv[2] ?? "20260803";
   const episode = Number(process.argv[3] ?? "1");
-  const epDir = novelPaths.episodeDir(novelName, episode);
   const rebuildDir = novelPaths.subtitleRebuildDir(novelName, episode);
   const finalVideo = novelPaths.subtitleRebuildVideo(novelName, episode);
+  const globalSubtitlesJsonPath = novelPaths.subtitleRebuildGlobalSubtitlesJson(novelName, episode);
+  const globalSubtitlesAssPath = novelPaths.subtitleRebuildGlobalSubtitlesAss(novelName, episode);
   if (!Number.isInteger(episode) || episode < 1) throw new Error(`非法集数: ${process.argv[3]}`);
   if (fsSync.existsSync(rebuildDir) || fsSync.existsSync(finalVideo)) {
     throw new Error(`字幕测试产物已存在，请先确认后再清理: ${rebuildDir}`);
@@ -187,21 +189,26 @@ async function main(): Promise<void> {
   );
 
   const sceneResults = new Map<string, SceneRenderResult>();
-  for (const { task, groupAudio } of synthesized) {
+  for (const { task, groupAudio, subtitleEvents } of synthesized) {
     const gtag = `g${String(task.groupIndex).padStart(2, "0")}`;
     const groupVideo = path.join(task.targetRenderDir, `${gtag}.mp4`);
-    await concatAndBurnSubs(
+    await concatPanels(
       task.panelVideos,
       task.targetRenderDir,
       task.groupIndex,
       groupVideo,
       aspectRatio,
     );
-    const result = sceneResults.get(task.sceneName) ?? { groups: [] };
+    const result = sceneResults.get(task.sceneName) ?? {
+      groups: [],
+      globalSubtitlesJsonPath,
+      globalSubtitlesAssPath,
+    };
     result.groups.push({
       globalOrder: task.globalOrder,
       videoPath: groupVideo,
       ttsPath: groupAudio,
+      subtitleEvents,
     });
     sceneResults.set(task.sceneName, result);
   }

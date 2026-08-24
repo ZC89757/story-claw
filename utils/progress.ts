@@ -19,7 +19,17 @@
 import fs from "node:fs/promises";
 import { novelPaths } from "./paths.js";
 
-export type StageName = "clean" | "visualPreset" | "archive" | "segment" | "storyboard" | "render";
+export type StageName =
+  | "clean"
+  | "mgAnnotate"
+  | "visualPreset"
+  | "archive"
+  | "segment"
+  | "storyboard"
+  | "render"
+  | "mgPlan"
+  | "mgRender"
+  | "finalize";
 export type StageStatus = "done" | "images_only" | "review";
 export type ArticleType = "essay" | "story";
 
@@ -32,6 +42,12 @@ export interface EpisodeRecord {
     articleType?: ArticleType;
     version?: number;
     status?: "review" | "approved" | "updated";
+  };
+  mg_annotation_review?: {
+    version?: number;
+    status?: "review" | "approved" | "updated";
+    groupCount?: number;
+    tagCount?: number;
   };
 }
 
@@ -69,15 +85,19 @@ export async function markStage(
 }
 
 /**
- * 整集完成：render 记 done，追加 adapted（集号递增），next_chapter +1。
+ * 整集完成：终态阶段记 done，追加 adapted（集号递增），next_chapter +1。
  * 只在「完整渲染」成功后调用；images-only 不调用，故进度不推进、可原地续跑补视频。
  */
-export async function finalizeEpisode(novelName: string, episode: number): Promise<void> {
+export async function finalizeEpisode(
+  novelName: string,
+  episode: number,
+  completionStage: "render" | "finalize" = "render",
+): Promise<void> {
   const prog = await readProgress(novelName);
   prog.episodes ??= {};
   const key = String(episode);
   const rec: EpisodeRecord = prog.episodes[key] ?? { stages: {} };
-  rec.stages = { ...rec.stages, render: "done" };
+  rec.stages = { ...rec.stages, [completionStage]: "done" };
   rec.updated_at = new Date().toISOString();
   prog.episodes[key] = rec;
 
