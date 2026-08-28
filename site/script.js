@@ -1,4 +1,41 @@
 (() => {
+  const typewriterLines = [...document.querySelectorAll("[data-typewriter]")];
+  const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  const prepareTypewriterLine = (line, startDelay) => {
+    if (!line) return 0;
+    const fullText = line.dataset.typewriter || "";
+    if (!fullText) return 0;
+
+    [...line.childNodes].forEach((node) => node.remove());
+    const textNode = document.createTextNode("");
+    line.appendChild(textNode);
+    line.setAttribute("aria-label", fullText);
+
+    if (prefersReducedMotion) {
+      textNode.data = fullText;
+      return 0;
+    }
+
+    const chars = Array.from(fullText);
+    const charDelay = 86;
+    const typeLine = () => {
+      let index = 0;
+      const writeNext = () => {
+        textNode.data += chars[index];
+        index += 1;
+        if (index < chars.length) window.setTimeout(writeNext, charDelay);
+      };
+      writeNext();
+    };
+
+    window.setTimeout(typeLine, startDelay);
+    return chars.length * charDelay;
+  };
+
+  const firstLineDuration = prepareTypewriterLine(typewriterLines[0], 180);
+  prepareTypewriterLine(typewriterLines[1], 180 + firstLineDuration + 180);
+
   const menuToggle = document.querySelector(".menu-toggle");
   const mobileMenu = document.querySelector("[data-mobile-menu]");
 

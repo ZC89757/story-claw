@@ -467,24 +467,12 @@ h1 em {
   display: block !important;
   width: max-content;
   max-width: 100%;
+  min-height: 1em;
   white-space: nowrap;
-  clip-path: inset(0 100% 0 0);
-  animation: hero-type-line 900ms steps(7, end) forwards;
 }
 
 .hero-title-line + .hero-title-line {
   margin-top: 30px;
-  animation-delay: 980ms;
-}
-
-@keyframes hero-type-line {
-  from {
-    clip-path: inset(0 100% 0 0);
-  }
-
-  to {
-    clip-path: inset(0 0 0 0);
-  }
 }
 
 .hero-title-second {
@@ -2269,4 +2257,5 @@ h1 em {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+
 }
