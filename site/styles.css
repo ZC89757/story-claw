@@ -1354,6 +1354,10 @@ h1 em {
   border-bottom: 1px solid var(--line);
 }
 
+.mg-feature:not(:last-child) {
+  padding-bottom: 68px;
+}
+
 .mg-feature-number {
   padding-top: 3px;
   color: var(--yellow);
