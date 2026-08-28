@@ -1350,7 +1350,7 @@ h1 em {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 16px;
-  padding: 32px 0 33px;
+  padding: 40px 0 42px;
   border-bottom: 1px solid var(--line);
 }
 
