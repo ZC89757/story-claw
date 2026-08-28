@@ -412,6 +412,7 @@ h1 em {
 
 .hero {
   position: relative;
+  isolation: isolate;
   display: grid;
   min-height: 550px;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
@@ -419,6 +420,32 @@ h1 em {
   gap: 60px;
   padding-top: 40px;
   padding-bottom: 25px;
+}
+
+.hero::before,
+.hero::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  content: "";
+  pointer-events: none;
+}
+
+.hero::before {
+  background:
+    radial-gradient(ellipse at 78% 18%, rgba(255, 95, 37, 0.34) 0%, rgba(173, 33, 56, 0.18) 24%, transparent 58%),
+    radial-gradient(ellipse at 38% 116%, rgba(111, 43, 164, 0.42) 0%, rgba(55, 21, 87, 0.26) 44%, transparent 74%),
+    linear-gradient(180deg, #07080b 0%, #100c18 40%, #211334 72%, #35194e 100%);
+}
+
+.hero::after {
+  background:
+    radial-gradient(ellipse at 17% 54%, rgba(7, 7, 12, 0.62) 0%, rgba(7, 7, 12, 0.2) 42%, transparent 76%),
+    radial-gradient(ellipse at 86% 88%, rgba(255, 71, 27, 0.16) 0%, transparent 44%);
+  opacity: 0.86;
 }
 
 .hero-copy {
