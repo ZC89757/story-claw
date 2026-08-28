@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d0e10" />
+    <meta
+      name="description"
+      content="Story Claw：把小说、文章和结构化内容变成短剧成片、MG 动画与信息可视化。开源、本地优先、支持 Windows 桌面端。"
+    />
+    <meta property="og:title" content="Story Claw — 把内容，做成能播放的成片" />
+    <meta
+      property="og:description"
+      content="短剧、MG 动画和信息可视化共用一套可扩展、本地优先的制作流水线。"
+    />
+    <meta property="og:type" content="website" />
+    <title>Story Claw — 把内容，做成能播放的成片</title>
+    <link rel="icon" href="media/storyclaw-logo.png" type="image/png" />
+    <link rel="stylesheet" href="styles.css?v=page-5" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+
+    <header class="site-nav" data-nav>
+      <div class="nav-inner">
+        <a class="brand" href="#top" aria-label="Story Claw 首页">
+          <img src="media/storyclaw-logo.png" alt="" width="36" height="36" />
+          <span>Story Claw</span>
+        </a>
+        <nav class="nav-links" aria-label="主导航">
+          <a href="#workflow">工作流</a>
+          <a href="#interface">真实界面</a>
+          <a href="#mg">资产管理</a>
+          <a href="#download">下载</a>
+        </nav>
+        <div class="nav-actions">
+          <a class="nav-stars" href="https://github.com/ZC89757/story-claw/stargazers" target="_blank" rel="noreferrer" data-github-stars-link aria-label="GitHub Stars，正在读取">
+            <span class="nav-stars-mark" aria-hidden="true">★</span>
+            <span class="nav-stars-count" data-github-stars aria-live="polite" data-fallback-stars="15">15</span>
+            <span class="nav-stars-label">STARS</span>
+          </a>
+          <a class="nav-github" href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer">
+            GitHub <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="mobile-menu" aria-label="打开菜单">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+      <div class="mobile-menu" id="mobile-menu" data-mobile-menu>
+        <a href="#workflow">工作流</a>
+        <a href="#interface">真实界面</a>
+        <a href="#mg">资产管理</a>
+        <a href="#download">下载</a>
+        <a href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="hero section-shell" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="status-dot"></span> OPEN SOURCE · LOCAL FIRST · WINDOWS</p>
+          <h1 id="hero-title"><span class="hero-title-line hero-title-first">把内容，做成</span><span class="hero-title-line hero-title-second">能播放的成片。</span></h1>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/ZC89757/story-claw/releases/latest" target="_blank" rel="noreferrer">
+              获取 Windows 版 <span aria-hidden="true">↓</span>
+            </a>
+            <a class="hero-source-link" href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer">
+              查看源代码 <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="hero-stage" aria-label="Story Claw 桌面端真实界面预览">
+          <div class="window-frame">
+            <div class="window-bar">
+              <span class="window-lights"><i></i><i></i><i></i></span>
+              <span class="window-title">Story Claw · 新建项目</span>
+            </div>
+            <img src="media/story-claw-home-current.png" alt="Story Claw 桌面端首页：输入文稿并创建项目" />
+          </div>
+        </div>
+      </section>
+
+      <section class="proof-strip" id="proof" aria-label="项目能力概览">
+        <div class="proof-inner">
+          <div class="proof-label">STORY + MOTION GRAPHICS</div>
+          <div class="proof-item"><strong>SHORT</strong><span>短剧流水线</span></div>
+          <div class="proof-item"><strong>MG</strong><span>插件式动画</span></div>
+          <div class="proof-item"><strong>SYNC</strong><span>精准时间轴</span></div>
+          <div class="proof-item"><strong>MIT</strong><span>开源许可</span></div>
+        </div>
+      </section>
+
+      <section class="workflow-band" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-shell workflow-shell">
+          <div class="workflow-top">
+            <div class="workflow-heading"><h2 id="workflow-title">从内容到成片，完整流程</h2></div>
+            <div class="workflow-carousel" data-workflow-carousel>
+              <div class="workflow-viewport">
+                <div class="workflow-slide is-active"><img src="media/story-claw-home-current.png" alt="原文清理" /></div>
+                <div class="workflow-slide workflow-slide-preset">
+                  <div class="chapter-stack" data-chapter-stack aria-label="画面预设两章界面">
+                    <button class="chapter-card chapter-card-back" type="button" data-chapter-card="2" aria-label="查看第 2 章画面预设">
+                      <img src="media/story-claw-visual-preset-chapter-2.png" alt="第 2 章画面预设" />
+                    </button>
+                    <button class="chapter-card chapter-card-front" type="button" data-chapter-card="1" aria-label="查看第 1 章画面预设">
+                      <img src="media/story-claw-visual-preset-chapter-1.png" alt="第 1 章画面预设" />
+                    </button>
+                  </div>
+                </div>
+                <div class="workflow-slide"><img src="media/story-claw-pipeline-start.png" alt="资源建档" /></div>
+                <div class="workflow-slide"><img src="media/story-claw-episode.png" alt="分镜制作" /></div>
+                <div class="workflow-slide"><img src="media/story-claw-projects.png" alt="渲染合成" /></div>
+              </div>
+              <button class="workflow-arrow workflow-arrow-prev" type="button" data-workflow-prev aria-label="上一张界面">‹</button>
+              <button class="workflow-arrow workflow-arrow-next" type="button" data-workflow-next aria-label="下一张界面">›</button>
+            </div>
+          </div>
+          <div class="pipeline" aria-label="五阶段制作流程">
+            <div class="pipeline-line" aria-hidden="true"></div>
+            <ol>
+              <li><span class="step-number">01</span><strong>原文清理</strong><small>保留叙事骨架</small></li>
+              <li><span class="step-number">02</span><strong>画面预设</strong><small>逐句标注镜头</small></li>
+              <li><span class="step-number">03</span><strong>资源建档</strong><small>角色、场景、音色</small></li>
+              <li><span class="step-number">04</span><strong>分镜制作</strong><small>逐场景设计画面</small></li>
+              <li><span class="step-number">05</span><strong>渲染合成</strong><small>TTS、音效、视频</small></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-shell interface-section" id="interface" aria-labelledby="interface-title" hidden>
+        <div class="section-topline">
+          <figure class="shot shot-featured">
+            <button class="shot-open" type="button" data-lightbox="media/story-claw-episode.png" data-caption="集工作台：查看分镜、时长和真实制作进度" aria-label="放大查看集工作台截图">放大 <span aria-hidden="true">↗</span></button>
+            <img src="media/story-claw-episode.png" alt="集工作台：展示分镜列表、画面预览与制作进度" loading="lazy" />
+            <figcaption><span>01</span><b>集工作台</b><small>分镜、时长与流水线进度</small></figcaption>
+          </figure>
+          <div class="shot-stack">
+            <figure class="shot shot-compact">
+              <button class="shot-open" type="button" data-lightbox="media/story-claw-home-current.png" data-caption="首页：输入或粘贴小说章节，创建项目" aria-label="放大查看首页截图">放大 <span aria-hidden="true">↗</span></button>
+              <img src="media/story-claw-home-current.png" alt="首页：输入文稿并创建项目" loading="lazy" />
+              <figcaption><span>02</span><b>从文稿开始</b></figcaption>
+            </figure>
+            <figure class="shot shot-compact">
+              <button class="shot-open" type="button" data-lightbox="media/story-claw-pipeline-start.png" data-caption="制作流水线：从素材整理到 GPU 渲染" aria-label="放大查看流水线截图">放大 <span aria-hidden="true">↗</span></button>
+              <img src="media/story-claw-pipeline-start.png" alt="制作流水线：展示各阶段进度" loading="lazy" />
+              <figcaption><span>03</span><b>进度可追踪</b></figcaption>
+            </figure>
+          </div>
+          <figure class="shot shot-wide">
+            <button class="shot-open" type="button" data-lightbox="media/story-claw-business-confirmation.png" data-caption="项目确认：开始制作前锁定项目配置" aria-label="放大查看项目确认截图">放大 <span aria-hidden="true">↗</span></button>
+            <img src="media/story-claw-business-confirmation.png" alt="项目确认与制作启动界面" loading="lazy" />
+            <figcaption><span>04</span><b>开始前确认</b><small>项目名称、画幅和制作目标</small></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section-shell mg-section" id="mg" aria-labelledby="mg-title">
+        <div class="section-topline mg-topline">
+          <div>
+            <p class="eyebrow">ASSET LIBRARY</p>
+            <h2 id="mg-title">资产管理</h2>
+          </div>
+        </div>
+        <div class="mg-showcase">
+          <div class="mg-visuals">
+            <figure class="mg-shot mg-project-shot">
+              <button class="shot-open" type="button" data-lightbox="media/story-claw-assets-mg.png" data-caption="资产管理：MG 动画样式与实例" aria-label="放大查看 MG 动画资产截图">放大 <span aria-hidden="true">↗</span></button>
+              <img src="media/story-claw-assets-mg.png" alt="资产管理页面：展示 MG 动画模板与实例" loading="lazy" />
+              <figcaption><span>01</span><b>MG 动画资产</b></figcaption>
+            </figure>
+            <figure class="mg-shot mg-assets-shot">
+              <button class="shot-open" type="button" data-lightbox="media/story-claw-assets-people.png" data-caption="资产管理：人物参考图与场景素材" aria-label="放大查看人物资产截图">放大 <span aria-hidden="true">↗</span></button>
+              <img src="media/story-claw-assets-people.png" alt="资产管理页面：展示人物参考图与场景素材" loading="lazy" />
+              <figcaption><span>02</span><b>人物资产</b></figcaption>
+            </figure>
+          </div>
+          <div class="mg-copy">
+            <div class="mg-feature">
+              <span class="mg-feature-number">01</span>
+              <div><h3>MG 动画模板</h3><p>时间轴、数据表格、关系图和对比样式，按项目直接调用。</p></div>
+            </div>
+            <div class="mg-feature">
+              <span class="mg-feature-number">02</span>
+              <div><h3>人物与场景参考</h3><p>角色原型、造型和场景底图统一归档，制作时随时复用。</p></div>
+            </div>
+            <div class="mg-feature">
+              <span class="mg-feature-number">03</span>
+              <div><h3><a class="mg-feature-link" href="https://github.com/ZC89757/story-claw/tree/main/skills/story-claw-mg-template" target="_blank" rel="noreferrer">CodexSkill 插件 <span aria-hidden="true">↗</span></a></h3><p>把自己的制作流程封装成可复用的插件，继续扩展 Story Claw。</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="mg-workflow">
+          <div class="mg-workflow-label">ASSET LOOP</div>
+          <ol>
+            <li><b>导入</b><span>参考图 / 模板</span></li>
+            <li><b>归档</b><span>项目内统一管理</span></li>
+            <li><b>调用</b><span>精准替换与复用</span></li>
+            <li><b>继续制作</b><span>短剧 / MG 共用</span></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="output-band" aria-labelledby="output-title">
+        <div class="section-shell output-shell">
+          <div class="section-topline output-topline">
+            <div>
+              <p class="eyebrow">REAL OUTPUT</p>
+              <h2 id="output-title">从输入文字，到<br /><span>可以直接播放的结果。</span></h2>
+            </div>
+            <p class="section-note">以下成片由 Story Claw 全自动生成，未做手动剪辑。点击播放。</p>
+          </div>
+          <div class="video-grid">
+            <article class="video-item">
+              <div class="video-frame">
+                <video controls playsinline preload="metadata" poster="media/demo1-thumb.jpg">
+                  <source src="https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4" type="video/mp4" />
+                  当前浏览器不支持视频播放。
+                </video>
+              </div>
+              <div class="video-caption"><span>01 / AI HOT NEWS</span><b>AI 热点新闻</b><a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo1.mp4" target="_blank" rel="noreferrer">打开原视频 ↗</a></div>
+            </article>
+            <article class="video-item">
+              <div class="video-frame">
+                <video controls playsinline preload="metadata" poster="media/demo2-thumb.jpg">
+                  <source src="https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4" type="video/mp4" />
+                  当前浏览器不支持视频播放。
+                </video>
+              </div>
+              <div class="video-caption"><span>02 / MURDER ON THE ORIENT EXPRESS</span><b>《东方快车谋杀案》第 6 集</b><a href="https://github.com/ZC89757/story-claw/raw/main/assets/demo2.mp4" target="_blank" rel="noreferrer">打开原视频 ↗</a></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-shell download-section" id="download" aria-labelledby="download-title">
+        <div class="download-copy">
+          <p class="eyebrow">DOWNLOAD &amp; BUILD</p>
+          <h2 id="download-title">下载放在这里，<br /><span>源码也放在这里。</span></h2>
+          <p>普通用户从 Releases 拿安装包，开发者从仓库拿源码。两个入口指向同一个项目，不会再找错地方。</p>
+          <div class="download-actions">
+            <a class="button button-primary" href="https://github.com/ZC89757/story-claw/releases/latest" target="_blank" rel="noreferrer">前往 GitHub Releases <span aria-hidden="true">↗</span></a>
+            <a class="button button-quiet" href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer">查看仓库 <span aria-hidden="true">↗</span></a>
+          </div>
+          <p class="download-status"><span class="status-dot"></span> Windows 安装包：等待首个正式 Release 上传</p>
+          <p class="download-source-note">现在就能下载：<a href="https://github.com/ZC89757/story-claw/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">源码 ZIP ↗</a></p>
+        </div>
+        <div class="download-lanes">
+          <div class="download-lane lane-highlight">
+            <div class="lane-icon" aria-hidden="true">▣</div>
+            <div><span class="lane-kicker">FOR EVERYONE</span><h3>Windows 桌面端</h3><p>发布后下载 <code>.exe</code> 安装器，双击即可启动桌面工作台。</p></div>
+            <a href="https://github.com/ZC89757/story-claw/releases/latest" target="_blank" rel="noreferrer" aria-label="前往 Windows Release 下载">↗</a>
+          </div>
+          <div class="download-lane">
+            <div class="lane-icon" aria-hidden="true">⌘</div>
+            <div><span class="lane-kicker">FOR DEVELOPERS</span><h3>源码与命令行</h3><p>Node.js 18+，克隆仓库后运行 <code>npm install</code> 和 <code>npm start</code>。</p></div>
+            <a href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer" aria-label="打开 GitHub 源码仓库">↗</a>
+          </div>
+          <div class="download-lane">
+            <div class="lane-icon" aria-hidden="true">GPU</div>
+            <div><span class="lane-kicker">RENDER BACKEND</span><h3>自托管视频渲染</h3><p>桌面端可以打包，ComfyUI、LTX 模型和 GPU 依赖建议单独配置。</p></div>
+            <a href="https://github.com/ZC89757/story-claw/blob/main/README_CN.md#安装" target="_blank" rel="noreferrer" aria-label="查看渲染环境说明">↗</a>
+          </div>
+        </div>
+        <div class="install-block">
+          <div class="install-heading"><span>QUICK START</span><button type="button" class="copy-button" data-copy="npm install && npm start">复制命令</button></div>
+          <pre><code><span class="code-muted"># clone the project</span>
+git clone https://github.com/ZC89757/story-claw.git
+cd story-claw
+npm install
+npm start</code></pre>
+          <p class="copy-feedback" data-copy-feedback role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="faq-band" aria-labelledby="faq-title">
+        <div class="section-shell faq-shell">
+          <div>
+            <p class="eyebrow">BEFORE YOU DOWNLOAD</p>
+            <h2 id="faq-title">先把几个关键问题说清楚。</h2>
+          </div>
+          <div class="faq-list">
+            <details open>
+              <summary>GitHub 的“Code”按钮和“Releases”有什么区别？<span>+</span></summary>
+              <p>“Code”下载的是源码，适合开发者；“Releases”放编译好的 <code>.exe</code>、<code>.zip</code> 和版本说明，适合普通用户。Story Claw 的网页下载按钮会直接带你去 Releases。</p>
+            </details>
+            <details>
+              <summary>能不能把所有依赖都塞进一个 Windows 安装包？<span>+</span></summary>
+              <p>桌面界面、Node 运行时和项目代码可以打包。ComfyUI、LTX 模型、Python 环境和 GPU 驱动体积大且与硬件强相关，更适合安装器提供检测与配置向导，而不是强行塞进安装包。</p>
+            </details>
+            <details>
+              <summary>正式发布时，应该上传哪些文件？<span>+</span></summary>
+              <p>建议每个版本上传 <code>StoryClaw-Setup.exe</code>（安装版）、<code>StoryClaw-Portable.zip</code>（便携版）和 <code>SHA256SUMS.txt</code>。网页只需要固定指向“Latest release”，以后更新版本无需改页面。</p>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="section-shell footer-inner">
+        <div class="footer-brand"><img src="media/storyclaw-logo.png" alt="" width="32" height="32" /><span>Story Claw</span></div>
+        <p>把想法变成一条可以继续的制作流水线。</p>
+        <div class="footer-links"><a href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer">GitHub ↗</a><a href="https://github.com/ZC89757/story-claw/releases" target="_blank" rel="noreferrer">Releases ↗</a><a href="https://github.com/ZC89757/story-claw/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a></div>
+      </div>
+      <div class="section-shell footer-bottom"><span>© 2026 Story Claw</span><span>页面版本 0.1 · v1.0.1</span></div>
+    </footer>
+
+    <dialog class="lightbox" data-lightbox-dialog aria-label="截图预览">
+      <button class="lightbox-close" type="button" data-lightbox-close aria-label="关闭截图预览">×</button>
+      <img data-lightbox-image src="" alt="" />
+      <p data-lightbox-caption></p>
+    </dialog>
+
+    <script src="script.js?v=page-5" defer></script>
+  </body>
+</html>
