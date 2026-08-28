@@ -468,10 +468,23 @@ h1 em {
   width: max-content;
   max-width: 100%;
   white-space: nowrap;
+  clip-path: inset(0 100% 0 0);
+  animation: hero-type-line 900ms steps(7, end) forwards;
 }
 
 .hero-title-line + .hero-title-line {
   margin-top: 30px;
+  animation-delay: 980ms;
+}
+
+@keyframes hero-type-line {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 .hero-title-second {
@@ -593,7 +606,7 @@ h1 em {
   display: flex;
   height: 34px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 0 13px;
   border-bottom: 1px solid #30343a;
   color: #9399a2;
@@ -620,10 +633,6 @@ h1 em {
 
 .window-lights i:nth-child(2) {
   background: var(--yellow);
-}
-
-.window-title {
-  margin-left: 26px;
 }
 
 .window-size {
@@ -2067,10 +2076,6 @@ h1 em {
 
   .window-size {
     display: none;
-  }
-
-  .window-title {
-    margin-left: 0;
   }
 
   .stage-caption {
