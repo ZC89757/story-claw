@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://zc89757.github.io/story-claw/sitemap.xml

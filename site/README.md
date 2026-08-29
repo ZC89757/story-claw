@@ -20,7 +20,7 @@
 
 ## GitHub Pages 建议
 
-页面确认后，建议使用 GitHub Actions 将 site/ 目录部署到 GitHub Pages。这样展示页和源码仍在同一个仓库，页面地址稳定，图片不会依赖本机路径。
+当前页面通过 GitHub Actions 将 site/ 目录部署到 GitHub Pages，在线地址为 https://zc89757.github.io/story-claw/。这样展示页和源码仍在同一个仓库，页面地址稳定，图片不会依赖本机路径。
 
 ## Windows 发布建议
 
@@ -33,7 +33,6 @@
 页面中的下载按钮固定指向 https://github.com/ZC89757/story-claw/releases/latest，以后更新版本时不用改网页。
 
 页面中的 Star 数来自公开的 GitHub 仓库接口（`/repos/ZC89757/story-claw`），每次打开页面都会重新读取；如果 GitHub API 暂时限流，页面会保留 GitHub 链接并提示直接查看最新数据。
-在首个 Release 之前，页面另提供 GitHub 主分支的源码 ZIP，方便开发者先行下载。
 
 ## 依赖边界
 

@@ -11,6 +11,10 @@ Technology ultimately has to serve people. True productivity does not lie in how
 
 English | [中文](./README_CN.md)
 
+Story Claw is an open-source, AI-powered novel-to-video pipeline for short-drama episodes, MG animation, and storyboard production. It runs locally with a Windows desktop workflow and a self-hosted ComfyUI/LTX rendering backend.
+
+**Project site:** https://zc89757.github.io/story-claw/ · **Windows downloads:** https://github.com/ZC89757/story-claw/releases
+
 Point it at a folder of novel chapters. It hands back a finished short-drama episode — narrated, scored, sound-effected, rendered — with one command. If you want to turn a web novel into short-drama episodes without paying per second for video generation or babysitting character consistency by hand, this is built for exactly that.
 
 <p align="center">

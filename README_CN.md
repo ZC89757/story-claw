@@ -11,6 +11,10 @@
 
 [English](./README.md) | 中文
 
+Story Claw 是一个开源的 AI 小说转视频制作工具，可用于短剧成片、MG 动画和分镜制作。支持 Windows 桌面工作流，并可连接自托管的 ComfyUI/LTX 渲染后端。
+
+**项目展示页：** https://zc89757.github.io/story-claw/ · **Windows 下载：** https://github.com/ZC89757/story-claw/releases
+
 丢一个小说章节文件夹进去，一条命令拿回一集配好音、配好乐、加了音效的成片短剧。如果你想把网文改编成短剧，又不想为视频生成按秒付费、也不想自己盯着人物一致性手动纠错，这个工具就是照着这个需求做的。
 
 <p align="center">
