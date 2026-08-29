@@ -16,7 +16,7 @@
     <meta property="og:type" content="website" />
     <title>Story Claw — 把内容，做成能播放的成片</title>
     <link rel="icon" href="media/storyclaw-logo.png" type="image/png" />
-    <link rel="stylesheet" href="styles.css?v=page-16" />
+    <link rel="stylesheet" href="styles.css?v=page-21" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -146,7 +146,6 @@
       <section class="section-shell mg-section" id="mg" aria-labelledby="mg-title">
         <div class="section-topline mg-topline">
           <div>
-            <p class="eyebrow">ASSET LIBRARY</p>
             <h2 id="mg-title">资产管理</h2>
           </div>
         </div>
@@ -166,7 +165,7 @@
           <div class="mg-copy">
             <div class="mg-feature">
               <span class="mg-feature-number">01</span>
-              <div><h3>MG 动画模板</h3><p>时间轴、数据表格、关系图和对比样式，按项目直接调用。</p></div>
+              <div><h3>MG 动画模板</h3><p>时间轴、数据表格、关系图和对比样式，按项目直接调用。可以接入生图模型支持复杂样式。附带 Codex Skill 可以自定义 MG 动画。</p></div>
             </div>
             <div class="mg-feature">
               <span class="mg-feature-number">02</span>
@@ -174,7 +173,7 @@
             </div>
             <div class="mg-feature">
               <span class="mg-feature-number">03</span>
-              <div><h3><a class="mg-feature-link" href="https://skills.sh/ZC89757/story-claw/story-claw-mg-template" target="_blank" rel="noreferrer" aria-label="在 Skills Store 查看 Story Claw MG 模板 CodexSkill">CodexSkill 插件 <span aria-hidden="true">↗</span></a></h3><p>把自己的制作流程封装成可复用的插件，继续扩展 Story Claw。</p></div>
+              <div><h3><a class="mg-feature-link" href="https://skills.sh/ZC89757/story-claw/story-claw-mg-template" target="_blank" rel="noreferrer" aria-label="在 Skills Store 查看 Story Claw MG 模板 CodexSkill">CodexSkill 插件 <span aria-hidden="true">↗</span></a></h3><p>通过 Codex 的 Skill 制作自己心仪的 MG 动画，封装成可复用的插件，继续扩展 Story Claw。</p></div>
             </div>
           </div>
         </div>
@@ -184,7 +183,6 @@
         <div class="section-shell output-shell">
           <div class="section-topline output-topline">
             <div>
-              <p class="eyebrow">REAL OUTPUT</p>
               <h2 id="output-title">从输入文字，到<br /><span>可以直接播放的结果。</span></h2>
             </div>
             <p class="section-note">以下成片由 Story Claw 全自动生成，未做手动剪辑。点击播放。</p>
@@ -214,35 +212,27 @@
 
       <section class="section-shell download-section" id="download" aria-labelledby="download-title">
         <div class="download-copy">
-          <p class="eyebrow">DOWNLOAD &amp; BUILD</p>
-          <h2 id="download-title">下载放在这里，<br /><span>源码也放在这里。</span></h2>
-          <p>普通用户从 Releases 拿安装包，开发者从仓库拿源码。两个入口指向同一个项目，不会再找错地方。</p>
+          <h2 id="download-title">下载</h2>
           <div class="download-actions">
-            <a class="button button-primary" href="https://github.com/ZC89757/story-claw/releases/latest" target="_blank" rel="noreferrer">前往 GitHub Releases <span aria-hidden="true">↗</span></a>
-            <a class="button button-quiet" href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer">查看仓库 <span aria-hidden="true">↗</span></a>
+            <a class="button button-primary" href="https://github.com/ZC89757/story-claw/releases/latest" target="_blank" rel="noreferrer">下载 Windows 版 <span aria-hidden="true">↓</span></a>
           </div>
-          <p class="download-status"><span class="status-dot"></span> Windows 安装包：等待首个正式 Release 上传</p>
-          <p class="download-source-note">现在就能下载：<a href="https://github.com/ZC89757/story-claw/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">源码 ZIP ↗</a></p>
         </div>
-        <div class="download-lanes">
+        <div class="download-lanes" aria-label="下载与运行信息">
           <div class="download-lane lane-highlight">
-            <div class="lane-icon" aria-hidden="true">▣</div>
-            <div><span class="lane-kicker">FOR EVERYONE</span><h3>Windows 桌面端</h3><p>发布后下载 <code>.exe</code> 安装器，双击即可启动桌面工作台。</p></div>
-            <a href="https://github.com/ZC89757/story-claw/releases/latest" target="_blank" rel="noreferrer" aria-label="前往 Windows Release 下载">↗</a>
+            <div class="lane-icon windows-icon" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+            <div><h3>Windows 桌面端</h3><p>发布后下载 <code>.exe</code> 安装器，双击即可启动桌面工作台。</p></div>
           </div>
           <div class="download-lane">
             <div class="lane-icon" aria-hidden="true">⌘</div>
-            <div><span class="lane-kicker">FOR DEVELOPERS</span><h3>源码与命令行</h3><p>Node.js 18+，克隆仓库后运行 <code>npm install</code> 和 <code>npm start</code>。</p></div>
-            <a href="https://github.com/ZC89757/story-claw" target="_blank" rel="noreferrer" aria-label="打开 GitHub 源码仓库">↗</a>
+            <div><h3>源码与命令行</h3><p>Node.js 18+，克隆仓库后运行 <code>npm install</code> 和 <code>npm start</code>。</p></div>
           </div>
           <div class="download-lane">
             <div class="lane-icon" aria-hidden="true">GPU</div>
-            <div><span class="lane-kicker">RENDER BACKEND</span><h3>自托管视频渲染</h3><p>桌面端可以打包，ComfyUI、LTX 模型和 GPU 依赖建议单独配置。</p></div>
-            <a href="https://github.com/ZC89757/story-claw/blob/main/README_CN.md#安装" target="_blank" rel="noreferrer" aria-label="查看渲染环境说明">↗</a>
+            <div><h3>自托管视频渲染</h3><p>ComfyUI、LTX 模型和 GPU 依赖单独配置。</p></div>
           </div>
         </div>
         <div class="install-block">
-          <div class="install-heading"><span>QUICK START</span><button type="button" class="copy-button" data-copy="npm install && npm start">复制命令</button></div>
+          <div class="install-heading"><button type="button" class="copy-button" data-copy="npm install && npm start">复制命令</button></div>
           <pre><code><span class="code-muted"># clone the project</span>
 git clone https://github.com/ZC89757/story-claw.git
 cd story-claw
@@ -252,28 +242,6 @@ npm start</code></pre>
         </div>
       </section>
 
-      <section class="faq-band" aria-labelledby="faq-title">
-        <div class="section-shell faq-shell">
-          <div>
-            <p class="eyebrow">BEFORE YOU DOWNLOAD</p>
-            <h2 id="faq-title">先把几个关键问题说清楚。</h2>
-          </div>
-          <div class="faq-list">
-            <details open>
-              <summary>GitHub 的“Code”按钮和“Releases”有什么区别？<span>+</span></summary>
-              <p>“Code”下载的是源码，适合开发者；“Releases”放编译好的 <code>.exe</code>、<code>.zip</code> 和版本说明，适合普通用户。Story Claw 的网页下载按钮会直接带你去 Releases。</p>
-            </details>
-            <details>
-              <summary>能不能把所有依赖都塞进一个 Windows 安装包？<span>+</span></summary>
-              <p>桌面界面、Node 运行时和项目代码可以打包。ComfyUI、LTX 模型、Python 环境和 GPU 驱动体积大且与硬件强相关，更适合安装器提供检测与配置向导，而不是强行塞进安装包。</p>
-            </details>
-            <details>
-              <summary>正式发布时，应该上传哪些文件？<span>+</span></summary>
-              <p>建议每个版本上传 <code>StoryClaw-Setup.exe</code>（安装版）、<code>StoryClaw-Portable.zip</code>（便携版）和 <code>SHA256SUMS.txt</code>。网页只需要固定指向“Latest release”，以后更新版本无需改页面。</p>
-            </details>
-          </div>
-        </div>
-      </section>
     </main>
 
     <footer class="site-footer">
