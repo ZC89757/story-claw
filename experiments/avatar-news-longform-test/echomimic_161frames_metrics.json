@@ -1,0 +1,11 @@
+{
+  "model": "EchoMimicV3 Flash",
+  "mode": "maximum-single-window-benchmark",
+  "requested_video_length_frames": 161,
+  "requested_fps": 25,
+  "requested_duration_sec": 6.44,
+  "audio_duration_sec": 6.44,
+  "output_duration_sec": 6.44,
+  "wall_clock_sec": 405.1624324321747,
+  "output_path": "/root/avatar-news-test/runs/ipo-echo-maxlen/output/echo/reference_9x16_output.mp4"
+}

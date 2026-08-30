@@ -144,7 +144,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       reportPhase({
         phase: "mg_annotating",
         label: "生成 MG 语义标注",
-        detail: "正在为适合动态图形表达的原文添加 group、mode 和 value",
+        detail: "正在为适合动态图形表达的原文添加 group、order、mode 和 value",
       });
       p.start(progressIndex.mgAnnotate, title);
       if (epRec.stages.mgAnnotate === "done") {

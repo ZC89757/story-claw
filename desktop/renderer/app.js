@@ -209,6 +209,42 @@
       min-height: 58px;
       padding: 10px 12px;
     }
+    #storyclaw-gui-concept .claw-mg-style-card,
+    #storyclaw-gui-concept .claw-mg-usage-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #35373b;
+      border-radius: 7px;
+      background: #1b1c1f;
+    }
+    #storyclaw-gui-concept .claw-mg-style-card { cursor: default; }
+    #storyclaw-gui-concept .claw-mg-preview {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      background: #eef0eb;
+      color: #22292c;
+    }
+    #storyclaw-gui-concept .claw-mg-preview img,
+    #storyclaw-gui-concept .claw-mg-preview video { display: block; width: 100%; height: 100%; object-fit: cover; }
+    #storyclaw-gui-concept .claw-mg-card-meta { display: grid; gap: 5px; padding: 11px 12px 12px; }
+    #storyclaw-gui-concept .claw-mg-card-meta strong { font-size: 14px; }
+    #storyclaw-gui-concept .claw-mg-card-meta span { color: var(--claw-muted); font-size: 12px; }
+    #storyclaw-gui-concept .claw-mg-card-badge,
+    #storyclaw-gui-concept .claw-mg-order-badge { position: absolute; z-index: 2; top: 8px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 4px; background: rgba(14,15,17,.82); color: #f1c94b; font-size: 11px; line-height: 22px; text-align: center; }
+    #storyclaw-gui-concept .claw-mg-usage-card { display: grid; gap: 12px; min-width: 0; padding: 15px; }
+    #storyclaw-gui-concept .claw-mg-usage-head { display: grid; gap: 4px; min-width: 0; padding-right: 34px; }
+    #storyclaw-gui-concept .claw-mg-usage-head strong,
+    #storyclaw-gui-concept .claw-mg-usage-head span { min-width: 0; overflow-wrap: anywhere; }
+    #storyclaw-gui-concept .claw-mg-usage-head span { color: var(--claw-muted); font-size: 12px; line-height: 1.45; }
+    #storyclaw-gui-concept .claw-mg-style-control { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+    #storyclaw-gui-concept .claw-mg-style-control select { width: 100%; min-width: 0; height: 36px; border: 1px solid #414349; border-radius: 5px; padding: 0 9px; background: #25272a; color: var(--claw-text); }
+    #storyclaw-gui-concept .claw-mg-replace { display: inline-flex; align-items: center; gap: 6px; width: 100%; min-width: 88px; height: 36px; justify-content: center; padding: 0 8px; border: 1px solid #735f24; border-radius: 5px; background: #3a3117; color: #f1c94b; white-space: nowrap; }
+    #storyclaw-gui-concept .claw-mg-replace:disabled { cursor: not-allowed; opacity: .42; }
+    #storyclaw-gui-concept .claw-mg-lock-note { color: #aaadb3; font-size: 12px; }
     #storyclaw-gui-concept .claw-editor {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr) 140px;
@@ -1262,7 +1298,9 @@
       const title = document.createElement("strong");
       title.textContent = project.novelName;
       const meta = document.createElement("span");
-      meta.textContent = `${project.characterCount} 人物 · ${project.sceneCount} 场景`;
+      meta.textContent = project.articleType === "essay"
+        ? "MG 动画素材"
+        : `${project.characterCount} 人物 · ${project.sceneCount} 场景`;
       button.append(title, meta);
       button.addEventListener("click", () => renderAssets(project));
       filter.appendChild(button);
@@ -1286,19 +1324,203 @@
     return article;
   }
 
-  async function renderAssets(project) {
+  function makeMgPreview(item) {
+    const preview = item.previewUrl
+      ? document.createElement("video")
+      : document.createElement("img");
+    preview.className = "claw-mg-preview";
+    preview.setAttribute("aria-label", item.previewUrl ? `${item.name}动画预览` : "暂无预览视频，请尝试重启");
+    if (item.previewUrl) {
+      preview.muted = true;
+      preview.playsInline = true;
+      preview.preload = "metadata";
+      preview.src = item.previewUrl;
+    } else {
+      preview.src = item.previewPlaceholderUrl;
+      preview.alt = "暂无预览视频，请尝试重启";
+    }
+    return preview;
+  }
+
+  function makeMgStyleCard(item) {
+    const article = document.createElement("article");
+    article.className = "claw-mg-style-card";
+    article.title = item.description || item.name;
+    const badge = document.createElement("span");
+    badge.className = "claw-mg-card-badge";
+    badge.textContent = item.category;
+    const meta = document.createElement("div");
+    meta.className = "claw-mg-card-meta";
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const detail = document.createElement("span");
+    detail.textContent = `${item.structureName} · ${item.renderMode === "overlay" ? "叠加" : "整屏"}`;
+    meta.append(name, detail);
+    const preview = makeMgPreview(item);
+    article.append(preview, badge, meta);
+    if (item.previewUrl && preview instanceof HTMLVideoElement) {
+      article.addEventListener("mouseenter", () => {
+        preview.currentTime = 0;
+        preview.play().catch(() => {});
+      });
+      article.addEventListener("mouseleave", () => {
+        preview.pause();
+        preview.currentTime = 0;
+      });
+    }
+    return article;
+  }
+
+  function makeMgUsageCard(project, usage) {
+    const article = document.createElement("article");
+    article.className = "claw-mg-usage-card";
+    if (Number.isInteger(usage.order)) {
+      const badge = document.createElement("span");
+      badge.className = "claw-mg-order-badge";
+      badge.textContent = String(usage.order);
+      badge.title = `${usage.structureName} 的第 ${usage.order} 个动画实例`;
+      article.appendChild(badge);
+    }
+    const head = document.createElement("div");
+    head.className = "claw-mg-usage-head";
+    const title = document.createElement("strong");
+    title.textContent = usage.structureName;
+    const meta = document.createElement("span");
+    meta.textContent = `${usage.styleName} · ${usage.mode}`;
+    head.append(title, meta);
+    article.append(head);
+
+    if (!usage.editable) {
+      const locked = document.createElement("span");
+      locked.className = "claw-mg-lock-note";
+      locked.textContent = "联合审核已结束，样式已锁定";
+      article.appendChild(locked);
+      return article;
+    }
+
+    const control = document.createElement("div");
+    control.className = "claw-mg-style-control";
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `${usage.structureName}样式`);
+    (usage.compatibleStyles || []).forEach((styleItem) => {
+      const option = document.createElement("option");
+      option.value = styleItem.style;
+      option.textContent = styleItem.name;
+      option.selected = styleItem.style === usage.style;
+      select.appendChild(option);
+    });
+    const replace = document.createElement("button");
+    replace.type = "button";
+    replace.className = "claw-mg-replace";
+    replace.innerHTML = '<i data-lucide="replace" aria-hidden="true"></i><span>替换</span>';
+    const updateDisabled = () => {
+      replace.disabled = select.value === usage.style || select.options.length < 2;
+    };
+    select.addEventListener("change", updateDisabled);
+    updateDisabled();
+    replace.addEventListener("click", async () => {
+      const nextStyle = select.value;
+      if (!nextStyle || nextStyle === usage.style) return;
+      select.disabled = true;
+      replace.disabled = true;
+      try {
+        await api.replaceMgStyle({
+          novelName: project.novelName,
+          episode: usage.episode,
+          tag: usage.tag,
+          order: usage.order,
+          style: nextStyle,
+        });
+        showToast(`已将${usage.structureName}替换为${select.options[select.selectedIndex]?.textContent || nextStyle}`);
+        await renderAssets(project);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "替换 MG 样式失败");
+        select.disabled = false;
+        updateDisabled();
+      }
+    });
+    control.append(select, replace);
+    article.appendChild(control);
+    queueMicrotask(() => window.lucide?.createIcons({ attrs: { width: 15, height: 15 } }));
+    return article;
+  }
+
+  async function renderAssets(project, requestedMgEpisode = null) {
     if (!project) return;
     root.querySelectorAll("[data-desktop-asset-project]").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.desktopAssetProject === project.id));
     });
     const title = root.querySelector("[data-claw-asset-project-title]");
     const meta = root.querySelector("[data-claw-asset-project-meta]");
+    const subtitle = root.querySelector("[data-claw-assets-subtitle]");
+    const mgEpisodeSelect = root.querySelector("[data-claw-mg-episode-select]");
+    const peoplePane = root.querySelector('[data-claw-asset-pane="people"]');
+    const scenesPane = root.querySelector('[data-claw-asset-pane="scenes"]');
+    const peopleTab = root.querySelector('[data-claw-asset-tab="people"]');
+    const scenesTab = root.querySelector('[data-claw-asset-tab="scenes"]');
     if (title) title.textContent = project.novelName;
-    if (meta) meta.textContent = `${project.characterCount + project.sceneCount} 项资产 · 跨集共享`;
     try {
       const assets = await api.getAssets(project.novelName);
-      const peoplePane = root.querySelector('[data-claw-asset-pane="people"]');
-      const scenesPane = root.querySelector('[data-claw-asset-pane="scenes"]');
+      if (assets.kind === "mg") {
+        if (subtitle) subtitle.textContent = "查看 MG 动画样式，并在画面与 MG 联合审核阶段替换本文实例";
+        if (meta) meta.textContent = `${assets.styleCount} 种 MG 样式 · 本文已使用 ${assets.instanceCount} 个实例`;
+        if (mgEpisodeSelect) {
+          const episodes = [...new Set((assets.episodes || assets.usages || [])
+            .map((item) => Number(typeof item === "number" ? item : item.episode))
+            .filter((episode) => Number.isInteger(episode) && episode > 0))]
+            .sort((left, right) => left - right);
+          const previousProject = mgEpisodeSelect.dataset.project || "";
+          const requestedEpisode = Number.isInteger(Number(requestedMgEpisode)) && Number(requestedMgEpisode) > 0
+            ? Number(requestedMgEpisode)
+            : previousProject === project.novelName
+              ? Number(mgEpisodeSelect.value)
+            : Number.NaN;
+          const selectedEpisode = episodes.includes(requestedEpisode) ? requestedEpisode : episodes[0];
+          mgEpisodeSelect.replaceChildren(...episodes.map((episode) => {
+            const option = document.createElement("option");
+            const count = (assets.usages || []).filter((usage) => Number(usage.episode) === episode).length;
+            option.value = String(episode);
+            option.textContent = `第 ${episode} 集${count ? ` · ${count} 个实例` : ""}`;
+            option.selected = episode === selectedEpisode;
+            return option;
+          }));
+          mgEpisodeSelect.hidden = episodes.length === 0;
+          mgEpisodeSelect.disabled = episodes.length < 2;
+          mgEpisodeSelect.dataset.project = project.novelName;
+          mgEpisodeSelect.onchange = () => renderAssets(project, Number(mgEpisodeSelect.value));
+        }
+        if (peopleTab) peopleTab.textContent = "全部 MG 样式";
+        if (scenesTab) scenesTab.textContent = "本文已使用";
+        if (peoplePane) {
+          peoplePane.replaceChildren();
+          (assets.styles || []).forEach((item) => peoplePane.appendChild(makeMgStyleCard(item)));
+          if (!assets.styles?.length) peoplePane.innerHTML = '<div class="desktop-empty">暂无可用 MG 样式</div>';
+        }
+        if (scenesPane) {
+          scenesPane.replaceChildren();
+          const selectedEpisode = Number(mgEpisodeSelect?.value);
+          const usages = Number.isInteger(selectedEpisode) && selectedEpisode > 0
+            ? (assets.usages || []).filter((item) => Number(item.episode) === selectedEpisode)
+            : (assets.usages || []);
+          usages.forEach((item) => scenesPane.appendChild(makeMgUsageCard(project, item)));
+          if (!usages.length) {
+            scenesPane.innerHTML = assets.usages?.length
+              ? '<div class="desktop-empty">本集尚未使用 MG 动画</div>'
+              : '<div class="desktop-empty">当前项目尚未生成 MG 标注</div>';
+          }
+        }
+        return;
+      }
+      if (mgEpisodeSelect) {
+        mgEpisodeSelect.hidden = true;
+        mgEpisodeSelect.replaceChildren();
+        mgEpisodeSelect.onchange = null;
+        delete mgEpisodeSelect.dataset.project;
+      }
+      if (subtitle) subtitle.textContent = "按项目管理人物与场景参考图";
+      if (meta) meta.textContent = `${project.characterCount + project.sceneCount} 项资产 · 跨集共享`;
+      if (peopleTab) peopleTab.textContent = "人物参考图";
+      if (scenesTab) scenesTab.textContent = "场景参考图";
       if (peoplePane) {
         peoplePane.replaceChildren();
         (assets.people || []).forEach((item) => peoplePane.appendChild(makeAssetCard(item)));
@@ -1310,7 +1532,34 @@
         if (!assets.scenes?.length) scenesPane.innerHTML = '<div class="desktop-empty">暂无场景参考图</div>';
       }
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "读取资产失败");
+      const detail = error instanceof Error ? error.message : "读取资产失败";
+      if (meta) meta.textContent = project.articleType === "essay" ? "MG 标注协议错误" : "资产读取失败";
+      if (subtitle) {
+        subtitle.textContent = project.articleType === "essay"
+          ? "当前文件不是新的 MG HTML 协议，请重新生成 MG 标注"
+          : "按项目管理人物与场景参考图";
+      }
+      if (mgEpisodeSelect) {
+        mgEpisodeSelect.hidden = true;
+        mgEpisodeSelect.replaceChildren();
+        mgEpisodeSelect.onchange = null;
+        delete mgEpisodeSelect.dataset.project;
+      }
+      if (peoplePane) {
+        peoplePane.replaceChildren();
+        const errorCard = document.createElement("div");
+        errorCard.className = "desktop-empty";
+        errorCard.textContent = project.articleType === "essay"
+          ? "当前 MG 标注格式无效，请重新生成"
+          : detail;
+        peoplePane.appendChild(errorCard);
+      }
+      if (scenesPane) scenesPane.replaceChildren();
+      const peopleTab = root.querySelector('[data-claw-asset-tab="people"]');
+      const scenesTab = root.querySelector('[data-claw-asset-tab="scenes"]');
+      if (peopleTab) peopleTab.textContent = project.articleType === "essay" ? "全部 MG 样式" : "人物参考图";
+      if (scenesTab) scenesTab.textContent = project.articleType === "essay" ? "本文已使用" : "场景参考图";
+      showToast(detail);
     }
   }
 

@@ -1,0 +1,7 @@
+{
+  "prompt": "A waist-up anime female financial news anchor faces the camera in a clean, bright news studio. She speaks naturally in Mandarin with accurate lip synchronization, subtle blinking, calm facial expressions, and controlled natural head movements. Professional and composed presenter posture, with restrained small open-palm emphasis gestures when visible, static medium shot, consistent face, hair, and white-and-navy clothing, no subtitles, no on-screen text, no watermark.",
+  "cond_image": "/root/avatar-news-test/runs/ipo-official-5seg/input/reference_9x16.png",
+  "cond_audio": {
+    "person1": "/root/avatar-news-test/runs/ipo-official-5seg/input/article_5seg.wav"
+  }
+}

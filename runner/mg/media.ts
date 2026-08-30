@@ -54,6 +54,22 @@ export const assertMgVideoFrames = async (
   }
 };
 
+/** Return whether a rendered MG clip contains an audio stream. */
+export const hasAudioStream = async (filePath: string): Promise<boolean> => {
+  try {
+    const {stdout} = await execFileAsync("ffprobe", [
+      "-v", "error",
+      "-select_streams", "a:0",
+      "-show_entries", "stream=index",
+      "-of", "csv=p=0",
+      filePath,
+    ]);
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+};
+
 export const runMediaCommand = (
   command: string,
   args: string[],

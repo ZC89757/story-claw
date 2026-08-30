@@ -6,18 +6,19 @@ import {runSubAgent} from "../../agent.js";
 import type {NovelSelection} from "../../ui/select.js";
 import {novelPaths} from "../../utils/paths.js";
 import type {ArticleTimelineEntry} from "../render.js";
-import {locateMgGroups, validateMgAnnotationHtml} from "./html.js";
+import {locateMgInstances, validateMgAnnotationHtml} from "./html.js";
 import {probeMgVideo, sha256File} from "./media.js";
 import {
-  BACKGROUND_BY_TEMPLATE,
+  backgroundForTemplateStyle,
   elementAts,
+  functionsForTemplateStyle,
   MG_FUNCTION_DEFINITIONS,
   OVERLAY_TEMPLATES,
   resolveMgFunctionCall,
   TAG_FUNCTIONS,
 } from "./registry.js";
 import type {
-  MgGroupInfo,
+  MgInstanceInfo,
   MgPlan,
   MgRenderBundle,
   MgScenePlan,
@@ -35,22 +36,32 @@ const FUNCTION_CALLING_SYSTEM = `你负责把 HTML 中的 MG 标签转换成动�
 你会收到完整 HTML 和与正文逐字对应的时间轴 JSON。
 
 调用规则：
-- HTML 中每个 group 必须调用一次对应工具，包括嵌套 group
-- 同一 group 内的标签按 value 顺序组成一段动画
-- 根据标签名称选择工具；<multi-series-chart> 根据数据表达选择柱状图或折线图
-- 不得合并、遗漏或创建 HTML 中不存在的 group
+- 每个动画实例必须调用一次对应工具，包括嵌套实例；动画实例由“标签名称 + order”确定
+- 同一种标签只有一个实例、HTML 未写 order 时，Function Call 的 order 填 null
+- 同一种标签有多个实例时，原样复制该实例的 order；同一实例内的标签按 value 顺序组成一段动画
+- group 是用户选择的渲染样式，必须从 HTML 原样复制，不得自行改写
+- 根据标签名称选择工具；<multi-series-chart> 根据 group=bar 或 group=line 选择对应工具
+- <mg-showcase> 用 create_showcase_timeline；items 只填可读的界面/卡片/步骤文字和绝对 at
+- <mg-metric> 用 create_metric_timeline；points 只填 label、value 和绝对 at，保留原文数字及单位
+- <mg-transition> 用 create_transition_cue；只填接缝锚点文字和根 at，几何形状、强度、音效由 group 固定
+- <mg-rhythm> 用 create_rhythm_cue；只填节拍锚点文字和根 at，脉冲/冻结/频闪由 group 固定
+- <mg-effect> 用 create_effect_cue；只填效果锚点文字和根 at，光斑/扫描/冲击/装配由 group 固定；同实例多个标注时用 items 保留各自 at
+- <mg-camera> 用 create_camera_move；只填运镜锚点文字和根 at，推拉/俯仰/旋转/视差由 group 固定；同实例多个标注时用 items 保留各自 at
+- 不得合并、遗漏或创建 HTML 中不存在的动画实例
 
 时间规则：
 - at 直接使用时间轴 JSON 中的 start 数值，不进行换算
-- group 的 at 使用该 group 第一处标签文字首字的 start
+- 实例的 at 使用该实例第一处标签文字首字的 start
 - 节点、单元格、边、部件、对比项、数据点和关系等元素，各自使用对应文字首字的 start
-- 没有单独对应文字的结构性元素使用 group 的 at
+- 没有单独对应文字的结构性元素使用实例的 at
 
 内容规则：
 - 根据标签文字及其所在段落填写动画内容
 - 保留原文中的数字、正负号、年份、单位和系列关系
+- image-stack/image-grid 的 images[].image 填图片 URL、本地图片路径或生图提示词；代码会在渲染前自动识别并处理
+- URL 只能逐字取自输入 HTML、正文或已提供的素材路径；无法确认时不要编造 URL
 - 参数必须符合工具 Schema
-- 工具返回错误时修正当前 group；全部 group 调用完成后结束`;
+- 工具返回错误时修正当前实例；全部实例调用完成后结束`;
 
 const definitionLabel = (name: string): string => ({
   create_progress_timeline: "时间进度条",
@@ -66,6 +77,14 @@ const definitionLabel = (name: string): string => ({
   create_weighted_comparison: "加权对比",
   create_side_by_side_comparison: "左右对比",
   create_collage_network: "拼贴关系网络",
+  create_image_stack: "图片叠加",
+  create_image_grid: "图片并列",
+  create_showcase_timeline: "界面陈列",
+  create_metric_timeline: "指标动画",
+  create_transition_cue: "转场",
+  create_rhythm_cue: "节拍强调",
+  create_effect_cue: "视觉效果",
+  create_camera_move: "运镜",
 } as Record<string, string>)[name] ?? name;
 
 type MgFunctionDefinition = (typeof MG_FUNCTION_DEFINITIONS)[number];
@@ -97,7 +116,10 @@ const requestFunctionCalls = async (
       resolveMgFunctionCall(call);
       calls.push(call);
       return {
-        content: [{type: "text" as const, text: `已记录 group ${String(params.group ?? "")}`}],
+        content: [{
+          type: "text" as const,
+          text: `已记录 ${definitionLabel(definition.name)} order=${String(params.order ?? "null")}`,
+        }],
         details: {},
       };
     },
@@ -107,7 +129,7 @@ const requestFunctionCalls = async (
     tools,
     FUNCTION_CALLING_SYSTEM,
     [
-      feedback ? `校验错误：\n${feedback}\n请重新完成所有 group。` : "",
+      feedback ? `校验错误：\n${feedback}\n请重新完成所有动画实例。` : "",
       "== MG HTML ==",
       html,
       "== 字级时间轴 JSON ==",
@@ -121,53 +143,59 @@ const requestFunctionCalls = async (
 
 const validateAndResolveCalls = (
   rawCalls: RawMgFunctionCall[],
-  groups: Map<string, MgGroupInfo>,
+  instances: Map<string, MgInstanceInfo>,
   videoDuration: number,
 ): ResolvedMgFunctionCall[] => {
   const errors: string[] = [];
-  const callsByGroup = new Map<string, RawMgFunctionCall>();
+  const callsByInstance = new Map<string, ResolvedMgFunctionCall>();
   for (const call of rawCalls) {
-    const group = typeof call.arguments.group === "string" ? call.arguments.group : "";
-    if (!group) {
-      errors.push(`${call.name} 缺少 group`);
-      continue;
+    try {
+      const callResolved = resolveMgFunctionCall(call);
+      if (callsByInstance.has(callResolved.instanceKey)) errors.push(`${callResolved.instanceKey} 被调用了多次`);
+      else callsByInstance.set(callResolved.instanceKey, callResolved);
+    } catch (error) {
+      errors.push(`${call.name} 参数校验失败: ${error instanceof Error ? error.message : String(error)}`);
     }
-    if (callsByGroup.has(group)) errors.push(`group ${group} 被调用了多次`);
-    else callsByGroup.set(group, call);
   }
-  for (const group of groups.keys()) if (!callsByGroup.has(group)) errors.push(`缺少 group ${group} 的 Function Call`);
-  for (const group of callsByGroup.keys()) if (!groups.has(group)) errors.push(`多出了 HTML 不存在的 group ${group}`);
+  for (const instanceKey of instances.keys()) {
+    if (!callsByInstance.has(instanceKey)) errors.push(`缺少 ${instanceKey} 的 Function Call`);
+  }
+  for (const instanceKey of callsByInstance.keys()) {
+    if (!instances.has(instanceKey)) errors.push(`多出了 HTML 不存在的实例 ${instanceKey}`);
+  }
 
   const resolved: ResolvedMgFunctionCall[] = [];
-  for (const [groupName, group] of groups) {
-    const call = callsByGroup.get(groupName);
+  for (const [instanceKey, instance] of instances) {
+    const call = callsByInstance.get(instanceKey);
     if (!call) continue;
-    if (!TAG_FUNCTIONS[group.tag].includes(call.name)) {
-      errors.push(`group ${groupName} 的 <${group.tag}> 错用了 ${call.name}`);
+    if (!functionsForTemplateStyle(instance.tag, instance.group).includes(call.name)) {
+      errors.push(`${instanceKey} 的 <${instance.tag}> 样式 ${instance.group} 错用了 ${call.name}`);
       continue;
     }
+    if (call.group !== instance.group) {
+      errors.push(`${instanceKey} 的 group 应为 ${instance.group}，实际为 ${call.group}`);
+    }
+    if (call.order !== instance.order) {
+      errors.push(`${instanceKey} 的 order 应为 ${instance.order ?? "null"}，实际为 ${call.order ?? "null"}`);
+    }
     const rootAt = Number(call.arguments.at);
-    const expectedRootAt = group.tags[0].start;
+    const expectedRootAt = instance.tags[0].start;
     if (!Number.isFinite(rootAt) || Math.abs(rootAt - expectedRootAt) > AT_TOLERANCE_SECONDS) {
-      errors.push(`group ${groupName} 根 at=${rootAt}，应接近 ${expectedRootAt}`);
+      errors.push(`${instanceKey} 根 at=${rootAt}，应接近 ${expectedRootAt}`);
     }
     const ats = elementAts(call).filter(Number.isFinite);
-    for (const tag of group.tags) {
+    for (const tag of instance.tags) {
       if (!ats.some((at) => Math.abs(at - tag.start) <= AT_TOLERANCE_SECONDS)) {
-        errors.push(`group ${groupName} 没有元素 at 对应“${tag.text.slice(0, 24)}”的 ${tag.start}`);
+        errors.push(`${instanceKey} 没有元素 at 对应“${tag.text.slice(0, 24)}”的 ${tag.start}`);
       }
     }
-    if (ats.some((at) => at < expectedRootAt - AT_TOLERANCE_SECONDS || at > group.paragraphEnd + AT_TOLERANCE_SECONDS)) {
-      errors.push(`group ${groupName} 存在超出所属正文范围的元素 at`);
+    if (ats.some((at) => at < expectedRootAt - AT_TOLERANCE_SECONDS || at > instance.paragraphEnd + AT_TOLERANCE_SECONDS)) {
+      errors.push(`${instanceKey} 存在超出所属正文范围的元素 at`);
     }
     if (ats.some((at) => at > videoDuration + AT_TOLERANCE_SECONDS)) {
-      errors.push(`group ${groupName} 存在超出原画时长的元素 at`);
+      errors.push(`${instanceKey} 存在超出原画时长的元素 at`);
     }
-    try {
-      resolved.push(resolveMgFunctionCall(call));
-    } catch (error) {
-      errors.push(`group ${groupName} 参数校验失败: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    resolved.push(call);
   }
   if (errors.length) throw new Error(errors.join("\n"));
   return resolved.sort((left, right) => left.at - right.at);
@@ -175,7 +203,7 @@ const validateAndResolveCalls = (
 
 type WindowCandidate = {
   key: string;
-  group: MgGroupInfo;
+  instance: MgInstanceInfo;
   call: ResolvedMgFunctionCall;
   rootFrame: number;
   startFrame: number;
@@ -184,40 +212,40 @@ type WindowCandidate = {
   order: number;
 };
 
-const groupWindows = (
+const instanceWindows = (
   call: ResolvedMgFunctionCall,
-  group: MgGroupInfo,
+  instance: MgInstanceInfo,
   video: MgVideoInfo,
 ): WindowCandidate[] => {
   const frame = (seconds: number) => Math.max(0, Math.min(video.durationFrames, Math.round(seconds * video.fps)));
   const startFrameAt = (seconds: number) => Math.min(video.durationFrames - 1, frame(seconds));
   const rootFrame = startFrameAt(call.at);
-  if (group.mode === "together") {
-    const lastTag = group.tags.at(-1)!;
+  if (instance.mode === "together") {
+    const lastTag = instance.tags.at(-1)!;
     const endSeconds = Math.max(lastTag.end + TRAILING_VISIBLE_SECONDS, call.at + MIN_VISIBLE_SECONDS);
     return [{
-      key: `${group.group}-together`,
-      group,
+      key: `${instance.instanceKey}-together`,
+      instance,
       call,
       rootFrame,
       startFrame: rootFrame,
       endFrame: Math.min(video.durationFrames, Math.max(rootFrame + 1, frame(endSeconds))),
-      sourceText: group.tags.map((tag) => tag.text).join("｜"),
-      order: group.tags[0].documentOrder,
+      sourceText: instance.tags.map((tag) => tag.text).join("｜"),
+      order: instance.tags[0].documentOrder,
     }];
   }
 
-  return group.tags.map((tag, index) => {
+  return instance.tags.map((tag, index) => {
     const startFrame = startFrameAt(tag.start);
-    const nextStartFrame = group.tags[index + 1] ? startFrameAt(group.tags[index + 1].start) : video.durationFrames;
+    const nextStartFrame = instance.tags[index + 1] ? startFrameAt(instance.tags[index + 1].start) : video.durationFrames;
     const desiredEnd = frame(Math.max(tag.end + TRAILING_VISIBLE_SECONDS, tag.start + MIN_VISIBLE_SECONDS));
     const endFrame = Math.min(
       video.durationFrames,
       Math.max(startFrame + 1, Math.min(desiredEnd, Math.max(startFrame + 1, nextStartFrame - 1))),
     );
     return {
-      key: `${group.group}-split-${index + 1}`,
-      group,
+      key: `${instance.instanceKey}-split-${index + 1}`,
+      instance,
       call,
       rootFrame,
       startFrame,
@@ -241,7 +269,7 @@ const resolveMainIntervals = (candidates: WindowCandidate[]): OwnedInterval[] =>
     const active = candidates
       .filter((candidate) => candidate.startFrame <= startFrame && candidate.endFrame >= endFrame)
       .sort((left, right) =>
-        right.group.depth - left.group.depth ||
+        right.instance.depth - left.instance.depth ||
         right.startFrame - left.startFrame ||
         right.order - left.order,
       );
@@ -257,14 +285,17 @@ const resolveMainIntervals = (candidates: WindowCandidate[]): OwnedInterval[] =>
 const makeMainScenes = (intervals: OwnedInterval[], video: MgVideoInfo): MgScenePlan[] => {
   const counts = new Map<string, number>();
   return intervals.map(({candidate, startFrame, endFrame}) => {
-    const count = (counts.get(candidate.group.group) ?? 0) + 1;
-    counts.set(candidate.group.group, count);
-    const id = `${candidate.group.group}-${String(count).padStart(2, "0")}`;
+    const instance = candidate.instance;
+    const count = (counts.get(instance.instanceKey) ?? 0) + 1;
+    counts.set(instance.instanceKey, count);
+    const id = `${instance.instanceKey}-${String(count).padStart(2, "0")}`;
     return {
       id,
-      group: candidate.group.group,
+      instance: instance.instanceKey,
+      group: instance.group,
+      ...(instance.order === undefined ? {} : {order: instance.order}),
       template: candidate.call.template,
-      renderMode: "replace",
+      renderMode: candidate.call.template === "camera" ? "overlay" : "replace",
       start: startFrame / video.fps,
       end: endFrame / video.fps,
       startFrame,
@@ -272,9 +303,10 @@ const makeMainScenes = (intervals: OwnedInterval[], video: MgVideoInfo): MgScene
       durationFrames: endFrame - startFrame,
       timelineOffsetFrames: startFrame - candidate.rootFrame,
       sourceText: candidate.sourceText,
-      specFile: `specs/${candidate.group.group}.json`,
+      specFile: `specs/${instance.instanceKey}.json`,
       clipFile: `clips/${id}.mp4`,
-      background: BACKGROUND_BY_TEMPLATE[candidate.call.template],
+      ...(candidate.call.template === "camera" ? {baseFile: `base/${id}.mp4`} : {}),
+      background: backgroundForTemplateStyle(candidate.call.template, instance.group),
       overlays: [],
       spec: candidate.call.spec,
     };
@@ -308,8 +340,10 @@ const overlayFor = (
   fragment: OverlayFragment,
   ownerStartFrame: number,
 ): MgRuntimeOverlay => ({
-  group: fragment.candidate.group.group,
-  template: fragment.candidate.call.template as "title" | "emphasis",
+  instance: fragment.candidate.instance.instanceKey,
+  group: fragment.candidate.instance.group,
+  ...(fragment.candidate.instance.order === undefined ? {} : {order: fragment.candidate.instance.order}),
+  template: fragment.candidate.call.template as "title" | "emphasis" | "transition" | "rhythm" | "effect",
   spec: fragment.candidate.call.spec,
   fromFrame: fragment.startFrame - ownerStartFrame,
   durationFrames: fragment.endFrame - fragment.startFrame,
@@ -347,7 +381,8 @@ const attachOverlays = (
     const id = `raw-overlay-${String(++rawIndex).padStart(2, "0")}`;
     mainScenes.push({
       id,
-      group: id,
+      instance: id,
+      group: "raw",
       template: "raw-overlay",
       renderMode: "overlay",
       start: startFrame / video.fps,
@@ -368,10 +403,10 @@ const attachOverlays = (
 
 const buildScenes = (
   calls: ResolvedMgFunctionCall[],
-  groups: Map<string, MgGroupInfo>,
+  instances: Map<string, MgInstanceInfo>,
   video: MgVideoInfo,
 ): MgScenePlan[] => {
-  const allWindows = calls.flatMap((call) => groupWindows(call, groups.get(call.group)!, video));
+  const allWindows = calls.flatMap((call) => instanceWindows(call, instances.get(call.instanceKey)!, video));
   const mainCandidates = allWindows.filter((candidate) => !OVERLAY_TEMPLATES.has(candidate.call.template));
   const overlayCandidates = allWindows.filter((candidate) => OVERLAY_TEMPLATES.has(candidate.call.template));
   const scenes = attachOverlays(makeMainScenes(resolveMainIntervals(mainCandidates), video), overlayCandidates, video)
@@ -402,21 +437,21 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
   const annotation = validateMgAnnotationHtml(html, article);
   const timeline = JSON.parse(timelineRaw) as ArticleTimelineEntry[];
   const compactTimeline = JSON.stringify(timeline);
-  const groups = locateMgGroups(html, timeline, article);
+  const instances = locateMgInstances(html, timeline, article);
   const functionDefinitions = selectMgFunctionDefinitions(
-    new Set([...groups.values()].map((group) => group.tag)),
+    new Set([...instances.values()].map((instance) => instance.tag)),
   );
 
   let resolvedCalls: ResolvedMgFunctionCall[] = [];
   let rawCalls: RawMgFunctionCall[] = [];
-  if (annotation.groupCount > 0) {
+  if (annotation.instanceCount > 0) {
     let feedback = "";
     let lastError: unknown;
     for (let attempt = 1; attempt <= 3; attempt++) {
       console.log(`[MG Function Calling] 第 ${attempt}/3 次`);
       try {
         rawCalls = await requestFunctionCalls(html, compactTimeline, feedback, functionDefinitions);
-        resolvedCalls = validateAndResolveCalls(rawCalls, groups, video.duration);
+        resolvedCalls = validateAndResolveCalls(rawCalls, instances, video.duration);
         lastError = undefined;
         break;
       } catch (error) {
@@ -428,7 +463,7 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
     if (lastError) throw lastError;
   }
 
-  const scenes = buildScenes(resolvedCalls, groups, video);
+  const scenes = buildScenes(resolvedCalls, instances, video);
   const mgDir = novelPaths.mgDir(sel.novelName, sel.episode);
   const specsDir = novelPaths.mgSpecsDir(sel.novelName, sel.episode);
   await Promise.all([
@@ -436,31 +471,35 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
     fs.mkdir(specsDir, {recursive: true}),
   ]);
   await Promise.all(resolvedCalls.map((call) =>
-    fs.writeFile(path.join(specsDir, `${call.group}.json`), `${JSON.stringify(call.spec, null, 2)}\n`, "utf-8"),
+    fs.writeFile(path.join(specsDir, `${call.instanceKey}.json`), `${JSON.stringify(call.spec, null, 2)}\n`, "utf-8"),
   ));
 
-  const bundle: MgRenderBundle = {version: 1, width: video.width, height: video.height, fps: video.fps, scenes};
+  const bundle: MgRenderBundle = {version: 2, width: video.width, height: video.height, fps: video.fps, scenes};
   const plan: MgPlan = {
-    version: 1,
+    version: 2,
     source: {rawVideo: rawVideoPath, sha256: rawHash, ...video, html: htmlPath, timeline: timelinePath},
-    groups: [...groups.values()].map((group) => ({
-      group: group.group,
-      tag: group.tag,
-      mode: group.mode,
-      tagCount: group.tags.length,
-      starts: group.tags.map((tag) => tag.start),
+    instances: [...instances.values()].map((instance) => ({
+      instanceKey: instance.instanceKey,
+      group: instance.group,
+      tag: instance.tag,
+      ...(instance.order === undefined ? {} : {order: instance.order}),
+      mode: instance.mode,
+      tagCount: instance.tags.length,
+      starts: instance.tags.map((tag) => tag.start),
     })),
     functionCalls: resolvedCalls.map((call) => ({
       id: call.id,
       name: call.name,
+      instanceKey: call.instanceKey,
       group: call.group,
+      ...(call.order === undefined ? {} : {order: call.order}),
       at: call.at,
       arguments: call.arguments,
-      specFile: `specs/${call.group}.json`,
+      specFile: `specs/${call.instanceKey}.json`,
     })),
     scenes: scenes.map(({spec, overlays, ...scene}) => ({
       ...scene,
-      overlays: overlays.map(({spec: _spec, ...overlay}) => ({...overlay, specFile: `specs/${overlay.group}.json`})),
+      overlays: overlays.map(({spec: _spec, ...overlay}) => ({...overlay, specFile: `specs/${overlay.instance}.json`})),
     })),
   };
   await Promise.all([

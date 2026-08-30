@@ -1,0 +1,8 @@
+{
+  "prompt": "An anime female news anchor in a white and navy futuristic coat speaks directly to the camera. Professional calm expression, accurate lip movement, subtle blinking and small natural head movements, restrained presenter posture, static camera, clean bright studio background, consistent face and hair, no subtitles, no text, no watermark.",
+  "cond_image": "/root/avatar-news-test/input/reference_9x16.png",
+  "cond_audio": {
+    "person1": "/root/avatar-news-test/input/news.wav"
+  }
+}
+

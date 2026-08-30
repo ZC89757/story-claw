@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>谷歌的第二次创业：从搜索框到AI基础设施｜MG标注版</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f5f7f8;
+      --paper: #ffffff;
+      --ink: #182027;
+      --muted: #69747d;
+      --line: #d9e0e4;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--page);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--page);
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    .document-header {
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .document-header__inner,
+    main {
+      width: min(100% - 40px, 980px);
+      margin: 0 auto;
+    }
+
+    .document-header__inner {
+      padding: 42px 0 30px;
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: #b13a32;
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: 38px;
+      line-height: 1.28;
+      font-weight: 850;
+    }
+
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 22px;
+      margin: 20px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px 14px;
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #505b64;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+    }
+
+    .legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: var(--legend-color);
+    }
+
+    main {
+      padding: 40px 0 72px;
+    }
+
+    article {
+      font-size: 18px;
+      line-height: 2.05;
+    }
+
+    article p {
+      margin: 0 0 25px;
+    }
+
+    progress-timeline,
+    timed-table,
+    directed-graph,
+    side-by-side-comparison,
+    decomposition,
+    xy-chart,
+    multi-series-chart,
+    collage-network,
+    emphasis {
+      display: inline;
+      padding: 2px 3px 3px;
+      border-bottom: 2px solid var(--mg-color);
+      background: var(--mg-bg);
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+      cursor: help;
+    }
+
+    progress-timeline::before,
+    timed-table::before,
+    directed-graph::before,
+    side-by-side-comparison::before,
+    decomposition::before,
+    xy-chart::before,
+    multi-series-chart::before,
+    collage-network::before,
+    emphasis::before {
+      display: inline-block;
+      margin: 0 5px 1px 1px;
+      padding: 1px 5px;
+      color: #fff;
+      background: var(--mg-color);
+      border-radius: 3px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.5;
+      vertical-align: 0.16em;
+    }
+
+    progress-timeline:hover,
+    timed-table:hover,
+    directed-graph:hover,
+    side-by-side-comparison:hover,
+    decomposition:hover,
+    xy-chart:hover,
+    multi-series-chart:hover,
+    collage-network:hover,
+    emphasis:hover {
+      outline: 2px solid color-mix(in srgb, var(--mg-color) 38%, transparent);
+      outline-offset: 2px;
+    }
+
+    progress-timeline {
+      --mg-color: #2563a9;
+      --mg-bg: #eaf3ff;
+    }
+    progress-timeline::before { content: "时间进度条 · " attr(value); }
+
+    timed-table {
+      --mg-color: #287554;
+      --mg-bg: #eaf7f0;
+    }
+    timed-table::before { content: "动态表格 · " attr(value); }
+
+    directed-graph {
+      --mg-color: #6c4ba3;
+      --mg-bg: #f2ecfb;
+    }
+    directed-graph::before { content: "有向关系图 · " attr(value); }
+
+    side-by-side-comparison {
+      --mg-color: #aa3f67;
+      --mg-bg: #faedf3;
+    }
+    side-by-side-comparison::before { content: "左右对比 · " attr(value); }
+
+    decomposition {
+      --mg-color: #147a78;
+      --mg-bg: #e7f6f5;
+    }
+    decomposition::before { content: "整体拆解 · " attr(value); }
+
+    xy-chart {
+      --mg-color: #a9501f;
+      --mg-bg: #fff1e8;
+    }
+    xy-chart::before { content: "坐标趋势图 · " attr(value); }
+
+    multi-series-chart {
+      --mg-color: #3d668e;
+      --mg-bg: #eaf1f7;
+    }
+    multi-series-chart::before { content: "多系列图表 · " attr(value); }
+
+    collage-network {
+      --mg-color: #72621d;
+      --mg-bg: #f8f3d9;
+    }
+    collage-network::before { content: "拼贴关系网络 · " attr(value); }
+
+    emphasis {
+      --mg-color: #bd2f2f;
+      --mg-bg: #fff0ed;
+      font-weight: 850;
+    }
+    emphasis::before { content: "重点大字 · " attr(value); }
+
+    @media (max-width: 680px) {
+      .document-header__inner,
+      main {
+        width: min(100% - 28px, 980px);
+      }
+
+      .document-header__inner {
+        padding: 30px 0 24px;
+      }
+
+      h1 {
+        font-size: 29px;
+      }
+
+      article {
+        font-size: 16px;
+        line-height: 2;
+      }
+
+      .legend {
+        gap: 8px 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="document-header">
+    <div class="document-header__inner">
+      <p class="eyebrow">Story Claw / MG Annotation</p>
+      <h1>谷歌的第二次创业：从搜索框到AI基础设施</h1>
+      <p class="summary">
+        <span>9 类 MG 模板</span>
+        <span>41 处动画标记</span>
+        <span>支持嵌套与结构化属性</span>
+      </p>
+      <nav class="legend" aria-label="MG模板图例">
+        <span style="--legend-color:#2563a9"><i></i>时间进度条</span>
+        <span style="--legend-color:#287554"><i></i>动态表格</span>
+        <span style="--legend-color:#6c4ba3"><i></i>有向关系图</span>
+        <span style="--legend-color:#aa3f67"><i></i>左右对比</span>
+        <span style="--legend-color:#147a78"><i></i>整体拆解</span>
+        <span style="--legend-color:#a9501f"><i></i>坐标趋势图</span>
+        <span style="--legend-color:#3d668e"><i></i>多系列图表</span>
+        <span style="--legend-color:#72621d"><i></i>拼贴关系网络</span>
+        <span style="--legend-color:#bd2f2f"><i></i>重点大字</span>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <article>
+      <p>如果只看那个极简的搜索框，谷歌似乎还是二十年前的谷歌。但在它背后，一场规模庞大的改造已经开始。Alphabet正在尝试把一家依赖搜索广告的互联网公司，变成覆盖芯片、模型、云计算和应用入口的<emphasis group="intro-infrastructure" mode="together" value="1">AI基础设施公司</emphasis>。</p>
+
+      <p>谷歌的发展可以分成几个关键节点。<progress-timeline group="google-history" mode="split" value="1">1998年，拉里·佩奇和谢尔盖·布林创办Google</progress-timeline>，用网页链接关系改进搜索结果；<progress-timeline group="google-history" mode="split" value="2">2004年，谷歌上市</progress-timeline>；<progress-timeline group="google-history" mode="split" value="3">2006年，它以16.5亿美元收购YouTube</progress-timeline>；<progress-timeline group="google-history" mode="split" value="4">2014年收购DeepMind</progress-timeline>；<progress-timeline group="google-history" mode="split" value="5">2015年重组为Alphabet</progress-timeline>；<progress-timeline group="google-history" mode="split" value="6">2017年，谷歌研究团队发表<emphasis group="transformer-foundation" mode="together" value="2">Transformer论文</emphasis></progress-timeline>，为今天的大模型奠定基础；<progress-timeline group="google-history" mode="split" value="7">2023年，Gemini正式登场</progress-timeline>。看似分散的动作，最终都汇入了同一条主线：控制下一代信息入口。</p>
+
+      <p>从2024年财报看，<timed-table group="fy2024-financials" mode="together" value="1">Alphabet全年营收约3500亿美元</timed-table>，<timed-table group="fy2024-financials" mode="together" value="2">净利润约1001亿美元</timed-table>。其中，<timed-table group="fy2024-financials" mode="together" value="3">“谷歌搜索及其他”收入约1981亿美元</timed-table>，<timed-table group="fy2024-financials" mode="together" value="4">YouTube广告收入约361亿美元</timed-table>，<timed-table group="fy2024-financials" mode="together" value="5">Google Cloud收入约432亿美元</timed-table>。也就是说，搜索仍然是谷歌最重要的现金来源，但云计算正在成为增长最快、也越来越能赚钱的第二引擎。</p>
+
+      <p>谷歌过去的商业飞轮非常清楚：<directed-graph group="search-ad-flywheel" mode="together" value="1">更多用户带来更多搜索</directed-graph>，<directed-graph group="search-ad-flywheel" mode="together" value="2">更多搜索帮助谷歌理解需求</directed-graph>，<directed-graph group="search-ad-flywheel" mode="together" value="3">更准确的广告匹配提高商家的回报</directed-graph>，<directed-graph group="search-ad-flywheel" mode="together" value="4">商家随后投入更多预算</directed-graph>，而<directed-graph group="search-ad-flywheel" mode="together" value="5">这些收入又被用来建设更好的产品</directed-graph>。<directed-graph group="search-ad-flywheel" mode="together" value="6">Chrome、Android、地图、YouTube和Gmail看似免费，实际上共同维护着谷歌与用户之间的连接</directed-graph>。</p>
+
+      <p>生成式AI却正在改变这个循环。<side-by-side-comparison group="search-before-after" mode="together" value="1">过去，用户提出问题，搜索引擎给出一排链接</side-by-side-comparison>；<side-by-side-comparison group="search-before-after" mode="together" value="2">现在，模型可以直接生成答案</side-by-side-comparison>。<side-by-side-comparison group="search-before-after" mode="together" value="3">用户少点一次链接，就可能少一次广告展示</side-by-side-comparison>。因此，AI对谷歌既是<side-by-side-comparison group="search-before-after" mode="together" value="4">机会</side-by-side-comparison>，也是<side-by-side-comparison group="search-before-after" mode="together" value="5">一次对核心业务的正面冲击</side-by-side-comparison>。它必须主动改变搜索，同时又不能轻易破坏广告这台利润机器。</p>
+
+      <p>谷歌的优势，在于它不是只拥有一个大模型。最底层是<decomposition group="google-ai-stack" mode="together" value="1">自研TPU芯片和全球数据中心</decomposition>；中间层是<decomposition group="google-ai-stack" mode="together" value="2">DeepMind、Gemini以及模型训练能力</decomposition>；再往上是<decomposition group="google-ai-stack" mode="together" value="3">Google Cloud和Vertex AI</decomposition>；最接近用户的，则是<decomposition group="google-ai-stack" mode="together" value="4">搜索、Android、Chrome、Workspace和YouTube</decomposition>。这些业务一层套一层，让一次模型升级可以迅速进入办公、搜索、手机和云服务。</p>
+
+      <p>这种优势也需要巨额投入。Alphabet在<xy-chart group="capex-growth" mode="together" value="1">2023年的资本开支约323亿美元</xy-chart>，<xy-chart group="capex-growth" mode="together" value="2">2024年增加到约525亿美元，<emphasis group="capex-growth-emphasis" mode="together" value="3">增幅超过六成</emphasis></xy-chart>，资金主要投向服务器和数据中心。AI竞争表面上是在比模型能力，背后比的却是谁能长期承担芯片、电力、机房和网络的成本。</p>
+
+      <p>Google Cloud的变化最能说明投入的价值。它的收入从<multi-series-chart group="cloud-performance" mode="together" value="1">2022年的约263亿美元</multi-series-chart>，增长到<multi-series-chart group="cloud-performance" mode="together" value="2">2023年的331亿美元</multi-series-chart>，再增长到<multi-series-chart group="cloud-performance" mode="together" value="3">2024年的432亿美元</multi-series-chart>；经营表现也从<multi-series-chart group="cloud-performance" mode="together" value="4">2022年亏损约19亿美元</multi-series-chart>，转为<multi-series-chart group="cloud-performance" mode="together" value="5">2023年盈利约17亿美元</multi-series-chart>、<multi-series-chart group="cloud-performance" mode="together" value="6">2024年盈利约61亿美元</multi-series-chart>。云业务已经不再只是追赶亚马逊和微软，而是在AI时代获得了新的增长理由。</p>
+
+      <p>不过，谷歌面临的风险同样明显。<collage-network group="ai-competitors" mode="together" value="1">微软可以借助OpenAI强化Azure和Office</collage-network>，<collage-network group="ai-competitors" mode="together" value="2">亚马逊正通过Anthropic扩大云端模型生态</collage-network>，监管机构则持续审视谷歌在搜索和广告市场的地位。更困难的是，AI回答成本远高于传统搜索，而用户未必愿意为每一次提问付费。</p>
+
+      <p>所以，判断谷歌能否赢得AI时代，不能只看Gemini在排行榜上超过了谁。真正的问题是：它能否在不打碎搜索广告基本盘的情况下，把用户入口、计算资源和模型能力重新组合起来。</p>
+
+      <p>二十多年前，谷歌把互联网变成了一个可以搜索的世界。现在，它想做的是把这个世界变成一个可以直接对话、推理并执行任务的系统。<emphasis group="final-conclusion" mode="together" value="4">这不是简单增加一款AI产品，而是谷歌的第二次创业。</emphasis></p>
+    </article>
+  </main>
+
+  <script>
+    const mgSelector = [
+      "progress-timeline",
+      "timed-table",
+      "directed-graph",
+      "side-by-side-comparison",
+      "decomposition",
+      "xy-chart",
+      "multi-series-chart",
+      "collage-network",
+      "emphasis"
+    ].join(",");
+
+    const mgLabels = {
+      "progress-timeline": "时间进度条",
+      "timed-table": "动态表格",
+      "directed-graph": "有向关系图",
+      "side-by-side-comparison": "左右对比",
+      "decomposition": "整体拆解",
+      "xy-chart": "坐标趋势图",
+      "multi-series-chart": "多系列图表",
+      "collage-network": "拼贴关系网络",
+      "emphasis": "重点大字"
+    };
+
+    document.querySelectorAll(mgSelector).forEach((element) => {
+      const attributes = Array.from(element.attributes)
+        .map(({name, value}) => `${name}=${value}`)
+        .join(" · ");
+      const tagName = element.tagName.toLowerCase();
+      element.title = `${mgLabels[tagName]} · ${attributes}`;
+    });
+  </script>
+</body>
+</html>

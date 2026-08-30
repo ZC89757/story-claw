@@ -4,6 +4,16 @@ import {
   decompositionFunctionDefinition,
   directedGraphFunctionDefinition,
   emphasisFunctionDefinition,
+  imageGridFunctionDefinition,
+  imageStackFunctionDefinition,
+  metricFunctionDefinition,
+  cameraFunctionDefinition,
+  effectFunctionDefinition,
+  rhythmFunctionDefinition,
+  showcaseFunctionDefinition,
+  transitionFunctionDefinition,
+  isMgStyleForTemplate,
+  mgInstanceKey,
   multiSeriesBarChartFunctionDefinition,
   multiSeriesLineChartFunctionDefinition,
   progressTimelineFunctionDefinition,
@@ -12,11 +22,19 @@ import {
   resolveDecompositionFunctionArgs,
   resolveDirectedGraphFunctionArgs,
   resolveEmphasisFunctionArgs,
+  resolveImageGridFunctionArgs,
+  resolveImageStackFunctionArgs,
+  resolveMetricFunctionArgs,
+  resolveCameraFunctionArgs,
+  resolveEffectFunctionArgs,
   resolveMultiSeriesChartFunctionArgs,
   resolveProgressTimelineFunctionArgs,
+  resolveRhythmFunctionArgs,
   resolveSideBySideComparisonFunctionArgs,
+  resolveShowcaseFunctionArgs,
   resolveTimedTableFunctionArgs,
   resolveTitleFunctionArgs,
+  resolveTransitionFunctionArgs,
   resolveWeightedComparisonFunctionArgs,
   resolveXYChartFunctionArgs,
   sideBySideComparisonFunctionDefinition,
@@ -34,6 +52,14 @@ export const MG_FUNCTION_DEFINITIONS = [
   directedGraphFunctionDefinition,
   titleFunctionDefinition,
   emphasisFunctionDefinition,
+  imageStackFunctionDefinition,
+  imageGridFunctionDefinition,
+  showcaseFunctionDefinition,
+  metricFunctionDefinition,
+  transitionFunctionDefinition,
+  rhythmFunctionDefinition,
+  effectFunctionDefinition,
+  cameraFunctionDefinition,
   xyChartFunctionDefinition,
   multiSeriesBarChartFunctionDefinition,
   multiSeriesLineChartFunctionDefinition,
@@ -55,8 +81,22 @@ export const TAG_FUNCTIONS: Record<MgTemplateName, readonly string[]> = {
   "multi-series-chart": ["create_multi_series_bar_chart", "create_multi_series_line_chart"],
   containment: ["create_containment_timeline"],
   "collage-network": ["create_collage_network"],
+  "image-stack": ["create_image_stack"],
+  "image-grid": ["create_image_grid"],
+  showcase: ["create_showcase_timeline"],
+  metric: ["create_metric_timeline"],
+  transition: ["create_transition_cue"],
+  rhythm: ["create_rhythm_cue"],
+  effect: ["create_effect_cue"],
+  camera: ["create_camera_move"],
   title: ["create_title_cue"],
   emphasis: ["create_emphasis_text_cue"],
+};
+
+export const functionsForTemplateStyle = (template: MgTemplateName, style: string): readonly string[] => {
+  if (template === "multi-series-chart" && style === "bar") return ["create_multi_series_bar_chart"];
+  if (template === "multi-series-chart" && style === "line") return ["create_multi_series_line_chart"];
+  return TAG_FUNCTIONS[template];
 };
 
 export const TEMPLATE_BY_FUNCTION: Record<string, MgTemplateName> = {
@@ -73,6 +113,14 @@ export const TEMPLATE_BY_FUNCTION: Record<string, MgTemplateName> = {
   create_weighted_comparison: "weighted-comparison",
   create_side_by_side_comparison: "side-by-side-comparison",
   create_collage_network: "collage-network",
+  create_image_stack: "image-stack",
+  create_image_grid: "image-grid",
+  create_showcase_timeline: "showcase",
+  create_metric_timeline: "metric",
+  create_transition_cue: "transition",
+  create_rhythm_cue: "rhythm",
+  create_effect_cue: "effect",
+  create_camera_move: "camera",
 };
 
 export const BACKGROUND_BY_TEMPLATE: Record<MgTemplateName, string> = {
@@ -88,9 +136,23 @@ export const BACKGROUND_BY_TEMPLATE: Record<MgTemplateName, string> = {
   "weighted-comparison": "#171d1f",
   "side-by-side-comparison": "#f3efe6",
   "collage-network": "#eee9de",
+  "image-stack": "#f3f0e9",
+  "image-grid": "#f3f0e9",
+  showcase: "#10171b",
+  metric: "#0e1519",
+  transition: "#111111",
+  rhythm: "#111111",
+  effect: "#111111",
+  camera: "#111111",
 };
 
-export const OVERLAY_TEMPLATES = new Set<MgTemplateName>(["title", "emphasis"]);
+export const backgroundForTemplateStyle = (template: MgTemplateName, style: string): string => {
+  if (template === "progress-timeline" && style === "vertical") return "#191d21";
+  if (template === "directed-graph" && style === "radial") return "#f4f0e8";
+  return BACKGROUND_BY_TEMPLATE[template];
+};
+
+export const OVERLAY_TEMPLATES = new Set<MgTemplateName>(["title", "emphasis", "transition", "rhythm", "effect"]);
 
 const assetForCollageNode = (node: {id: string; label: string}): string | undefined => {
   const key = `${node.id} ${node.label}`.toLowerCase();
@@ -108,7 +170,7 @@ const assetForCollageNode = (node: {id: string; label: string}): string | undefi
 
 export const resolveMgFunctionCall = (call: RawMgFunctionCall): ResolvedMgFunctionCall => {
   const args = call.arguments as never;
-  let resolved: {group: string; at: number; spec: unknown};
+  let resolved: {group: string; order?: number | null; at: number; spec: unknown};
   switch (call.name) {
     case "create_progress_timeline": resolved = resolveProgressTimelineFunctionArgs(args); break;
     case "create_timed_table": resolved = resolveTimedTableFunctionArgs(args); break;
@@ -123,11 +185,36 @@ export const resolveMgFunctionCall = (call: RawMgFunctionCall): ResolvedMgFuncti
     case "create_weighted_comparison": resolved = resolveWeightedComparisonFunctionArgs(args); break;
     case "create_side_by_side_comparison": resolved = resolveSideBySideComparisonFunctionArgs(args); break;
     case "create_collage_network": resolved = resolveCollageNetworkFunctionArgs(args, {resolveAsset: assetForCollageNode}); break;
+    case "create_image_stack": resolved = resolveImageStackFunctionArgs(args); break;
+    case "create_image_grid": resolved = resolveImageGridFunctionArgs(args); break;
+    case "create_showcase_timeline": resolved = resolveShowcaseFunctionArgs(args); break;
+    case "create_metric_timeline": resolved = resolveMetricFunctionArgs(args); break;
+    case "create_transition_cue": resolved = resolveTransitionFunctionArgs(args); break;
+    case "create_rhythm_cue": resolved = resolveRhythmFunctionArgs(args); break;
+    case "create_effect_cue": resolved = resolveEffectFunctionArgs(args); break;
+    case "create_camera_move": resolved = resolveCameraFunctionArgs(args); break;
     default: throw new Error(`未知 MG Function Call: ${call.name}`);
   }
   const template = TEMPLATE_BY_FUNCTION[call.name];
   if (!template) throw new Error(`Function Call 没有对应模板: ${call.name}`);
-  return {...call, ...resolved, template};
+  if (!isMgStyleForTemplate(template, resolved.group)) {
+    throw new Error(`<${template}> 不支持 group 样式 ${resolved.group}`);
+  }
+  if (!functionsForTemplateStyle(template, resolved.group).includes(call.name)) {
+    throw new Error(`<${template}> 的 group 样式 ${resolved.group} 不能调用 ${call.name}`);
+  }
+  // The Function Calling schema accepts null for a singleton order. Internally
+  // the planner/runtime represent that case by omitting order altogether.
+  const normalizedOrder = typeof resolved.order === "number" ? resolved.order : undefined;
+  return {
+    ...call,
+    group: resolved.group,
+    ...(normalizedOrder === undefined ? {} : {order: normalizedOrder}),
+    at: resolved.at,
+    spec: resolved.spec,
+    instanceKey: mgInstanceKey(template, normalizedOrder),
+    template,
+  };
 };
 
 export const elementAts = (call: RawMgFunctionCall): number[] => {
@@ -151,6 +238,19 @@ export const elementAts = (call: RawMgFunctionCall): number[] => {
       return [...(args.items ?? []), ...(args.highlights ?? [])].map((item: any) => item.at);
     case "create_collage_network":
       return [...(args.nodes ?? []), ...(args.edges ?? [])].map((item: any) => item.at);
+    case "create_image_stack":
+    case "create_image_grid":
+      return (args.images ?? []).map((item: any) => item.at);
+    case "create_showcase_timeline":
+      return (args.items ?? []).map((item: any) => item.at);
+    case "create_metric_timeline":
+      return (args.points ?? []).map((item: any) => item.at);
+    case "create_transition_cue":
+    case "create_rhythm_cue":
+      return [args.at];
+    case "create_effect_cue":
+    case "create_camera_move":
+      return [args.at, ...(args.items ?? []).map((item: any) => item.at)];
     default: return [];
   }
 };

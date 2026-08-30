@@ -4,7 +4,11 @@ export type MgMode = "together" | "split";
 
 export type LocatedMgTag = {
   tag: MgTemplateName;
+  /** Renderer style selected for this structural tag. */
   group: string;
+  /** Repeated instance number for this tag type; omitted when the type is used once. */
+  order?: number;
+  instanceKey: string;
   mode: MgMode;
   value: number;
   text: string;
@@ -12,18 +16,20 @@ export type LocatedMgTag = {
   end: number;
   paragraphEnd: number;
   depth: number;
-  parentGroup?: string;
+  parentInstance?: string;
   documentOrder: number;
 };
 
-export type MgGroupInfo = {
+export type MgInstanceInfo = {
+  instanceKey: string;
   tag: MgTemplateName;
   group: string;
+  order?: number;
   mode: MgMode;
   tags: LocatedMgTag[];
   paragraphEnd: number;
   depth: number;
-  parentGroup?: string;
+  parentInstance?: string;
 };
 
 export type RawMgFunctionCall = {
@@ -33,7 +39,9 @@ export type RawMgFunctionCall = {
 };
 
 export type ResolvedMgFunctionCall = RawMgFunctionCall & {
+  instanceKey: string;
   group: string;
+  order?: number;
   at: number;
   template: MgTemplateName;
   spec: unknown;
@@ -58,7 +66,7 @@ export type MgScenePlan = MgRuntimeScene & {
 };
 
 export type MgRenderBundle = {
-  version: 1;
+  version: 2;
   width: number;
   height: number;
   fps: number;
@@ -66,16 +74,18 @@ export type MgRenderBundle = {
 };
 
 export type MgPlan = {
-  version: 1;
+  version: 2;
   source: MgVideoInfo & {
     rawVideo: string;
     sha256: string;
     html: string;
     timeline: string;
   };
-  groups: Array<{
+  instances: Array<{
+    instanceKey: string;
     group: string;
     tag: MgTemplateName;
+    order?: number;
     mode: MgMode;
     tagCount: number;
     starts: number[];
@@ -83,7 +93,9 @@ export type MgPlan = {
   functionCalls: Array<{
     id: string;
     name: string;
+    instanceKey: string;
     group: string;
+    order?: number;
     at: number;
     arguments: Record<string, unknown>;
     specFile: string;

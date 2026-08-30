@@ -824,7 +824,20 @@
     }
     #storyclaw-gui-concept .claw-asset-project-summary { display: grid; gap: 5px; min-width: 0; }
     #storyclaw-gui-concept .claw-asset-project-summary strong { overflow: hidden; font-size: 16px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-    #storyclaw-gui-concept .claw-asset-project-summary span { color: var(--claw-muted); font-size: 12px; }
+    #storyclaw-gui-concept .claw-asset-summary-meta { display: flex; min-width: 0; align-items: center; gap: 10px; }
+    #storyclaw-gui-concept .claw-asset-summary-meta > span { min-width: 0; overflow: hidden; color: var(--claw-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    #storyclaw-gui-concept .claw-mg-episode-select {
+      width: auto; min-width: 104px; max-width: 220px; height: 30px; flex: 0 0 auto;
+      border: 1px solid #414349; border-radius: 5px; padding: 0 8px;
+      background: #25272a; color: var(--claw-text); font-size: 12px;
+    }
+    #storyclaw-gui-concept .claw-mg-episode-select:disabled { cursor: default; opacity: .8; }
+    @media (max-width: 900px) {
+      #storyclaw-gui-concept .claw-asset-browser-head { align-items: stretch; flex-direction: column; }
+      #storyclaw-gui-concept .claw-asset-summary-meta { flex-wrap: wrap; }
+      #storyclaw-gui-concept .claw-asset-summary-meta > span { flex: 1 1 220px; }
+      #storyclaw-gui-concept .claw-asset-tabs { align-self: flex-start; }
+    }
     #storyclaw-gui-concept .claw-asset-tabs {
       display: inline-flex;
       gap: 4px;
@@ -1152,7 +1165,7 @@
       </main>
 
       <main class="claw-library-view claw-assets-view" data-claw-view="assets" hidden>
-        <div class="claw-assets-head"><div><h1>资产</h1><p>按项目管理人物与场景参考图</p></div></div>
+        <div class="claw-assets-head"><div><h1>资产</h1><p data-claw-assets-subtitle>按项目管理人物与场景参考图</p></div></div>
         <div class="claw-asset-layout">
           <aside class="claw-project-index" aria-label="资产项目分类">
             <span class="claw-project-index-label">项目</span>
@@ -1167,7 +1180,7 @@
             </div>
           </aside>
           <section class="claw-asset-browser" aria-label="项目资产">
-            <div class="claw-asset-browser-head"><div class="claw-asset-project-summary"><strong data-claw-asset-project-title>东方快车谋杀案</strong><span data-claw-asset-project-meta>8 项资产 · 跨集共享</span></div><div class="claw-asset-tabs" role="tablist" aria-label="参考图类型"><button type="button" class="claw-asset-tab" role="tab" aria-selected="true" data-claw-asset-tab="people">人物参考图</button><button type="button" class="claw-asset-tab" role="tab" aria-selected="false" data-claw-asset-tab="scenes">场景参考图</button></div></div>
+            <div class="claw-asset-browser-head"><div class="claw-asset-project-summary"><strong data-claw-asset-project-title>东方快车谋杀案</strong><div class="claw-asset-summary-meta"><span data-claw-asset-project-meta>8 项资产 · 跨集共享</span><select class="claw-mg-episode-select" data-claw-mg-episode-select aria-label="选择 MG 集数" hidden></select></div></div><div class="claw-asset-tabs" role="tablist" aria-label="参考图类型"><button type="button" class="claw-asset-tab" role="tab" aria-selected="true" data-claw-asset-tab="people">人物参考图</button><button type="button" class="claw-asset-tab" role="tab" aria-selected="false" data-claw-asset-tab="scenes">场景参考图</button></div></div>
             <div class="claw-reference-grid" data-claw-asset-pane="people">
               <article class="claw-reference-card" data-claw-project-asset="orient"><img data-img="panel-1" alt="波洛人物原型参考图"><div class="claw-reference-meta"><strong>波洛 · 原型</strong><span>人物参考图</span></div></article>
               <article class="claw-reference-card" data-claw-project-asset="orient"><img data-img="panel-2" alt="列车员人物原型参考图"><div class="claw-reference-meta"><strong>列车员 · 原型</strong><span>人物参考图</span></div></article>

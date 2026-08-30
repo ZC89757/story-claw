@@ -54,3 +54,20 @@ test("uses the spoken clause comma when TTS omits a numeric comma", () => {
 
   assert.deepEqual(findSubtitleBoundaryWords(words, chunks), [0, 1]);
 });
+
+test("hard-splits an unpunctuated sentence after two subtitle lines", () => {
+  const chunks = splitSubtitleText("甲乙丙丁戊己庚辛壬癸子丑寅卯", 4);
+  assert.deepEqual(chunks.map((chunk) => chunk.text.length), [8, 6]);
+  assert.equal(chunks[0].hardBoundary, true);
+
+  const words = [
+    { word: "甲乙丙丁戊", startTime: 0, endTime: 1 },
+    { word: "己庚辛壬癸子丑寅卯", startTime: 1, endTime: 3 },
+  ];
+  assert.deepEqual(findSubtitleBoundaryWords(words, chunks), [0, 1]);
+
+  const exact = splitSubtitleText("甲乙丙丁戊己庚辛", 4);
+  assert.deepEqual(findSubtitleBoundaryWords([
+    { word: "甲乙丙丁戊己庚辛", startTime: 0, endTime: 2 },
+  ], exact), [0]);
+});

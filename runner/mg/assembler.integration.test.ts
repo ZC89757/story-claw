@@ -49,7 +49,7 @@ test("MG assembly changes the output without modifying the raw master", async ()
     const source = await probeMgVideo(rawVideo);
     const rawHash = await sha256File(rawVideo);
     const plan: MgPlan = {
-      version: 1,
+      version: 2,
       source: {
         rawVideo,
         sha256: rawHash,
@@ -57,11 +57,12 @@ test("MG assembly changes the output without modifying the raw master", async ()
         html: "mg_annotation.html",
         timeline: "article_timeline.json",
       },
-      groups: [],
+      instances: [],
       functionCalls: [],
       scenes: [{
         id: "middle",
-        group: "middle",
+        instance: "progress-timeline-01",
+        group: "horizontal",
         template: "progress-timeline",
         renderMode: "replace",
         start: 1,

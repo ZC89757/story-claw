@@ -28,7 +28,7 @@ Defined in `runner/pipeline.ts`, orchestrated by `runner/solo.ts`（**唯一模�
 | 阶段 | 函数 | 描述 |
 |------|------|------|
 | 原文清理 | `cleanText()` | LLM sub-agent 清理原文，输出 `原文_clean.txt` |
-| MG 语义标注（仅议论文） | `annotateEssayMg()` | 第一次 AI 调用。把完整清稿逐字保留在 HTML 中，只添加 MG 标签及 `group`、`mode=together\|split`、`value`；此阶段禁止输出 `at` |
+| MG 语义标注（仅议论文） | `annotateEssayMg()` | 第一次 AI 调用。把完整清稿逐字保留在 HTML 中，只添加 MG 标签及样式 `group`、可选实例 `order`、`mode=together\|split`、节点 `value`；同类标签只有一个实例时禁止输出 `order`，此阶段禁止输出 `at` |
 | 画面预设 | `visualPreset()` | LLM sub-agent 逐句标注【场景\|人物\|景别\|角度\|镜头运动\|光影\|情绪\|语言\|独白】，输出 `画面预设.txt` |
 | 资源建档 | `archive()` | LLM sub-agent 识别角色/场景，输出 `archive-tasks` JSON；代码据此**批量分配音色**（`assignVoices`，写 `voice_map.json`）并调 `generateCharacterTool` / `generateSceneTool` 直接生图（并行） |
 | 剧本分场 | `segment()` | LLM sub-agent 按场景将原文切分为多个 `.md`；sub-agent 的 cwd 设为 `scripts/`，只写裸文件名 `{场景名}.md` |

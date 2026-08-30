@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     fs.readFile(novelPaths.mgAnnotation(projectName, 1), "utf8").catch(() => ""),
     fs.readFile(novelPaths.visualPreset(projectName, 1), "utf8").catch(() => ""),
   ]);
-  let annotationSummary = {groupCount: 0, tagCount: 0};
+  let annotationSummary = {instanceCount: 0, tagCount: 0};
   let annotationValidationError = "";
   try {
     annotationSummary = validateMgAnnotationHtml(html, article);
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     `来源：${sourceFile}`,
     `流水线返回：${result}`,
     `阶段：${JSON.stringify(stageRecord)}`,
-    `MG 标注：${annotationSummary.groupCount} 个 group / ${annotationSummary.tagCount} 个标签`,
+    `MG 标注：${annotationSummary.instanceCount} 个动画实例 / ${annotationSummary.tagCount} 个标签`,
     `画面预设：${countPresetRows(preset)} 行`,
     `媒体文件：${forbiddenFiles.length} 个`,
     `下游目录文件：${forbiddenPaths.length} 个`,

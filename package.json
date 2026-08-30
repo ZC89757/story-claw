@@ -23,10 +23,6 @@
   "files": [
     "bin/",
     "runner/",
-    "packages/mg-templates/package.json",
-    "packages/mg-templates/src/",
-    "packages/mg-templates/runtime/",
-    "packages/mg-templates/public/",
     "tools/",
     "ui/",
     "utils/",
@@ -40,7 +36,7 @@
     "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts",
     "desktop": "electron desktop/main.cjs",
     "typecheck": "tsc --noEmit",
-    "test:mg": "npm test --prefix packages/mg-templates && tsx --test runner/mg/pipeline.test.ts runner/mg/assembler.integration.test.ts"
+    "test:mg": "npm test --prefix ../story-claw-templates && tsx --test runner/mg/pipeline.test.ts runner/mg/assembler.integration.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.52.8",
@@ -48,7 +44,7 @@
     "@mariozechner/pi-coding-agent": "0.52.8",
     "@remotion/bundler": "^4.0.512",
     "@remotion/renderer": "^4.0.512",
-    "@story-claw/mg-templates": "file:packages/mg-templates",
+    "@story-claw/mg-templates": "file:../story-claw-templates",
     "parse5": "^5.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

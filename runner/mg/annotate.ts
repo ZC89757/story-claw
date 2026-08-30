@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import {formatMgTemplateUsage, MG_DEFAULT_STYLE_HINT} from "@story-claw/mg-templates";
 import {runSubAgent} from "../../agent.js";
 import {novelPaths} from "../../utils/paths.js";
 import type {NovelSelection} from "../../ui/select.js";
@@ -12,30 +13,25 @@ const MG_ANNOTATION_SYSTEM = `你负责为议论文原文添加 MG 动画语义�
 - 去掉标签后，正文必须与输入原文逐字一致
 - 只输出 HTML，不要解释、Markdown、CSS 或 JavaScript
 
-可用标签：
-- <progress-timeline>：时间、阶段、里程碑或流程
-- <timed-table>：表格、矩阵或多项指标
-- <directed-graph>：因果链、商业飞轮或依赖关系
-- <side-by-side-comparison>：普通左右对照
-- <weighted-comparison>：原文存在明确轻重或权重的对照
-- <decomposition>：整体拆成多个部分
-- <xy-chart>：单组数值趋势
-- <multi-series-chart>：多组数值趋势
-- <containment>：包含或层级关系
-- <collage-network>：公司、产品、人物或机构关系
-- <mg-title>：章节或内容转场标题
-- <emphasis>：需要短暂强调的文字，最多 16 个汉字
+使用门槛：
+- 先判断是否存在能明显提升理解的动画结构；普通事实、能力描述、并列案例或孤立数字不加 MG
+- 没有合适模板时保留原文，不要为了覆盖率强行标注
 
-每个标签只使用三个属性：
-- group：同一动画使用相同标识，只能包含英文字母、数字、下划线和连字符
-- value：同一 group 按正文顺序从 1 连续编号
+模板用法（由模板项目维护）：
+${formatMgTemplateUsage()}
+
+每个标签使用以下属性：
+- group：渲染样式。首次生成固定使用该结构的默认样式：${MG_DEFAULT_STYLE_HINT}
+- order：同一篇文章中同一种标签存在两个或更多独立动画实例时才填写。按各实例第一次出现的正文顺序从 1 连续编号；同一实例的全部节点使用相同 order。该标签只有一个实例时不得填写 order
+- value：同一动画实例内部按正文顺序从 1 连续编号
 - mode：together 表示连续显示为一段动画；split 表示分别显示，中间恢复原画
 
 标注规则：
-- 一个 group 对应一段动画；同一 group 必须使用相同标签和 mode
+- 一个动画实例由“标签名称 + order”确定；该标签只有一个实例时 order 隐含为 1
+- 同一实例必须使用相同 group 样式和 mode；不同实例允许使用相同 group 样式
 - 标签只包裹实际对应动画节点或元素的文字
-- 可以嵌套，但嵌套标签必须使用不同 group
-- <mg-title> 和 <emphasis> 每个 group 只能出现一次
+- 可以嵌套，但嵌套标签必须属于不同动画实例
+- <mg-title> 和 <emphasis> 每个动画实例只能出现一次
 - 不要让无关的全屏动画重叠；只标注动态图形明显优于普通画面的内容`;
 
 export async function annotateEssayMg(sel: NovelSelection): Promise<string> {
@@ -59,9 +55,9 @@ export async function annotateEssayMg(sel: NovelSelection): Promise<string> {
       [],
     );
     try {
-      const {html, groupCount, tagCount} = prepareMgAnnotationHtml(response, article);
+      const {html, instanceCount, tagCount} = prepareMgAnnotationHtml(response, article);
       await fs.writeFile(outputPath, html, "utf-8");
-      console.log(`[MG标注] ${groupCount} 个 group / ${tagCount} 个标签 → ${outputPath}`);
+      console.log(`[MG标注] ${instanceCount} 个动画实例 / ${tagCount} 个标签 → ${outputPath}`);
       return outputPath;
     } catch (error) {
       lastError = error;

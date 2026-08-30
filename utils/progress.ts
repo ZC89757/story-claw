@@ -46,7 +46,7 @@ export interface EpisodeRecord {
   mg_annotation_review?: {
     version?: number;
     status?: "review" | "approved" | "updated";
-    groupCount?: number;
+    instanceCount?: number;
     tagCount?: number;
   };
 }

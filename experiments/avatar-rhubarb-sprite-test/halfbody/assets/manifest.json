@@ -1,0 +1,52 @@
+{
+  "base_image": "assets/base/X_source.png",
+  "image2_full": {
+    "A": "assets/image2-full/A.png",
+    "B": "assets/image2-full/B.png",
+    "C": "assets/image2-full/C.png",
+    "D": "assets/image2-full/D.png",
+    "E": "assets/image2-full/E.png",
+    "F": "assets/image2-full/F.png",
+    "G": "assets/image2-full/G.png",
+    "H": "assets/image2-full/H.png"
+  },
+  "mouth_patches": {
+    "A": "assets/mouth-patches/A.png",
+    "B": "assets/mouth-patches/B.png",
+    "C": "assets/mouth-patches/C.png",
+    "D": "assets/mouth-patches/D.png",
+    "E": "assets/mouth-patches/E.png",
+    "F": "assets/mouth-patches/F.png",
+    "G": "assets/mouth-patches/G.png",
+    "H": "assets/mouth-patches/H.png",
+    "X": "assets/mouth-patches/X.png"
+  },
+  "composited_poses": {
+    "A": "assets/composited-poses/A.png",
+    "B": "assets/composited-poses/B.png",
+    "C": "assets/composited-poses/C.png",
+    "D": "assets/composited-poses/D.png",
+    "E": "assets/composited-poses/E.png",
+    "F": "assets/composited-poses/F.png",
+    "G": "assets/composited-poses/G.png",
+    "H": "assets/composited-poses/H.png",
+    "X": "assets/composited-poses/X.png"
+  },
+  "crop": {
+    "x": 256,
+    "y": 530,
+    "width": 104,
+    "height": 60
+  },
+  "poses": {
+    "X": "rest / pause",
+    "A": "closed lips, p/b/m",
+    "B": "slightly open, consonant / ee",
+    "C": "ordinary open mouth",
+    "D": "wide a-like vowel",
+    "E": "rounded o/er-like vowel",
+    "F": "puckered u/w",
+    "G": "upper teeth on lower lip, f/v",
+    "H": "raised tongue, l"
+  }
+}

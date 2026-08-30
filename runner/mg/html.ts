@@ -1,7 +1,12 @@
 import {createRequire} from "node:module";
 import type {ArticleTimelineEntry} from "../render.js";
-import type {MgTemplateName} from "@story-claw/mg-templates";
-import type {LocatedMgTag, MgGroupInfo, MgMode} from "./types.js";
+import {
+  isMgStyleForTemplate,
+  mgInstanceKey,
+  mgStylesForTemplate,
+  type MgTemplateName,
+} from "@story-claw/mg-templates";
+import type {LocatedMgTag, MgInstanceInfo, MgMode} from "./types.js";
 
 const require = createRequire(import.meta.url);
 const parse5 = require("parse5") as {parse(input: string): HtmlNode};
@@ -25,8 +30,16 @@ export const MG_TAG_NAMES = [
   "multi-series-chart",
   "containment",
   "collage-network",
+  "image-stack",
+  "image-grid",
   "mg-title",
   "emphasis",
+  "mg-showcase",
+  "mg-metric",
+  "mg-transition",
+  "mg-rhythm",
+  "mg-effect",
+  "mg-camera",
 ] as const;
 
 type MgHtmlTagName = (typeof MG_TAG_NAMES)[number];
@@ -35,7 +48,96 @@ const MG_TAGS = new Set<string>(MG_TAG_NAMES);
 const GROUP_PATTERN = /^[A-Za-z0-9_-]+$/;
 const STYLE_ID = "story-claw-mg-annotation-style";
 
-const MG_ANNOTATION_STYLE = `<style id="${STYLE_ID}">
+// HTML uses descriptive `mg-*` names while the renderer and catalog use the
+// corresponding internal template names. Keep this mapping explicit so every
+// newly introduced structural tag follows the same path through validation,
+// timeline location, and Function Calling.
+const TEMPLATE_BY_HTML_TAG: Readonly<Record<MgHtmlTagName, MgTemplateName>> = Object.freeze({
+  "progress-timeline": "progress-timeline",
+  "timed-table": "timed-table",
+  "directed-graph": "directed-graph",
+  "side-by-side-comparison": "side-by-side-comparison",
+  "weighted-comparison": "weighted-comparison",
+  decomposition: "decomposition",
+  "xy-chart": "xy-chart",
+  "multi-series-chart": "multi-series-chart",
+  containment: "containment",
+  "collage-network": "collage-network",
+  "image-stack": "image-stack",
+  "image-grid": "image-grid",
+  "mg-title": "title",
+  emphasis: "emphasis",
+  "mg-showcase": "showcase",
+  "mg-metric": "metric",
+  "mg-transition": "transition",
+  "mg-rhythm": "rhythm",
+  "mg-effect": "effect",
+  "mg-camera": "camera",
+});
+
+const MG_DISPLAY_LABELS: Record<MgHtmlTagName, string> = Object.freeze({
+  "progress-timeline": "时间进度",
+  "timed-table": "动态表格",
+  "directed-graph": "有向关系图",
+  "side-by-side-comparison": "左右对比",
+  "weighted-comparison": "加权对比",
+  decomposition: "整体拆解",
+  "xy-chart": "坐标趋势图",
+  "multi-series-chart": "多系列图表",
+  containment: "包含关系",
+  "collage-network": "拼贴关系网",
+  "image-stack": "图片叠加",
+  "image-grid": "图片并列",
+  "mg-title": "标题动画",
+  emphasis: "重点大字",
+  "mg-showcase": "界面陈列",
+  "mg-metric": "指标动画",
+  "mg-transition": "转场",
+  "mg-rhythm": "节拍强调",
+  "mg-effect": "视觉效果",
+  "mg-camera": "运镜",
+});
+
+const annotationContent = (
+  tag: MgHtmlTagName,
+  ordered: boolean,
+  withValue: boolean,
+): string => [
+  `"${MG_DISPLAY_LABELS[tag]},group=" attr(group)`,
+  ordered ? `",order=" attr(order)` : "",
+  `",mode=" attr(mode)`,
+  withValue ? `",value=" attr(value)` : "",
+].filter(Boolean).join(" ");
+
+const collectMgInstanceCounts = (html: string): Map<string, {tag: MgHtmlTagName; order?: number; count: number}> => {
+  const counts = new Map<string, {tag: MgHtmlTagName; order?: number; count: number}>();
+  const document = parse5.parse(html);
+  const visit = (node: HtmlNode): void => {
+    const tag = node.tagName && MG_TAGS.has(node.tagName) ? node.tagName as MgHtmlTagName : undefined;
+    if (tag) {
+      const attrs = Object.fromEntries((node.attrs ?? []).map((attr) => [attr.name, attr.value]));
+      const order = attrs.order === undefined ? undefined : Number(attrs.order);
+      const key = `${tag}|${order ?? ""}`;
+      const current = counts.get(key);
+      if (current) current.count++;
+      else counts.set(key, {tag, ...(order === undefined ? {} : {order}), count: 1});
+    }
+    for (const child of node.childNodes ?? []) visit(child);
+  };
+  visit(document);
+  return counts;
+};
+
+const annotationRules = (html: string): string => [...collectMgInstanceCounts(html).values()]
+  .map((instance) => {
+    const selector = instance.order === undefined
+      ? `article ${instance.tag}:not([order])::before`
+      : `article ${instance.tag}[order="${instance.order}"]::before`;
+    return `${selector} { content: ${annotationContent(instance.tag, instance.order !== undefined, instance.count > 1)}; }`;
+  })
+  .join("\n");
+
+const buildMgAnnotationStyle = (html: string): string => `<style id="${STYLE_ID}">
 :root { color-scheme: light; }
 body { margin: 0; background: #f3f5f6; color: #20262c; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
 article { width: min(920px, calc(100% - 48px)); margin: 0 auto; padding: 44px 0 80px; font-size: 17px; line-height: 1.95; }
@@ -44,17 +146,22 @@ article > p:first-child { margin-bottom: 12px; font-size: 30px; font-weight: 800
 article progress-timeline, article timed-table, article directed-graph,
 article side-by-side-comparison, article weighted-comparison, article decomposition,
 article xy-chart, article multi-series-chart, article containment,
-article collage-network, article mg-title, article emphasis {
+article collage-network, article image-stack, article image-grid,
+article mg-title, article emphasis, article mg-showcase, article mg-metric,
+article mg-transition, article mg-rhythm, article mg-effect, article mg-camera {
   padding: 2px 4px; border-bottom: 2px solid var(--mg-accent); border-radius: 3px;
   background: var(--mg-fill); box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
 article progress-timeline::before, article timed-table::before, article directed-graph::before,
 article side-by-side-comparison::before, article weighted-comparison::before, article decomposition::before,
 article xy-chart::before, article multi-series-chart::before, article containment::before,
-article collage-network::before, article mg-title::before, article emphasis::before {
+article collage-network::before, article image-stack::before, article image-grid::before,
+article mg-title::before, article emphasis::before, article mg-showcase::before,
+article mg-metric::before, article mg-transition::before, article mg-rhythm::before,
+article mg-effect::before, article mg-camera::before {
   display: inline-block; margin: 0 6px 2px 0; padding: 1px 6px; border-radius: 3px;
-  background: var(--mg-accent); color: #fff; font: 600 11px/1.6 Consolas, "Microsoft YaHei", sans-serif;
-  vertical-align: 1px; white-space: nowrap;
+  background: var(--mg-accent); color: #fff; font: 600 10px/1.5 Consolas, "Microsoft YaHei", sans-serif;
+  vertical-align: 1px; white-space: normal; overflow-wrap: anywhere;
 }
 article progress-timeline { --mg-accent: #2764c8; --mg-fill: #e9f1ff; }
 article timed-table { --mg-accent: #147a52; --mg-fill: #e7f6ee; }
@@ -63,29 +170,28 @@ article side-by-side-comparison, article weighted-comparison { --mg-accent: #765
 article decomposition, article containment { --mg-accent: #8a6500; --mg-fill: #fff7d8; }
 article xy-chart, article multi-series-chart { --mg-accent: #087b86; --mg-fill: #e3f5f6; }
 article collage-network { --mg-accent: #50606d; --mg-fill: #e9eef1; }
+article image-stack { --mg-accent: #9a4d2f; --mg-fill: #fbece5; }
+article image-grid { --mg-accent: #2f718f; --mg-fill: #e5f3f8; }
 article mg-title { --mg-accent: #334155; --mg-fill: #e8edf2; }
 article emphasis { --mg-accent: #bf3448; --mg-fill: #ffe8eb; }
-article progress-timeline::before { content: "时间进度条 · " attr(group) " · " attr(mode) " · " attr(value); }
-article timed-table::before { content: "动态表格 · " attr(group) " · " attr(mode) " · " attr(value); }
-article directed-graph::before { content: "有向关系图 · " attr(group) " · " attr(mode) " · " attr(value); }
-article side-by-side-comparison::before { content: "左右对比 · " attr(group) " · " attr(mode) " · " attr(value); }
-article weighted-comparison::before { content: "加权对比 · " attr(group) " · " attr(mode) " · " attr(value); }
-article decomposition::before { content: "整体拆解 · " attr(group) " · " attr(mode) " · " attr(value); }
-article xy-chart::before { content: "坐标趋势图 · " attr(group) " · " attr(mode) " · " attr(value); }
-article multi-series-chart::before { content: "多系列图表 · " attr(group) " · " attr(mode) " · " attr(value); }
-article containment::before { content: "包含关系 · " attr(group) " · " attr(mode) " · " attr(value); }
-article collage-network::before { content: "拼贴关系网 · " attr(group) " · " attr(mode) " · " attr(value); }
-article mg-title::before { content: "标题动画 · " attr(group) " · " attr(mode) " · " attr(value); }
-article emphasis::before { content: "重点文字 · " attr(group) " · " attr(mode) " · " attr(value); }
+article mg-showcase { --mg-accent: #2d7586; --mg-fill: #e3f3f5; }
+article mg-metric { --mg-accent: #4f6f9c; --mg-fill: #e8eef8; }
+article mg-transition { --mg-accent: #b34d32; --mg-fill: #fff0e8; }
+article mg-rhythm { --mg-accent: #8c3d76; --mg-fill: #f7e8f1; }
+article mg-effect { --mg-accent: #bf632f; --mg-fill: #fff0e5; }
+article mg-camera { --mg-accent: #176d7a; --mg-fill: #e3f4f6; }
+${annotationRules(html)}
 @media (max-width: 640px) { article { width: min(100% - 28px, 920px); padding-top: 24px; font-size: 16px; } }
 </style>`;
 
 /** AI 只产出语义标签；浏览器预览样式由代码统一注入，避免重复消耗模型输出。 */
 export const decorateMgAnnotationHtml = (html: string): string => {
-  if (html.includes(`id="${STYLE_ID}"`)) return html;
-  if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, `${MG_ANNOTATION_STYLE}\n</head>`);
+  const style = buildMgAnnotationStyle(html);
+  const existingStyle = new RegExp(`<style\\b(?=[^>]*\\bid=["']${STYLE_ID}["'])[^>]*>[\\s\\S]*?<\\/style>`, "i");
+  if (existingStyle.test(html)) return html.replace(existingStyle, style);
+  if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, `${style}\n</head>`);
   const htmlOpen = /<html(?:\s[^>]*)?>/i;
-  if (htmlOpen.test(html)) return html.replace(htmlOpen, (match) => `${match}\n<head>${MG_ANNOTATION_STYLE}</head>`);
+  if (htmlOpen.test(html)) return html.replace(htmlOpen, (match) => `${match}\n<head>${style}</head>`);
   return html;
 };
 
@@ -138,6 +244,8 @@ type ParsedStructure = {
   tags: Array<{
     tag: MgTemplateName;
     group: string;
+    order?: number;
+    instanceKey: string;
     mode: MgMode;
     value: number;
     text: string;
@@ -145,7 +253,7 @@ type ParsedStructure = {
     endOffset: number;
     paragraphIndex: number;
     depth: number;
-    parentGroup?: string;
+    parentInstance?: string;
     documentOrder: number;
   }>;
 };
@@ -213,30 +321,42 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       const isMg = Boolean(node.tagName && MG_TAGS.has(node.tagName));
       if (node.tagName && !isMg) throw new Error(`MG HTML 正文包含不支持的标签 <${node.tagName}>`);
       const attrs = isMg ? attrsOf(node) : {};
+      const htmlTag = isMg ? node.tagName as MgHtmlTagName : undefined;
+      const tag = htmlTag ? TEMPLATE_BY_HTML_TAG[htmlTag] : undefined;
       const group = attrs.group;
-      const nextAncestors = isMg && group ? [...ancestors, group] : ancestors;
+      const order = attrs.order === undefined ? undefined : Number(attrs.order);
+      const instanceKey = tag ? mgInstanceKey(tag, order) : undefined;
+      const nextAncestors = instanceKey ? [...ancestors, instanceKey] : ancestors;
+      const currentDocumentOrder = isMg ? documentOrder++ : -1;
       const startOffset = relativeOffset;
       for (const child of node.childNodes ?? []) walk(child, nextAncestors);
       const endOffset = relativeOffset;
       if (!isMg) return;
 
-      const htmlTag = node.tagName as MgHtmlTagName;
-      const tag = htmlTag === "mg-title" ? "title" : htmlTag as MgTemplateName;
-      const allowedAttrs = new Set(["group", "mode", "value"]);
+      const allowedAttrs = new Set(["group", "order", "mode", "value"]);
       const unknownAttrs = Object.keys(attrs).filter((name) => !allowedAttrs.has(name));
       if (unknownAttrs.length) throw new Error(`<${htmlTag}> 包含不支持的属性: ${unknownAttrs.join(", ")}`);
       if (!group || !GROUP_PATTERN.test(group) || group.length > 80) throw new Error(`<${htmlTag}> 缺少合法 group`);
+      if (!isMgStyleForTemplate(tag!, group)) {
+        const allowed = mgStylesForTemplate(tag!).map((style) => style.style).join(", ");
+        throw new Error(`<${htmlTag}> 的 group 样式 ${group} 不可用，可选: ${allowed}`);
+      }
+      if (attrs.order !== undefined && (!Number.isInteger(order) || order! < 1 || order! > 999)) {
+        throw new Error(`<${htmlTag}> 的 order 必须是 1-999 的正整数`);
+      }
       if (attrs.mode !== "together" && attrs.mode !== "split") {
         throw new Error(`<${htmlTag}> 的 mode 必须是 together 或 split`);
       }
       const value = Number(attrs.value);
       if (!Number.isInteger(value) || value < 1) throw new Error(`<${htmlTag}> 的 value 必须是正整数`);
       if (endOffset <= startOffset || !textContent(node).trim()) throw new Error(`<${htmlTag}> 不能包裹空文本`);
-      if (ancestors.includes(group)) throw new Error(`group ${group} 不能嵌套自身`);
+      if (ancestors.includes(instanceKey!)) throw new Error(`动画实例 ${instanceKey} 不能嵌套自身`);
 
       tags.push({
-        tag,
+        tag: tag!,
         group,
+        ...(order === undefined ? {} : {order}),
+        instanceKey: instanceKey!,
         mode: attrs.mode,
         value,
         text: textContent(node),
@@ -244,46 +364,71 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
         endOffset,
         paragraphIndex,
         depth: ancestors.length,
-        parentGroup: ancestors.at(-1),
-        documentOrder: documentOrder++,
+        parentInstance: ancestors.at(-1),
+        documentOrder: currentDocumentOrder,
       });
     };
     for (const child of paragraph.childNodes ?? []) walk(child, []);
   });
 
-  const byGroup = new Map<string, ParsedStructure["tags"]>();
+  const byTemplate = new Map<MgTemplateName, ParsedStructure["tags"]>();
   for (const tag of tags) {
-    const current = byGroup.get(tag.group) ?? [];
+    const current = byTemplate.get(tag.tag) ?? [];
     current.push(tag);
-    byGroup.set(tag.group, current);
+    byTemplate.set(tag.tag, current);
   }
-  for (const [group, groupTags] of byGroup) {
-    const first = groupTags[0];
-    if (groupTags.some((tag) => tag.tag !== first.tag)) throw new Error(`group ${group} 混用了多个模板标签`);
-    if (groupTags.some((tag) => tag.mode !== first.mode)) throw new Error(`group ${group} 的 mode 不一致`);
-    if (groupTags.some((tag) => tag.parentGroup !== first.parentGroup)) throw new Error(`group ${group} 出现在不同嵌套层级`);
-    if ((first.tag === "title" || first.tag === "emphasis") && groupTags.length !== 1) {
-      throw new Error(`group ${group} 的 <${first.tag}> 只能出现一次`);
+  for (const [template, templateTags] of byTemplate) {
+    const hasOrder = templateTags.some((tag) => tag.order !== undefined);
+    if (hasOrder && templateTags.some((tag) => tag.order === undefined)) {
+      throw new Error(`<${template}> 存在多个实例时，所有同类标签都必须填写 order`);
     }
-    const values = [...groupTags].sort((a, b) => a.documentOrder - b.documentOrder).map((tag) => tag.value);
+    if (!hasOrder) continue;
+    const orders = [...new Set(
+      [...templateTags]
+        .sort((left, right) => left.documentOrder - right.documentOrder)
+        .map((tag) => tag.order!),
+    )];
+    if (orders.length < 2) throw new Error(`<${template}> 只有一个实例时不应填写 order`);
+    if (orders.some((orderValue, index) => orderValue !== index + 1)) {
+      throw new Error(`<${template}> 的 order 必须按首次出现顺序从 1 连续编号`);
+    }
+  }
+
+  const byInstance = new Map<string, ParsedStructure["tags"]>();
+  for (const tag of tags) {
+    const current = byInstance.get(tag.instanceKey) ?? [];
+    current.push(tag);
+    byInstance.set(tag.instanceKey, current);
+  }
+  for (const [instanceKey, instanceTags] of byInstance) {
+    const first = instanceTags[0];
+    if (instanceTags.some((tag) => tag.group !== first.group)) throw new Error(`${instanceKey} 的 group 样式不一致`);
+    if (instanceTags.some((tag) => tag.mode !== first.mode)) throw new Error(`${instanceKey} 的 mode 不一致`);
+    if (instanceTags.some((tag) => tag.parentInstance !== first.parentInstance)) {
+      throw new Error(`${instanceKey} 出现在不同嵌套层级`);
+    }
+    if ((first.tag === "title" || first.tag === "emphasis") && instanceTags.length !== 1) {
+      throw new Error(`${instanceKey} 的 <${first.tag}> 只能出现一次`);
+    }
+    const values = [...instanceTags].sort((a, b) => a.documentOrder - b.documentOrder).map((tag) => tag.value);
     if (values.some((value, index) => value !== index + 1)) {
-      throw new Error(`group ${group} 的 value 必须按正文顺序从 1 连续编号`);
+      throw new Error(`${instanceKey} 的 value 必须按正文顺序从 1 连续编号`);
     }
   }
 
   return {article, paragraphs, paragraphTexts, tags};
 };
 
-export const validateMgAnnotationHtml = (html: string, articleSource: string): {groupCount: number; tagCount: number} => {
+export const validateMgAnnotationHtml = (html: string, articleSource: string): {instanceCount: number; tagCount: number} => {
   if (!/^\s*<!doctype html>/i.test(html)) throw new Error("MG HTML 必须以 <!DOCTYPE html> 开头");
   const structure = parseStructure(html, articleSource);
-  return {groupCount: new Set(structure.tags.map((tag) => tag.group)).size, tagCount: structure.tags.length};
+  return {instanceCount: new Set(structure.tags.map((tag) => tag.instanceKey)).size, tagCount: structure.tags.length};
 };
 
 export const prepareMgAnnotationHtml = (
   modelOutput: string,
   articleSource: string,
-): {html: string; groupCount: number; tagCount: number} => {
+): {html: string; instanceCount: number; tagCount: number} => {
   const extracted = extractMgAnnotationHtml(modelOutput);
   const rawHtml = stripMgAnnotationDecoration(extracted);
   const summary = validateMgAnnotationHtml(rawHtml, articleSource);
@@ -292,11 +437,11 @@ export const prepareMgAnnotationHtml = (
   return {html, ...summary};
 };
 
-export const locateMgGroups = (
+export const locateMgInstances = (
   html: string,
   timeline: ArticleTimelineEntry[],
   articleSource: string,
-): Map<string, MgGroupInfo> => {
+): Map<string, MgInstanceInfo> => {
   const structure = parseStructure(html, articleSource);
   if (!timeline.length) throw new Error("字级时间轴为空，无法规划 MG");
   const timelineText = timeline.map((entry) => entry.char).join("");
@@ -338,23 +483,25 @@ export const locateMgGroups = (
     return {...tag, start: startEntry.start, end: endEntry.end, paragraphEnd};
   });
 
-  const groups = new Map<string, MgGroupInfo>();
+  const instances = new Map<string, MgInstanceInfo>();
   for (const tag of located.sort((left, right) => left.documentOrder - right.documentOrder)) {
-    const current = groups.get(tag.group);
+    const current = instances.get(tag.instanceKey);
     if (!current) {
-      groups.set(tag.group, {
+      instances.set(tag.instanceKey, {
+        instanceKey: tag.instanceKey,
         tag: tag.tag,
         group: tag.group,
+        ...(tag.order === undefined ? {} : {order: tag.order}),
         mode: tag.mode,
         tags: [tag],
         paragraphEnd: tag.paragraphEnd,
         depth: tag.depth,
-        parentGroup: tag.parentGroup,
+        parentInstance: tag.parentInstance,
       });
       continue;
     }
     current.tags.push(tag);
     current.paragraphEnd = Math.max(current.paragraphEnd, tag.paragraphEnd);
   }
-  return groups;
+  return instances;
 };

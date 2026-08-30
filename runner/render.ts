@@ -27,6 +27,7 @@ import {
   stripTrailingPunct,
   wrapSubtitleLines,
 } from "./subtitles.js";
+import {hasAudioStream} from "./mg/media.js";
 
 const RENDER_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1242,7 +1243,7 @@ interface GroupTtsResult {
 }
 
 interface EssayGroupTimingCache extends GroupTtsResult {
-  version: 1;
+  version: 2;
   sourceText: string;
 }
 
@@ -1281,7 +1282,7 @@ async function runGroupTtsPipeline(
         const cached = JSON.parse(await fs.readFile(essayTiming(gi), "utf-8")) as EssayGroupTimingCache;
         const actualDuration = await getMediaDuration(ga);
         if (
-          cached.version === 1 &&
+          cached.version === 2 &&
           cached.sourceText === text &&
           Array.isArray(cached.charTimings) &&
           (!SUBTITLES_ENABLED || Array.isArray(cached.subtitleEvents)) &&
@@ -1297,7 +1298,7 @@ async function runGroupTtsPipeline(
       console.log(`[groupTTS g${String(gi).padStart(2, "0")}] 时间缓存与原文或音频不一致，重新合成`);
     }
     if (fsSync.existsSync(ga) && !isEssay) {
-      const subtitlesPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_subtitles.json`);
+      const subtitlesPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_subtitles_v2.json`);
       if (!SUBTITLES_ENABLED) {
         return {
           duration: await getMediaDuration(ga),
@@ -1373,7 +1374,7 @@ async function runGroupTtsPipeline(
         subtitleEvents: SUBTITLES_ENABLED ? [] : undefined,
       };
       if (isEssay) {
-        const cache: EssayGroupTimingCache = {version: 1, sourceText: text, ...result};
+        const cache: EssayGroupTimingCache = {version: 2, sourceText: text, ...result};
         await fs.writeFile(essayTiming(gi), `${JSON.stringify(cache, null, 2)}\n`, "utf-8");
       }
       return result;
@@ -1520,7 +1521,7 @@ async function runGroupTtsPipeline(
         groupOffset += segDur;
       }
       subtitleEvents = events;
-      const subsPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_subtitles.json`);
+      const subsPath = path.join(outputDir, `g${String(gi).padStart(2, "0")}_subtitles_v2.json`);
       await fs.writeFile(subsPath, JSON.stringify(events), "utf-8");
     }
 
@@ -1547,7 +1548,7 @@ async function runGroupTtsPipeline(
       subtitleEvents,
     };
     if (isEssay) {
-      const cache: EssayGroupTimingCache = {version: 1, sourceText: text, ...result};
+      const cache: EssayGroupTimingCache = {version: 2, sourceText: text, ...result};
       await fs.writeFile(essayTiming(gi), `${JSON.stringify(cache, null, 2)}\n`, "utf-8");
     }
     return result;
@@ -2313,11 +2314,21 @@ export async function finalizeEpisodeMedia(
     fsSync.existsSync(globalSubtitlesAssPath) &&
     (await fs.readFile(globalSubtitlesAssPath!, "utf-8")).includes("Dialogue:"),
   );
+  const hasMgSfx = await hasAudioStream(videoPath);
   const args = ["-y", "-i", videoPath, "-i", alignedAudioPath];
   if (hasSubtitles) args.push("-vf", `subtitles=${path.basename(globalSubtitlesAssPath!)}`);
+  args.push("-map", "0:v:0");
+  if (hasMgSfx) {
+    // MG templates carry a quiet, fixed SFX track. Mix it under the aligned
+    // narration instead of replacing it; the raw master remains untouched.
+    args.push(
+      "-filter_complex", "[0:a]aresample=44100[mg];[1:a]aresample=44100[voice];[voice][mg]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+      "-map", "[aout]",
+    );
+  } else {
+    args.push("-map", "1:a:0");
+  }
   args.push(
-    "-map", "0:v:0",
-    "-map", "1:a:0",
     ...(hasSubtitles
       ? ["-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p"]
       : ["-c:v", "copy"]),

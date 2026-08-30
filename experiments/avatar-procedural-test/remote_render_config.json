@@ -1,0 +1,11 @@
+{
+  "image": "/root/avatar-continuous-test/input/reference_9x16.png",
+  "audio": "/root/avatar-continuous-test/input/article_maxlen.wav",
+  "rhubarb": "/root/avatar-continuous-test/tools/rhubarb-dist/Rhubarb-Lip-Sync-1.13.0-Linux/rhubarb",
+  "vendor_root": "/root/avatar-continuous-test/vendor",
+  "output_dir": "/root/avatar-continuous-test/output/final",
+  "fps": 25,
+  "mouth_x": 300,
+  "mouth_y": 181,
+  "frame_limit": 0
+}

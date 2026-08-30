@@ -1,0 +1,405 @@
+{
+  "text": "第一年，我们公司实现总产值四十八万元。第二年，我们公司实现总产值九十六万元。第三年、第四年和第五年，总产值一直保持在九十六万元。第六年，我们公司的总产值达到近一千六百五十八万元。",
+  "words": [
+    {
+      "word": "第",
+      "startTime": 0.225,
+      "endTime": 0.455
+    },
+    {
+      "word": "一",
+      "startTime": 0.455,
+      "endTime": 0.495
+    },
+    {
+      "word": "年，",
+      "startTime": 0.495,
+      "endTime": 0.725
+    },
+    {
+      "word": "我",
+      "startTime": 1.035,
+      "endTime": 1.155
+    },
+    {
+      "word": "们",
+      "startTime": 1.155,
+      "endTime": 1.255
+    },
+    {
+      "word": "公",
+      "startTime": 1.255,
+      "endTime": 1.425
+    },
+    {
+      "word": "司",
+      "startTime": 1.425,
+      "endTime": 1.605
+    },
+    {
+      "word": "实",
+      "startTime": 1.605,
+      "endTime": 1.775
+    },
+    {
+      "word": "现",
+      "startTime": 1.775,
+      "endTime": 1.975
+    },
+    {
+      "word": "总",
+      "startTime": 1.975,
+      "endTime": 2.205
+    },
+    {
+      "word": "产",
+      "startTime": 2.205,
+      "endTime": 2.415
+    },
+    {
+      "word": "值",
+      "startTime": 2.415,
+      "endTime": 2.625
+    },
+    {
+      "word": "四",
+      "startTime": 2.625,
+      "endTime": 2.775
+    },
+    {
+      "word": "十",
+      "startTime": 2.775,
+      "endTime": 2.915
+    },
+    {
+      "word": "八",
+      "startTime": 2.915,
+      "endTime": 3.105
+    },
+    {
+      "word": "万",
+      "startTime": 3.105,
+      "endTime": 3.215
+    },
+    {
+      "word": "元。",
+      "startTime": 3.215,
+      "endTime": 3.435
+    },
+    {
+      "word": "第",
+      "startTime": 3.985,
+      "endTime": 4.105
+    },
+    {
+      "word": "二",
+      "startTime": 4.105,
+      "endTime": 4.235
+    },
+    {
+      "word": "年，",
+      "startTime": 4.235,
+      "endTime": 4.495
+    },
+    {
+      "word": "我",
+      "startTime": 4.765,
+      "endTime": 4.885
+    },
+    {
+      "word": "们",
+      "startTime": 4.885,
+      "endTime": 4.975
+    },
+    {
+      "word": "公",
+      "startTime": 4.975,
+      "endTime": 5.135
+    },
+    {
+      "word": "司",
+      "startTime": 5.135,
+      "endTime": 5.335
+    },
+    {
+      "word": "实",
+      "startTime": 5.335,
+      "endTime": 5.485
+    },
+    {
+      "word": "现",
+      "startTime": 5.485,
+      "endTime": 5.655
+    },
+    {
+      "word": "总",
+      "startTime": 5.655,
+      "endTime": 5.865
+    },
+    {
+      "word": "产",
+      "startTime": 5.865,
+      "endTime": 6.055
+    },
+    {
+      "word": "值",
+      "startTime": 6.055,
+      "endTime": 6.255
+    },
+    {
+      "word": "九",
+      "startTime": 6.255,
+      "endTime": 6.495
+    },
+    {
+      "word": "十",
+      "startTime": 6.495,
+      "endTime": 6.645
+    },
+    {
+      "word": "六",
+      "startTime": 6.645,
+      "endTime": 6.805
+    },
+    {
+      "word": "万",
+      "startTime": 6.805,
+      "endTime": 6.915
+    },
+    {
+      "word": "元。",
+      "startTime": 6.915,
+      "endTime": 7.135
+    },
+    {
+      "word": "第",
+      "startTime": 7.665,
+      "endTime": 7.815
+    },
+    {
+      "word": "三",
+      "startTime": 7.815,
+      "endTime": 8.055
+    },
+    {
+      "word": "年、",
+      "startTime": 8.055,
+      "endTime": 8.085
+    },
+    {
+      "word": "第",
+      "startTime": 8.505,
+      "endTime": 8.705
+    },
+    {
+      "word": "四",
+      "startTime": 8.705,
+      "endTime": 8.935
+    },
+    {
+      "word": "年",
+      "startTime": 8.935,
+      "endTime": 9.125
+    },
+    {
+      "word": "和",
+      "startTime": 9.125,
+      "endTime": 9.275
+    },
+    {
+      "word": "第",
+      "startTime": 9.275,
+      "endTime": 9.475
+    },
+    {
+      "word": "五",
+      "startTime": 9.475,
+      "endTime": 9.635
+    },
+    {
+      "word": "年，",
+      "startTime": 9.635,
+      "endTime": 9.915
+    },
+    {
+      "word": "总",
+      "startTime": 10.325,
+      "endTime": 10.545
+    },
+    {
+      "word": "产",
+      "startTime": 10.545,
+      "endTime": 10.745
+    },
+    {
+      "word": "值",
+      "startTime": 10.745,
+      "endTime": 10.985
+    },
+    {
+      "word": "一",
+      "startTime": 10.985,
+      "endTime": 11.145
+    },
+    {
+      "word": "直",
+      "startTime": 11.145,
+      "endTime": 11.335
+    },
+    {
+      "word": "保",
+      "startTime": 11.335,
+      "endTime": 11.535
+    },
+    {
+      "word": "持",
+      "startTime": 11.535,
+      "endTime": 11.675
+    },
+    {
+      "word": "在",
+      "startTime": 11.675,
+      "endTime": 11.825
+    },
+    {
+      "word": "九",
+      "startTime": 11.825,
+      "endTime": 12.055
+    },
+    {
+      "word": "十",
+      "startTime": 12.055,
+      "endTime": 12.215
+    },
+    {
+      "word": "六",
+      "startTime": 12.215,
+      "endTime": 12.385
+    },
+    {
+      "word": "万",
+      "startTime": 12.385,
+      "endTime": 12.505
+    },
+    {
+      "word": "元。",
+      "startTime": 12.505,
+      "endTime": 12.735
+    },
+    {
+      "word": "第",
+      "startTime": 13.203209,
+      "endTime": 13.333209
+    },
+    {
+      "word": "六",
+      "startTime": 13.333209,
+      "endTime": 13.533209
+    },
+    {
+      "word": "年，",
+      "startTime": 13.533209,
+      "endTime": 13.793209
+    },
+    {
+      "word": "我",
+      "startTime": 14.023209,
+      "endTime": 14.1432085
+    },
+    {
+      "word": "们",
+      "startTime": 14.1432085,
+      "endTime": 14.253209
+    },
+    {
+      "word": "公",
+      "startTime": 14.253209,
+      "endTime": 14.453209
+    },
+    {
+      "word": "司",
+      "startTime": 14.453209,
+      "endTime": 14.593208
+    },
+    {
+      "word": "的",
+      "startTime": 14.593208,
+      "endTime": 14.723208
+    },
+    {
+      "word": "总",
+      "startTime": 14.723208,
+      "endTime": 14.883209
+    },
+    {
+      "word": "产",
+      "startTime": 14.883209,
+      "endTime": 15.073209
+    },
+    {
+      "word": "值",
+      "startTime": 15.073209,
+      "endTime": 15.283209
+    },
+    {
+      "word": "达",
+      "startTime": 15.283209,
+      "endTime": 15.453209
+    },
+    {
+      "word": "到",
+      "startTime": 15.453209,
+      "endTime": 15.603209
+    },
+    {
+      "word": "近",
+      "startTime": 15.603209,
+      "endTime": 15.763208
+    },
+    {
+      "word": "一",
+      "startTime": 15.763208,
+      "endTime": 15.953209
+    },
+    {
+      "word": "千",
+      "startTime": 15.953209,
+      "endTime": 16.163208
+    },
+    {
+      "word": "六",
+      "startTime": 16.163208,
+      "endTime": 16.343208
+    },
+    {
+      "word": "百",
+      "startTime": 16.343208,
+      "endTime": 16.503208
+    },
+    {
+      "word": "五",
+      "startTime": 16.503208,
+      "endTime": 16.64321
+    },
+    {
+      "word": "十",
+      "startTime": 16.64321,
+      "endTime": 16.81321
+    },
+    {
+      "word": "八",
+      "startTime": 16.81321,
+      "endTime": 17.023209
+    },
+    {
+      "word": "万",
+      "startTime": 17.023209,
+      "endTime": 17.123209
+    },
+    {
+      "word": "元。",
+      "startTime": 17.123209,
+      "endTime": 17.343208
+    }
+  ]
+}

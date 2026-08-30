@@ -7,6 +7,7 @@ export interface SubtitleWord {
 export interface SubtitleChunk {
   text: string;
   boundaryPunct: string | null;
+  hardBoundary?: boolean;
 }
 
 // 中英文标点正则（用 Unicode 转义避免源码中出现会被 esbuild 误解析的引号字符）
@@ -40,8 +41,13 @@ export function splitSubtitleText(text: string, maxChars: number): SubtitleChunk
     current += ch;
     const strong = STRONG_SUBTITLE_PUNCT.has(ch);
     const weakAfterThreshold = current.length >= maxChars && WEAK_SUBTITLE_PUNCT.has(ch);
-    if (strong || weakAfterThreshold) {
-      chunks.push({ text: current, boundaryPunct: ch });
+    const hardAfterTwoLines = current.length >= maxChars * 2;
+    if (strong || weakAfterThreshold || hardAfterTwoLines) {
+      chunks.push({
+        text: current,
+        boundaryPunct: strong || weakAfterThreshold ? ch : null,
+        hardBoundary: hardAfterTwoLines && !strong && !weakAfterThreshold,
+      });
       current = "";
     }
   }
@@ -97,6 +103,26 @@ export function findSubtitleBoundaryWords(
 
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
+    if (chunk.hardBoundary && ci !== chunks.length - 1) {
+      const targetChars = [...chunk.text].filter((ch) => !/\s/.test(ch)).length;
+      let consumedChars = 0;
+      let boundaryWord = -1;
+      for (let wi = searchWord; wi < words.length; wi++) {
+        const wordChars = [...words[wi].word.replace(/\s/g, "")].length;
+        const nextConsumedChars = consumedChars + wordChars;
+        if (nextConsumedChars < targetChars) {
+          consumedChars = nextConsumedChars;
+          continue;
+        }
+        const splitBefore = wi > searchWord && targetChars - consumedChars <= nextConsumedChars - targetChars;
+        boundaryWord = splitBefore ? wi - 1 : wi;
+        searchWord = boundaryWord + 1;
+        searchChar = 0;
+        break;
+      }
+      boundaries.push(boundaryWord >= 0 ? boundaryWord : Math.max(0, words.length - 1));
+      continue;
+    }
     if (ci === chunks.length - 1 || chunk.boundaryPunct === null) {
       boundaries.push(Math.max(searchWord, words.length - 1));
       continue;

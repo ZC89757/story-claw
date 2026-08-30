@@ -1,0 +1,36 @@
+{
+  "name": "remotion-gsap-proof",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "remotion studio src/index.ts",
+    "typecheck": "tsc",
+    "render:remotion": "remotion render src/index.ts CoffeeCostRemotion out/remotion-native.mp4 --codec=h264 --crf=18 --muted",
+    "render:gsap": "remotion render src/index.ts CoffeeCostGsap out/gsap-seek.mp4 --codec=h264 --crf=18 --muted",
+    "render:api-mg": "remotion render src/index.ts ApiValueMathMG out/api-value-math-mg.mp4 --codec=h264 --crf=17",
+    "render:api-mg-debug": "remotion render src/index.ts ApiValueMathMGDebug out/api-value-math-mg-debug.mp4 --codec=h264 --crf=18",
+    "render:param-chart-ease": "remotion render src/index.ts ParameterizedChartEase out/parameterized-chart-ease.mp4 --codec=h264 --crf=18",
+    "render:param-chart-instant": "remotion render src/index.ts ParameterizedChartInstant out/parameterized-chart-instant.mp4 --codec=h264 --crf=18",
+    "render:company-output": "remotion render src/index.ts CompanyOutputChart out/company-output-chart.mp4 --codec=h264 --crf=18",
+    "render:complex-mg": "remotion render src/index.ts ComplexMotionShowcase out/complex-motion-showcase.mp4 --codec=h264 --crf=18 --muted",
+    "render:unitree-ipo": "remotion render src/index.ts UnitreeIpoMg out/unitree-ipo-mg.mp4 --codec=h264 --crf=18 --muted",
+    "render:story-claw-promo": "remotion render src/index.ts StoryClawPromo out/story-claw-promo-v1.mp4 --codec=h264 --crf=18 --concurrency=2"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@remotion/cli": "4.0.512",
+    "@xyflow/react": "^12.11.3",
+    "antd": "^6.6.0",
+    "gsap": "3.15.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "^3.10.1",
+    "remotion": "4.0.512"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "typescript": "5.9.3"
+  }
+}

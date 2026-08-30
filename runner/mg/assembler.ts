@@ -3,7 +3,7 @@ import fsSync from "node:fs";
 import path from "node:path";
 import type {NovelSelection} from "../../ui/select.js";
 import {novelPaths} from "../../utils/paths.js";
-import {assertMgVideoFrames, runMediaCommand, sha256File} from "./media.js";
+import {assertMgVideoFrames, hasAudioStream, runMediaCommand, sha256File} from "./media.js";
 import type {MgPlan} from "./types.js";
 
 type Segment = {
@@ -25,8 +25,13 @@ export async function assembleEssayMg(sel: NovelSelection): Promise<string> {
   if (fsSync.existsSync(outputPath)) {
     try {
       await assertMgVideoFrames(outputPath, plan.source.durationFrames, plan.source.fps);
-      console.log(`[MG合成] 已有完整 MG 原片，跳过: ${outputPath}`);
-      return outputPath;
+      // A previous version emitted video-only MG output. Rebuild when this
+      // plan contains scenes but the assembled file has no SFX stream.
+      if (!plan.scenes.length || await hasAudioStream(outputPath)) {
+        console.log(`[MG合成] 已有完整 MG 原片，跳过: ${outputPath}`);
+        return outputPath;
+      }
+      console.warn(`[MG合成] 旧 MG 原片没有音效轨，重新合成: ${outputPath}`);
     } catch {
       const stalePath = `${outputPath}.invalid-${Date.now()}`;
       await fs.rename(outputPath, stalePath);
@@ -89,24 +94,33 @@ export async function assembleEssayMg(sel: NovelSelection): Promise<string> {
       "setsar=1",
       "format=yuv420p",
     ].join(",");
-    await runMediaCommand("ffmpeg", [
+    const hasSegmentAudio = segment.kind === "mg" && await hasAudioStream(segment.inputPath);
+    const audioInput = hasSegmentAudio ? "[0:a]" : "[1:a]";
+    const audioFilter = `${audioInput}aresample=44100,apad,atrim=duration=${(frameCount / plan.source.fps).toFixed(6)},asetpts=PTS-STARTPTS[a]`;
+    const normalizeArgs = [
       "-hide_banner",
       "-loglevel", "error",
       "-y",
       "-i", segment.inputPath,
-      "-vf", filter,
+      ...(hasSegmentAudio ? [] : ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]),
+      "-filter_complex", `[0:v]${filter}[v];${audioFilter}`,
+      "-map", "[v]",
+      "-map", "[a]",
       "-frames:v", String(frameCount),
-      "-an",
       "-c:v", "libx264",
       "-preset", "fast",
       "-crf", "18",
       "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-shortest",
       "-color_range", "tv",
       "-colorspace", "bt709",
       "-color_primaries", "bt709",
       "-color_trc", "bt709",
       normalizedPath,
-    ]);
+    ];
+    await runMediaCommand("ffmpeg", normalizeArgs);
     await assertMgVideoFrames(normalizedPath, frameCount, plan.source.fps);
     normalizedFiles.push(normalizedPath);
     console.log(`[MG合成] 标准化 ${index + 1}/${sequence.length}: ${frameCount} 帧`);
@@ -128,8 +142,9 @@ export async function assembleEssayMg(sel: NovelSelection): Promise<string> {
     "-safe", "0",
     "-i", concatList,
     "-map", "0:v:0",
-    "-an",
+    "-map", "0:a:0",
     "-c:v", "copy",
+    "-c:a", "copy",
     nextPath,
   ]);
   await assertMgVideoFrames(nextPath, plan.source.durationFrames, plan.source.fps);

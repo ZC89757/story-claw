@@ -1,0 +1,8 @@
+{
+  "source_path": "C:\\Users\\ZhangChi\\Desktop\\改写漫剧\\story-claw\\experiments\\avatar-news-longform-test\\input\\article.txt",
+  "source_sha256": "4e1c6abab887ede3341bf2ef219f3bfd9ae8c2e80942a7841cac3334cb93d24b",
+  "voice": "zh_female_gaolengyujie_moon_bigtts",
+  "chunk_count": 7,
+  "tts_duration_sec": 250.416,
+  "tts_elapsed_sec": 27.9353799
+}

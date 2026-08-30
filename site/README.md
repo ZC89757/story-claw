@@ -33,6 +33,7 @@
 页面中的下载按钮固定指向 https://github.com/ZC89757/story-claw/releases/latest，以后更新版本时不用改网页。
 
 页面中的 Star 数来自公开的 GitHub 仓库接口（`/repos/ZC89757/story-claw`），每次打开页面都会重新读取；如果 GitHub API 暂时限流，页面会保留 GitHub 链接并提示直接查看最新数据。
+在首个 Release 之前，页面另提供 GitHub 主分支的源码 ZIP，方便开发者先行下载。
 
 ## 依赖边界
 

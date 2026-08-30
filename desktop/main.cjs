@@ -5,6 +5,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { spawn, execFile } = require("node:child_process");
 const os = require("node:os");
+const { listMgAnnotationInstances, replaceMgAnnotationStyle } = require("./mg-assets.cjs");
 
 const projectRoot = path.resolve(__dirname, "..");
 const workspaceRoot = path.join(projectRoot, "workspace");
@@ -98,6 +99,31 @@ const pendingTitleRequests = new Map();
 const sessionWriteQueues = new Map();
 const projectNameAliases = new Map();
 const pendingVisualPresetDisplays = new Set();
+let mgStyleCatalogPromise = null;
+
+function getMgStyleCatalog() {
+  if (!mgStyleCatalogPromise) {
+    const packageEntry = require.resolve("@story-claw/mg-templates");
+    const packageRoot = path.resolve(path.dirname(packageEntry), "..");
+    const catalogUrl = pathToFileURL(path.join(
+      path.dirname(packageEntry),
+      "catalog-data.js",
+    )).href;
+    mgStyleCatalogPromise = import(catalogUrl).then((module) => (
+      Array.isArray(module.MG_STYLE_CATALOG)
+        ? module.MG_STYLE_CATALOG.map((entry) => {
+          const previewPath = path.join(packageRoot, "public", "mg-previews", `${entry.template}-${entry.style}.mp4`);
+          return {
+            ...entry,
+            previewUrl: fsSync.existsSync(previewPath) ? pathToFileURL(previewPath).href : null,
+            previewPlaceholderUrl: pathToFileURL(path.join(packageRoot, "public", "mg-previews", "missing.svg")).href,
+          };
+        })
+        : []
+    ));
+  }
+  return mgStyleCatalogPromise;
+}
 
 function reviewPhaseCopy(articleType) {
   return articleType === "essay"
@@ -399,6 +425,20 @@ async function writeJsonAtomic(filePath, value) {
   );
   try {
     await fs.writeFile(tempPath, JSON.stringify(value, null, 2), "utf8");
+    await fs.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+async function writeTextAtomic(filePath, value) {
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}.tmp`,
+  );
+  try {
+    await fs.writeFile(tempPath, value, "utf8");
     await fs.rename(tempPath, filePath);
   } catch (error) {
     await fs.rm(tempPath, { force: true }).catch(() => {});
@@ -798,7 +838,45 @@ async function listProjects() {
 }
 
 async function getAssets(novelName) {
-  const dir = projectDir(novelName);
+  const resolvedName = resolveProjectName(novelName);
+  const dir = projectDir(resolvedName);
+  const progressPath = path.join(dir, "改编进度.json");
+  const progress = await readJson(progressPath);
+  if (progress?.article_type === "essay") {
+    const catalog = await getMgStyleCatalog();
+    const episodes = progress.episodes && typeof progress.episodes === "object" ? progress.episodes : {};
+    const directoryEpisodes = (await fs.readdir(dir, { withFileTypes: true }).catch(() => []))
+      .filter((entry) => entry.isDirectory() && /^ep\d+$/i.test(entry.name))
+      .map((entry) => Number(entry.name.slice(2)));
+    const episodeNumbers = [...new Set([...Object.keys(episodes).map(Number), ...directoryEpisodes])]
+      .filter((episode) => Number.isInteger(episode) && episode > 0)
+      .sort((left, right) => left - right);
+    const usages = [];
+    for (const episode of episodeNumbers) {
+      const annotationPath = path.join(dir, `ep${String(episode).padStart(2, "0")}`, "mg_annotation.html");
+      const html = await fs.readFile(annotationPath, "utf8").catch(() => "");
+      if (!html) continue;
+      const stages = episodes[String(episode)]?.stages || {};
+      const editable = stages.visualPreset === "review"
+        && stages.mgPlan !== "done"
+        && stages.mgRender !== "done"
+        && stages.finalize !== "done";
+      try {
+        usages.push(...listMgAnnotationInstances(html, episode, editable, catalog));
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`第 ${episode} 集的 MG 标注无法读取：${detail}`);
+      }
+    }
+    return {
+      kind: "mg",
+      styles: catalog,
+      episodes: episodeNumbers,
+      usages,
+      styleCount: catalog.length,
+      instanceCount: usages.length,
+    };
+  }
   const result = { people: [], scenes: [] };
   const characterFiles = await listImageFiles(path.join(dir, "characters"));
   for (const filePath of characterFiles) {
@@ -819,6 +897,44 @@ async function getAssets(novelName) {
     });
   }
   return result;
+}
+
+async function replaceProjectMgStyle(payload = {}) {
+  const resolvedName = resolveProjectName(payload.novelName);
+  const dir = projectDir(resolvedName);
+  const progressPath = path.join(dir, "改编进度.json");
+  const progress = await readJson(progressPath);
+  if (progress?.article_type !== "essay") throw new Error("只有议论文项目可以替换 MG 样式");
+  const episode = Math.max(1, Math.trunc(Number(payload.episode) || 1));
+  const record = progress.episodes?.[String(episode)];
+  const stages = record?.stages || {};
+  if (stages.visualPreset !== "review" || stages.mgPlan === "done" || stages.mgRender === "done" || stages.finalize === "done") {
+    throw new Error("MG 样式只能在画面与 MG 联合审核阶段替换");
+  }
+  const annotationPath = path.join(dir, `ep${String(episode).padStart(2, "0")}`, "mg_annotation.html");
+  if (!isWithin(dir, annotationPath)) throw new Error("MG 标注路径无效");
+  const [html, catalog] = await Promise.all([
+    fs.readFile(annotationPath, "utf8"),
+    getMgStyleCatalog(),
+  ]);
+  const replaced = replaceMgAnnotationStyle(html, {
+    tag: payload.tag,
+    order: payload.order ?? null,
+    style: payload.style,
+  }, catalog);
+  await writeTextAtomic(annotationPath, replaced.html);
+  record.mg_annotation_review = {
+    ...(record.mg_annotation_review || {}),
+    version: Math.max(1, Math.trunc(Number(record.mg_annotation_review?.version) || 1)) + 1,
+    status: "updated",
+  };
+  record.updated_at = new Date().toISOString();
+  await writeJsonAtomic(progressPath, progress);
+  return {
+    updated: true,
+    changedTagCount: replaced.changedTagCount,
+    assets: await getAssets(resolvedName),
+  };
 }
 
 async function getEpisodePreview(novelName, episode) {
@@ -1699,6 +1815,7 @@ ipcMain.handle("system-config:get", () => readSystemConfig());
 ipcMain.handle("system-config:save", (_event, payload) => saveSystemConfig(payload));
 ipcMain.handle("system-config:open-directory", (_event, target) => openSystemConfigDirectory(target));
 ipcMain.handle("assets:list", (_event, novelName) => getAssets(novelName));
+ipcMain.handle("mg-assets:replace-style", (_event, payload) => replaceProjectMgStyle(payload));
 ipcMain.handle("episode:preview", (_event, novelName, episode) => getEpisodePreview(novelName, episode));
 ipcMain.handle("source:choose", (_event, kind) => chooseSource(kind === "file" ? "file" : "directory"));
 ipcMain.handle("source:inspect", (_event, inputPath) => inspectSource(inputPath));

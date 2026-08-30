@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("storyClaw", {
   saveSystemConfig: (payload) => ipcRenderer.invoke("system-config:save", payload),
   openSystemConfigDirectory: (target) => ipcRenderer.invoke("system-config:open-directory", target),
   getAssets: (novelName) => ipcRenderer.invoke("assets:list", novelName),
+  replaceMgStyle: (payload) => ipcRenderer.invoke("mg-assets:replace-style", payload),
   getEpisodePreview: (novelName, episode) => ipcRenderer.invoke("episode:preview", novelName, episode),
   chooseSource: (kind) => ipcRenderer.invoke("source:choose", kind),
   inspectSource: (inputPath) => ipcRenderer.invoke("source:inspect", inputPath),

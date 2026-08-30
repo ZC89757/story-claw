@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { complete, type UserMessage } from "@mariozechner/pi-ai";
+import {formatMgTemplateUsage, MG_DEFAULT_STYLE_HINT} from "@story-claw/mg-templates";
 import { createSession, getSharedResources } from "../agent.js";
 import { CONFIG_DIR } from "../utils/run-python.js";
 import {prepareMgAnnotationHtml, stripMgAnnotationDecoration} from "../runner/mg/html.js";
@@ -173,7 +174,7 @@ async function reviseVisualPreset(instruction: string): Promise<{ version: numbe
 
 async function reviseMgAnnotation(
   instruction: string,
-): Promise<{version: number; groupCount: number; tagCount: number}> {
+): Promise<{version: number; instanceCount: number; tagCount: number}> {
   const projectName = String(context.projectName || "").trim();
   const episode = Math.max(1, Math.trunc(Number(context.episode) || 1));
   if (!projectName || context.runStatus !== "review") throw new Error("当前不在画面与 MG 标注审核阶段");
@@ -204,14 +205,19 @@ async function reviseMgAnnotation(
   const response = await complete(model, {
     systemPrompt: `你只负责根据修改意见修订已有的 MG 标注 HTML。
 
-允许修改：MG 标签类型、包裹范围，以及 group、mode、value 三个属性。
-可用标签：progress-timeline、timed-table、directed-graph、side-by-side-comparison、weighted-comparison、decomposition、xy-chart、multi-series-chart、containment、collage-network、mg-title、emphasis。
+允许修改：MG 标签类型、包裹范围，以及 group、order、mode、value 四个属性。
+模板用法（由模板项目维护）：
+${formatMgTemplateUsage()}
 
 要求：
+- 先判断动画是否能明显提升理解；普通事实、能力描述、并列案例或孤立数字不加 MG，没有合适模板时删除标签
 - 输出从 <!DOCTYPE html> 到 </html> 的完整 HTML
 - 去掉 MG 标签后，正文、段落、字序和标点必须与当前 HTML 完全一致
-- 同一 group 使用相同标签和 mode，value 按正文顺序从 1 连续编号
-- mode 只能是 together 或 split；标签可以嵌套，但不能用同一 group 嵌套自身
+- 标签表示动画结构；group 表示渲染样式，不是动画实例标识
+- 默认样式：${MG_DEFAULT_STYLE_HINT}
+- 同一种标签只有一个动画实例时不得填写 order；存在两个或更多实例时，所有同类标签必须按实例首次出现顺序填写连续的 order=1、2、3
+- 一个实例由“标签名称 + order”确定；同一实例的全部节点使用相同 group、order 和 mode，value 从 1 连续编号
+- mode 只能是 together 或 split；标签可以嵌套，但不能把同一动画实例嵌套在自身中
 - 不添加说明、Markdown、CSS、JavaScript 或其他属性
 - 只输出修订后的 HTML`,
     messages: [userMessage],
@@ -227,7 +233,7 @@ async function reviseMgAnnotation(
     ...(record.mg_annotation_review || {}),
     version,
     status: "updated",
-    groupCount: prepared.groupCount,
+    instanceCount: prepared.instanceCount,
     tagCount: prepared.tagCount,
   };
   record.updated_at = new Date().toISOString();
@@ -235,7 +241,7 @@ async function reviseMgAnnotation(
   await fs.writeFile(progressTemp, JSON.stringify(progress, null, 4), "utf8");
   await fs.rename(progressTemp, progressPath);
 
-  return {version, groupCount: prepared.groupCount, tagCount: prepared.tagCount};
+  return {version, instanceCount: prepared.instanceCount, tagCount: prepared.tagCount};
 }
 
 function clipTitle(value: string): string {
@@ -380,7 +386,7 @@ const reviseVisualPresetTool: ToolDefinition = {
 const reviseMgAnnotationTool: ToolDefinition = {
   name: "revise_mg_annotation",
   label: "修改 MG 标注",
-  description: "仅在议论文等待联合审核时使用。根据用户意见修改 MG 标签、group、mode、value 或包裹范围，正文和审核样式保持不变。用户没有提出 MG 修改意见时不要调用。",
+  description: "仅在议论文等待联合审核时使用。根据用户意见修改 MG 标签、group 样式、order、mode、value 或包裹范围，正文和审核样式保持不变。用户没有提出 MG 修改意见时不要调用。",
   parameters: Type.Object({
     instruction: Type.String({ description: "用户对 MG 标签、模板选择、分组方式或包裹范围的具体修改意见" }),
   }),
@@ -514,7 +520,7 @@ const systemPrompt = `你是 Story Claw 的主 Agent，负责协助用户完成�
 9. 明确要求暂停、停止或取消时才调用 pause_pipeline。关闭客户端会暂停整个流程并执行关 GPU，不支持后台运行。
 10. 流水线进度卡由桌面端依据真实运行事件自动创建和更新。不要用文字虚构进度条、百分比或阶段完成情况；一次新的启动或继续运行会产生一张新的进度卡。
 11. 收到审核阶段的桌面端系统事件时，必须先调用 show_visual_preset，把磁盘上的原始画面预设交给桌面端转换为表格；不要在文字回复中粘贴或复述画面预设。议论文的审核卡会同时提供 MG 标注浏览入口。
-12. 如果上下文 phase 为 visual_preset_review，流水线已经暂停在审核点：画面、镜头或画面意图的意见调用 revise_visual_preset，成功后在同一轮调用 show_visual_preset；MG 模板、标签、group、mode、value 或包裹范围的意见调用 revise_mg_annotation，成功后提醒用户刷新 MG 审核页；同时涉及两者时依次调用两个工具。意见无法判断属于哪一项时先询问，不要擅自修改。用户明确说“就这样吧”“确认”“按这个继续”等才调用 start_pipeline。
+12. 如果上下文 phase 为 visual_preset_review，流水线已经暂停在审核点：画面、镜头或画面意图的意见调用 revise_visual_preset，成功后在同一轮调用 show_visual_preset；MG 模板、标签、group 样式、order、mode、value 或包裹范围的意见调用 revise_mg_annotation，成功后提醒用户刷新 MG 审核页；同时涉及两者时依次调用两个工具。意见无法判断属于哪一项时先询问，不要擅自修改。用户明确说“就这样吧”“确认”“按这个继续”等才调用 start_pipeline。
 13. 对配置缺失、接口错误、GPU 排队等问题给出下一步建议，但不要直接改写配置、删除文件或执行任意命令。
 14. 只用简洁、自然的中文回答。工具调用后说明已经发送了什么请求，不要声称已经完成尚未返回的动作。
 
