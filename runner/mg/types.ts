@@ -1,12 +1,11 @@
-import type {MgRuntimeScene, MgTemplateName} from "@story-claw/mg-templates";
+import type {MgLayerRole, MgRuntimeEpisodeInput, MgRuntimeLayer, MgRuntimeLayerPlacement} from "@story-claw/mg-templates/provider";
 
 export type MgMode = "together" | "split";
 
 export type LocatedMgTag = {
-  tag: MgTemplateName;
-  /** Renderer style selected for this structural tag. */
+  /** Public HTML structural tag supplied by the template Provider. */
+  tag: string;
   group: string;
-  /** Repeated instance number for this tag type; omitted when the type is used once. */
   order?: number;
   instanceKey: string;
   mode: MgMode;
@@ -22,7 +21,7 @@ export type LocatedMgTag = {
 
 export type MgInstanceInfo = {
   instanceKey: string;
-  tag: MgTemplateName;
+  tag: string;
   group: string;
   order?: number;
   mode: MgMode;
@@ -40,11 +39,13 @@ export type RawMgFunctionCall = {
 
 export type ResolvedMgFunctionCall = RawMgFunctionCall & {
   instanceKey: string;
+  htmlTag: string;
   group: string;
   order?: number;
   at: number;
-  template: MgTemplateName;
-  spec: unknown;
+  elementAts: number[];
+  layerRole: MgLayerRole;
+  render: MgRuntimeLayer;
 };
 
 export type MgVideoInfo = {
@@ -55,26 +56,18 @@ export type MgVideoInfo = {
   durationFrames: number;
 };
 
-export type MgScenePlan = MgRuntimeScene & {
+export type MgScenePlan = MgRuntimeLayerPlacement & {
   start: number;
   end: number;
-  startFrame: number;
-  endFrame: number;
-  sourceText: string;
   specFile?: string;
-  clipFile: string;
 };
 
-export type MgRenderBundle = {
-  version: 2;
-  width: number;
-  height: number;
-  fps: number;
-  scenes: MgScenePlan[];
+export type MgRenderBundle = MgRuntimeEpisodeInput & {
+  version: 3;
 };
 
 export type MgPlan = {
-  version: 2;
+  version: 3;
   source: MgVideoInfo & {
     rawVideo: string;
     sha256: string;
@@ -84,7 +77,7 @@ export type MgPlan = {
   instances: Array<{
     instanceKey: string;
     group: string;
-    tag: MgTemplateName;
+    tag: string;
     order?: number;
     mode: MgMode;
     tagCount: number;
@@ -94,13 +87,14 @@ export type MgPlan = {
     id: string;
     name: string;
     instanceKey: string;
+    htmlTag: string;
     group: string;
     order?: number;
     at: number;
     arguments: Record<string, unknown>;
     specFile: string;
   }>;
-  scenes: Array<Omit<MgScenePlan, "spec" | "overlays"> & {
-    overlays: Array<Omit<MgScenePlan["overlays"][number], "spec"> & {specFile: string}>;
+  scenes: Array<Omit<MgScenePlan, "render"> & {
+    render: Omit<MgRuntimeLayer, "spec"> & {specFile: string};
   }>;
 };

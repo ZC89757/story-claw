@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+﻿const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const path = require("node:path");
@@ -11,6 +11,8 @@ const projectRoot = path.resolve(__dirname, "..");
 const workspaceRoot = path.join(projectRoot, "workspace");
 const rendererPath = path.join(__dirname, "renderer", "index.html");
 const sessionsFileName = "sessions.json";
+const mgTemplateGalleryPort = 41731;
+const mgTemplateGalleryUrl = `http://127.0.0.1:${mgTemplateGalleryPort}/`;
 const userConfigRoot = path.join(os.homedir(), ".story-claw");
 const desktopSettingsPath = path.join(userConfigRoot, "desktop_settings.json");
 const SYSTEM_CONFIG_SECTIONS = Object.freeze({
@@ -100,27 +102,36 @@ const sessionWriteQueues = new Map();
 const projectNameAliases = new Map();
 const pendingVisualPresetDisplays = new Set();
 let mgStyleCatalogPromise = null;
+let mgTemplateGalleryServerPromise = null;
 
 function getMgStyleCatalog() {
   if (!mgStyleCatalogPromise) {
     const packageEntry = require.resolve("@story-claw/mg-templates");
     const packageRoot = path.resolve(path.dirname(packageEntry), "..");
-    const catalogUrl = pathToFileURL(path.join(
-      path.dirname(packageEntry),
-      "catalog-data.js",
-    )).href;
-    mgStyleCatalogPromise = import(catalogUrl).then((module) => (
-      Array.isArray(module.MG_STYLE_CATALOG)
-        ? module.MG_STYLE_CATALOG.map((entry) => {
-          const previewPath = path.join(packageRoot, "public", "mg-previews", `${entry.template}-${entry.style}.mp4`);
-          return {
-            ...entry,
-            previewUrl: fsSync.existsSync(previewPath) ? pathToFileURL(previewPath).href : null,
-            previewPlaceholderUrl: pathToFileURL(path.join(packageRoot, "public", "mg-previews", "missing.svg")).href,
-          };
-        })
-        : []
-    ));
+    const providerPath = path.join(path.dirname(packageEntry), "provider.ts");
+    // Electron loads this file as CommonJS. Use tsx's CJS bridge so the
+    // template package can stay TypeScript/ESM without coupling the desktop
+    // host to a transpiled copy of its registry.
+    const {require: tsxRequire} = require("tsx/cjs/api");
+    mgStyleCatalogPromise = Promise.resolve().then(() => {
+      const module = tsxRequire(providerPath, __filename);
+      const provider = module.getMgTemplateProvider();
+      const templates = new Map(provider.templates.map((item) => [item.htmlTag, item]));
+      return provider.listStylePreviews().map((entry) => {
+        const previewPath = path.join(packageRoot, "public", entry.previewFile);
+        const descriptor = templates.get(entry.htmlTag);
+        return {
+          ...entry,
+          htmlTag: entry.htmlTag,
+          style: entry.group,
+          layerRole: entry.layerRole,
+          renderMode: entry.layerRole === "overlay" ? "overlay" : "replace",
+          groups: descriptor?.groups ?? [],
+          previewUrl: fsSync.existsSync(previewPath) ? pathToFileURL(previewPath).href : null,
+          previewPlaceholderUrl: pathToFileURL(path.join(packageRoot, "public", "mg-previews", "missing.svg")).href,
+        };
+      });
+    });
   }
   return mgStyleCatalogPromise;
 }
@@ -920,6 +931,7 @@ async function replaceProjectMgStyle(payload = {}) {
   const replaced = replaceMgAnnotationStyle(html, {
     tag: payload.tag,
     order: payload.order ?? null,
+    currentStyle: payload.currentStyle,
     style: payload.style,
   }, catalog);
   await writeTextAtomic(annotationPath, replaced.html);
@@ -1055,6 +1067,28 @@ async function inspectSource(inputPath) {
   return { kind: stat.isDirectory() ? "directory" : "file", path: resolvedPath };
 }
 
+async function openMgTemplateGallery() {
+  // The gallery is served by the template package. Its API reads the current
+  // Provider/catalog on every request; no HTML data regeneration is involved.
+  const packageEntry = require.resolve("@story-claw/mg-templates");
+  const packageRoot = path.resolve(path.dirname(packageEntry), "..");
+  if (!mgTemplateGalleryServerPromise) {
+    mgTemplateGalleryServerPromise = Promise.resolve().then(async () => {
+      const health = await fetch(`${mgTemplateGalleryUrl}api/health`).catch(() => null);
+      if (health?.ok) return {server: null, url: mgTemplateGalleryUrl};
+      const serverPath = path.join(packageRoot, "tools", "mg-template-gallery", "server.ts");
+      const {require: tsxRequire} = require("tsx/cjs/api");
+      const galleryModule = tsxRequire(serverPath, __filename);
+      return galleryModule.startMgTemplateGalleryServer(mgTemplateGalleryPort);
+    }).catch((error) => {
+      mgTemplateGalleryServerPromise = null;
+      throw error;
+    });
+  }
+  const gallery = await mgTemplateGalleryServerPromise;
+  await shell.openExternal(gallery.url);
+  return { opened: true, url: gallery.url };
+}
 async function openMgAnnotation(novelName, episode) {
   const resolvedName = resolveProjectName(novelName);
   const dir = projectDir(resolvedName);
@@ -1820,6 +1854,7 @@ ipcMain.handle("episode:preview", (_event, novelName, episode) => getEpisodePrev
 ipcMain.handle("source:choose", (_event, kind) => chooseSource(kind === "file" ? "file" : "directory"));
 ipcMain.handle("source:inspect", (_event, inputPath) => inspectSource(inputPath));
 ipcMain.handle("mg-annotation:open", (_event, novelName, episode) => openMgAnnotation(novelName, episode));
+ipcMain.handle("mg-template-gallery:open", () => openMgTemplateGallery());
 ipcMain.handle("project:create", (_event, payload) => createProject(payload));
 ipcMain.handle("project:conversation:get", (_event, novelName) => getProjectConversation(novelName));
 ipcMain.handle("project:conversation", (_event, novelName, messages) => updateProjectConversation(novelName, messages));
@@ -1889,7 +1924,9 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   quitting = true;
   const stopPromise = activeRun ? stopRun() : Promise.resolve();
-  Promise.allSettled([stopPromise, flushAllSessionWrites()]).finally(() => {
+  Promise.allSettled([stopPromise, flushAllSessionWrites()]).finally(async () => {
+    const gallery = await mgTemplateGalleryServerPromise?.catch(() => null);
+    if (gallery?.server) await new Promise((resolve) => gallery.server.close(resolve));
     if (activeAgent?.child && !activeAgent.child.killed) activeAgent.child.kill();
     app.quit();
   });

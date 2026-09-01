@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("storyClaw", {
   openWorkspace: (novelName) => ipcRenderer.invoke("workspace:open", novelName),
   openOutput: (novelName, episode) => ipcRenderer.invoke("output:open", novelName, episode),
   openMgAnnotation: (novelName, episode) => ipcRenderer.invoke("mg-annotation:open", novelName, episode),
+  openMgTemplateGallery: () => ipcRenderer.invoke("mg-template-gallery:open"),
   onRunLog: (callback) => subscribe("run:log", callback),
   onRunState: (callback) => subscribe("run:state", callback),
   onRunPhase: (callback) => subscribe("run:phase", callback),

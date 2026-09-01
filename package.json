@@ -35,6 +35,8 @@
   "scripts": {
     "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts",
     "desktop": "electron desktop/main.cjs",
+    "gallery:mg": "npm run gallery --prefix ../story-claw-templates",
+    "gallery:mg:portable": "npm run gallery:portable --prefix ../story-claw-templates",
     "typecheck": "tsc --noEmit",
     "test:mg": "npm test --prefix ../story-claw-templates && tsx --test runner/mg/pipeline.test.ts runner/mg/assembler.integration.test.ts"
   },

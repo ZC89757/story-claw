@@ -1,11 +1,6 @@
 import {createRequire} from "node:module";
 import type {ArticleTimelineEntry} from "../render.js";
-import {
-  isMgStyleForTemplate,
-  mgInstanceKey,
-  mgStylesForTemplate,
-  type MgTemplateName,
-} from "@story-claw/mg-templates";
+import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
 import type {LocatedMgTag, MgInstanceInfo, MgMode} from "./types.js";
 
 const require = createRequire(import.meta.url);
@@ -19,108 +14,36 @@ type HtmlNode = {
   childNodes?: HtmlNode[];
 };
 
-export const MG_TAG_NAMES = [
-  "progress-timeline",
-  "timed-table",
-  "directed-graph",
-  "side-by-side-comparison",
-  "weighted-comparison",
-  "decomposition",
-  "xy-chart",
-  "multi-series-chart",
-  "containment",
-  "collage-network",
-  "image-stack",
-  "image-grid",
-  "mg-title",
-  "emphasis",
-  "mg-showcase",
-  "mg-metric",
-  "mg-transition",
-  "mg-rhythm",
-  "mg-effect",
-  "mg-camera",
-] as const;
-
-type MgHtmlTagName = (typeof MG_TAG_NAMES)[number];
-
+const mgProvider = getMgTemplateProvider();
+export const MG_TAG_NAMES = mgProvider.templates.map((template) => template.htmlTag);
 const MG_TAGS = new Set<string>(MG_TAG_NAMES);
 const GROUP_PATTERN = /^[A-Za-z0-9_-]+$/;
 const STYLE_ID = "story-claw-mg-annotation-style";
 
-// HTML uses descriptive `mg-*` names while the renderer and catalog use the
-// corresponding internal template names. Keep this mapping explicit so every
-// newly introduced structural tag follows the same path through validation,
-// timeline location, and Function Calling.
-const TEMPLATE_BY_HTML_TAG: Readonly<Record<MgHtmlTagName, MgTemplateName>> = Object.freeze({
-  "progress-timeline": "progress-timeline",
-  "timed-table": "timed-table",
-  "directed-graph": "directed-graph",
-  "side-by-side-comparison": "side-by-side-comparison",
-  "weighted-comparison": "weighted-comparison",
-  decomposition: "decomposition",
-  "xy-chart": "xy-chart",
-  "multi-series-chart": "multi-series-chart",
-  containment: "containment",
-  "collage-network": "collage-network",
-  "image-stack": "image-stack",
-  "image-grid": "image-grid",
-  "mg-title": "title",
-  emphasis: "emphasis",
-  "mg-showcase": "showcase",
-  "mg-metric": "metric",
-  "mg-transition": "transition",
-  "mg-rhythm": "rhythm",
-  "mg-effect": "effect",
-  "mg-camera": "camera",
-});
-
-const MG_DISPLAY_LABELS: Record<MgHtmlTagName, string> = Object.freeze({
-  "progress-timeline": "时间进度",
-  "timed-table": "动态表格",
-  "directed-graph": "有向关系图",
-  "side-by-side-comparison": "左右对比",
-  "weighted-comparison": "加权对比",
-  decomposition: "整体拆解",
-  "xy-chart": "坐标趋势图",
-  "multi-series-chart": "多系列图表",
-  containment: "包含关系",
-  "collage-network": "拼贴关系网",
-  "image-stack": "图片叠加",
-  "image-grid": "图片并列",
-  "mg-title": "标题动画",
-  emphasis: "重点大字",
-  "mg-showcase": "界面陈列",
-  "mg-metric": "指标动画",
-  "mg-transition": "转场",
-  "mg-rhythm": "节拍强调",
-  "mg-effect": "视觉效果",
-  "mg-camera": "运镜",
-});
-
 const annotationContent = (
-  tag: MgHtmlTagName,
+  tag: string,
   ordered: boolean,
   withValue: boolean,
 ): string => [
-  `"${MG_DISPLAY_LABELS[tag]},group=" attr(group)`,
+  `"${tag},group=" attr(group)`,
   ordered ? `",order=" attr(order)` : "",
   `",mode=" attr(mode)`,
   withValue ? `",value=" attr(value)` : "",
 ].filter(Boolean).join(" ");
 
-const collectMgInstanceCounts = (html: string): Map<string, {tag: MgHtmlTagName; order?: number; count: number}> => {
-  const counts = new Map<string, {tag: MgHtmlTagName; order?: number; count: number}>();
+const collectMgInstanceCounts = (html: string): Map<string, {tag: string; group: string; order?: number; count: number}> => {
+  const counts = new Map<string, {tag: string; group: string; order?: number; count: number}>();
   const document = parse5.parse(html);
   const visit = (node: HtmlNode): void => {
-    const tag = node.tagName && MG_TAGS.has(node.tagName) ? node.tagName as MgHtmlTagName : undefined;
-    if (tag) {
-      const attrs = Object.fromEntries((node.attrs ?? []).map((attr) => [attr.name, attr.value]));
-      const order = attrs.order === undefined ? undefined : Number(attrs.order);
-      const key = `${tag}|${order ?? ""}`;
-      const current = counts.get(key);
-      if (current) current.count++;
-      else counts.set(key, {tag, ...(order === undefined ? {} : {order}), count: 1});
+      const tag = node.tagName && MG_TAGS.has(node.tagName) ? node.tagName : undefined;
+      if (tag) {
+        const attrs = Object.fromEntries((node.attrs ?? []).map((attr) => [attr.name, attr.value]));
+        const group = attrs.group ?? "";
+        const order = attrs.order === undefined ? undefined : Number(attrs.order);
+        const key = mgProvider.instanceKey({htmlTag: tag, group, order});
+        const current = counts.get(key);
+        if (current) current.count++;
+        else counts.set(key, {tag, group, ...(order === undefined ? {} : {order}), count: 1});
     }
     for (const child of node.childNodes ?? []) visit(child);
   };
@@ -131,11 +54,22 @@ const collectMgInstanceCounts = (html: string): Map<string, {tag: MgHtmlTagName;
 const annotationRules = (html: string): string => [...collectMgInstanceCounts(html).values()]
   .map((instance) => {
     const selector = instance.order === undefined
-      ? `article ${instance.tag}:not([order])::before`
-      : `article ${instance.tag}[order="${instance.order}"]::before`;
+      ? `article ${instance.tag}[group="${instance.group}"]:not([order])::before`
+      : `article ${instance.tag}[group="${instance.group}"][order="${instance.order}"]::before`;
     return `${selector} { content: ${annotationContent(instance.tag, instance.order !== undefined, instance.count > 1)}; }`;
   })
   .join("\n");
+
+const tagSelectors = (suffix = ""): string => MG_TAG_NAMES.map((tag) => `article ${tag}${suffix}`).join(",\n");
+const annotationPalette = [
+  ["#2764c8", "#e9f1ff"], ["#147a52", "#e7f6ee"], ["#b65a1b", "#fff0e5"],
+  ["#7651b5", "#f1eafd"], ["#8a6500", "#fff7d8"], ["#087b86", "#e3f5f6"],
+  ["#50606d", "#e9eef1"], ["#9a4d2f", "#fbece5"],
+] as const;
+const tagColorRules = (): string => MG_TAG_NAMES.map((tag, index) => {
+  const [accent, fill] = annotationPalette[index % annotationPalette.length];
+  return `article ${tag} { --mg-accent: ${accent}; --mg-fill: ${fill}; }`;
+}).join("\n");
 
 const buildMgAnnotationStyle = (html: string): string => `<style id="${STYLE_ID}">
 :root { color-scheme: light; }
@@ -143,43 +77,16 @@ body { margin: 0; background: #f3f5f6; color: #20262c; font-family: "Microsoft Y
 article { width: min(920px, calc(100% - 48px)); margin: 0 auto; padding: 44px 0 80px; font-size: 17px; line-height: 1.95; }
 p { margin: 0 0 24px; white-space: pre-line; }
 article > p:first-child { margin-bottom: 12px; font-size: 30px; font-weight: 800; line-height: 1.35; }
-article progress-timeline, article timed-table, article directed-graph,
-article side-by-side-comparison, article weighted-comparison, article decomposition,
-article xy-chart, article multi-series-chart, article containment,
-article collage-network, article image-stack, article image-grid,
-article mg-title, article emphasis, article mg-showcase, article mg-metric,
-article mg-transition, article mg-rhythm, article mg-effect, article mg-camera {
+${tagSelectors()} {
   padding: 2px 4px; border-bottom: 2px solid var(--mg-accent); border-radius: 3px;
   background: var(--mg-fill); box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
-article progress-timeline::before, article timed-table::before, article directed-graph::before,
-article side-by-side-comparison::before, article weighted-comparison::before, article decomposition::before,
-article xy-chart::before, article multi-series-chart::before, article containment::before,
-article collage-network::before, article image-stack::before, article image-grid::before,
-article mg-title::before, article emphasis::before, article mg-showcase::before,
-article mg-metric::before, article mg-transition::before, article mg-rhythm::before,
-article mg-effect::before, article mg-camera::before {
+${tagSelectors("::before")} {
   display: inline-block; margin: 0 6px 2px 0; padding: 1px 6px; border-radius: 3px;
   background: var(--mg-accent); color: #fff; font: 600 10px/1.5 Consolas, "Microsoft YaHei", sans-serif;
   vertical-align: 1px; white-space: normal; overflow-wrap: anywhere;
 }
-article progress-timeline { --mg-accent: #2764c8; --mg-fill: #e9f1ff; }
-article timed-table { --mg-accent: #147a52; --mg-fill: #e7f6ee; }
-article directed-graph { --mg-accent: #b65a1b; --mg-fill: #fff0e5; }
-article side-by-side-comparison, article weighted-comparison { --mg-accent: #7651b5; --mg-fill: #f1eafd; }
-article decomposition, article containment { --mg-accent: #8a6500; --mg-fill: #fff7d8; }
-article xy-chart, article multi-series-chart { --mg-accent: #087b86; --mg-fill: #e3f5f6; }
-article collage-network { --mg-accent: #50606d; --mg-fill: #e9eef1; }
-article image-stack { --mg-accent: #9a4d2f; --mg-fill: #fbece5; }
-article image-grid { --mg-accent: #2f718f; --mg-fill: #e5f3f8; }
-article mg-title { --mg-accent: #334155; --mg-fill: #e8edf2; }
-article emphasis { --mg-accent: #bf3448; --mg-fill: #ffe8eb; }
-article mg-showcase { --mg-accent: #2d7586; --mg-fill: #e3f3f5; }
-article mg-metric { --mg-accent: #4f6f9c; --mg-fill: #e8eef8; }
-article mg-transition { --mg-accent: #b34d32; --mg-fill: #fff0e8; }
-article mg-rhythm { --mg-accent: #8c3d76; --mg-fill: #f7e8f1; }
-article mg-effect { --mg-accent: #bf632f; --mg-fill: #fff0e5; }
-article mg-camera { --mg-accent: #176d7a; --mg-fill: #e3f4f6; }
+${tagColorRules()}
 ${annotationRules(html)}
 @media (max-width: 640px) { article { width: min(100% - 28px, 920px); padding-top: 24px; font-size: 16px; } }
 </style>`;
@@ -242,7 +149,7 @@ type ParsedStructure = {
   paragraphs: HtmlNode[];
   paragraphTexts: string[];
   tags: Array<{
-    tag: MgTemplateName;
+    tag: string;
     group: string;
     order?: number;
     instanceKey: string;
@@ -321,11 +228,10 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       const isMg = Boolean(node.tagName && MG_TAGS.has(node.tagName));
       if (node.tagName && !isMg) throw new Error(`MG HTML 正文包含不支持的标签 <${node.tagName}>`);
       const attrs = isMg ? attrsOf(node) : {};
-      const htmlTag = isMg ? node.tagName as MgHtmlTagName : undefined;
-      const tag = htmlTag ? TEMPLATE_BY_HTML_TAG[htmlTag] : undefined;
+      const htmlTag = isMg ? node.tagName : undefined;
       const group = attrs.group;
       const order = attrs.order === undefined ? undefined : Number(attrs.order);
-      const instanceKey = tag ? mgInstanceKey(tag, order) : undefined;
+      const instanceKey = htmlTag && group ? mgProvider.instanceKey({htmlTag, group, order}) : undefined;
       const nextAncestors = instanceKey ? [...ancestors, instanceKey] : ancestors;
       const currentDocumentOrder = isMg ? documentOrder++ : -1;
       const startOffset = relativeOffset;
@@ -337,8 +243,8 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       const unknownAttrs = Object.keys(attrs).filter((name) => !allowedAttrs.has(name));
       if (unknownAttrs.length) throw new Error(`<${htmlTag}> 包含不支持的属性: ${unknownAttrs.join(", ")}`);
       if (!group || !GROUP_PATTERN.test(group) || group.length > 80) throw new Error(`<${htmlTag}> 缺少合法 group`);
-      if (!isMgStyleForTemplate(tag!, group)) {
-        const allowed = mgStylesForTemplate(tag!).map((style) => style.style).join(", ");
+      if (!mgProvider.supportsGroup(htmlTag!, group)) {
+        const allowed = mgProvider.templates.find((template) => template.htmlTag === htmlTag)?.groups.join(", ") ?? "";
         throw new Error(`<${htmlTag}> 的 group 样式 ${group} 不可用，可选: ${allowed}`);
       }
       if (attrs.order !== undefined && (!Number.isInteger(order) || order! < 1 || order! > 999)) {
@@ -353,7 +259,7 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       if (ancestors.includes(instanceKey!)) throw new Error(`动画实例 ${instanceKey} 不能嵌套自身`);
 
       tags.push({
-        tag: tag!,
+        tag: htmlTag!,
         group,
         ...(order === undefined ? {} : {order}),
         instanceKey: instanceKey!,
@@ -371,16 +277,18 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
     for (const child of paragraph.childNodes ?? []) walk(child, []);
   });
 
-  const byTemplate = new Map<MgTemplateName, ParsedStructure["tags"]>();
+  const byTemplateGroup = new Map<string, ParsedStructure["tags"]>();
   for (const tag of tags) {
-    const current = byTemplate.get(tag.tag) ?? [];
+    const key = `${tag.tag}::${tag.group}`;
+    const current = byTemplateGroup.get(key) ?? [];
     current.push(tag);
-    byTemplate.set(tag.tag, current);
+    byTemplateGroup.set(key, current);
   }
-  for (const [template, templateTags] of byTemplate) {
+  for (const [, templateTags] of byTemplateGroup) {
+    const firstTag = templateTags[0];
     const hasOrder = templateTags.some((tag) => tag.order !== undefined);
     if (hasOrder && templateTags.some((tag) => tag.order === undefined)) {
-      throw new Error(`<${template}> 存在多个实例时，所有同类标签都必须填写 order`);
+      throw new Error(`<${firstTag.tag} group=${firstTag.group}> 存在多个实例时，所有同类标签都必须填写 order`);
     }
     if (!hasOrder) continue;
     const orders = [...new Set(
@@ -388,9 +296,9 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
         .sort((left, right) => left.documentOrder - right.documentOrder)
         .map((tag) => tag.order!),
     )];
-    if (orders.length < 2) throw new Error(`<${template}> 只有一个实例时不应填写 order`);
+    if (orders.length < 2) throw new Error(`<${firstTag.tag} group=${firstTag.group}> 只有一个实例时不应填写 order`);
     if (orders.some((orderValue, index) => orderValue !== index + 1)) {
-      throw new Error(`<${template}> 的 order 必须按首次出现顺序从 1 连续编号`);
+      throw new Error(`<${firstTag.tag} group=${firstTag.group}> 的 order 必须按首次出现顺序从 1 连续编号`);
     }
   }
 
@@ -407,9 +315,7 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
     if (instanceTags.some((tag) => tag.parentInstance !== first.parentInstance)) {
       throw new Error(`${instanceKey} 出现在不同嵌套层级`);
     }
-    if ((first.tag === "title" || first.tag === "emphasis") && instanceTags.length !== 1) {
-      throw new Error(`${instanceKey} 的 <${first.tag}> 只能出现一次`);
-    }
+    mgProvider.validateAnnotatedInstance({htmlTag: first.tag, tagCount: instanceTags.length});
     const values = [...instanceTags].sort((a, b) => a.documentOrder - b.documentOrder).map((tag) => tag.value);
     if (values.some((value, index) => value !== index + 1)) {
       throw new Error(`${instanceKey} 的 value 必须按正文顺序从 1 连续编号`);

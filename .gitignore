@@ -25,6 +25,7 @@ output_videos/
 bgm/
 *.log
 *.tsbuildinfo
+token-stage-inputs.json
 
 # 已由官方 compshare CLI 流程替代；旧脚本含本地会话凭据
 scripts/shutdown-gpu.sh

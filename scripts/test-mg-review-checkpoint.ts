@@ -125,7 +125,17 @@ async function main(): Promise<void> {
     stoppedAtReview: result === "review_pending" && stageRecord.visualPreset === "review",
     cleanCompleted: stageRecord.clean === "done" && Boolean(article.trim()),
     mgAnnotationCompleted: stageRecord.mgAnnotate === "done" && !annotationValidationError,
+    mgAnnotationHasPresetProvenance: (
+      typeof savedProgress?.episodes?.["1"]?.mg_annotation_review?.presetHash === "string"
+      && savedProgress.episodes["1"].mg_annotation_review.presetHash
+        === crypto.createHash("sha256").update(preset).digest("hex")
+    ),
     visualPresetReady: Boolean(preset.trim()) && countPresetRows(preset) > 0,
+    visualPresetPrecedesMgAnnotation: (() => {
+      const presetIndex = phases.findIndex((event) => event.phase === "visual_preset");
+      const annotationIndex = phases.findIndex((event) => event.phase === "mg_annotating");
+      return presetIndex >= 0 && annotationIndex >= 0 && presetIndex < annotationIndex;
+    })(),
     noMediaGenerated: forbiddenFiles.length === 0,
     noDownstreamDirectories: forbiddenPaths.length === 0,
     noGpuPhase: phases.every((event) => !["gpu_queued", "gpu_ready", "rendering", "gpu_stopped"].includes(event.phase)),
@@ -160,6 +170,7 @@ async function main(): Promise<void> {
     `流水线返回：${result}`,
     `阶段：${JSON.stringify(stageRecord)}`,
     `MG 标注：${annotationSummary.instanceCount} 个动画实例 / ${annotationSummary.tagCount} 个标签`,
+    `MG 预设依赖：${checks.mgAnnotationHasPresetProvenance ? "已记录" : "缺失"}`,
     `画面预设：${countPresetRows(preset)} 行`,
     `媒体文件：${forbiddenFiles.length} 个`,
     `下游目录文件：${forbiddenPaths.length} 个`,

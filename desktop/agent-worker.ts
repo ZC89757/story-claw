@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { complete, type UserMessage } from "@mariozechner/pi-ai";
-import {formatMgTemplateUsage, MG_DEFAULT_STYLE_HINT} from "@story-claw/mg-templates";
+import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
 import { createSession, getSharedResources } from "../agent.js";
 import { CONFIG_DIR } from "../utils/run-python.js";
 import {prepareMgAnnotationHtml, stripMgAnnotationDecoration} from "../runner/mg/html.js";
@@ -43,6 +43,7 @@ type AgentInput =
   | { type: "command_result"; requestId: string; ok: boolean; result?: unknown; error?: string };
 
 let context: AgentContext = {};
+const mgProvider = getMgTemplateProvider();
 let session: AgentSession | null = null;
 let sessionPromise: Promise<AgentSession> | null = null;
 let sessionFile = path.join(process.cwd(), "agent-data", "supervisor.jsonl");
@@ -206,17 +207,13 @@ async function reviseMgAnnotation(
     systemPrompt: `你只负责根据修改意见修订已有的 MG 标注 HTML。
 
 允许修改：MG 标签类型、包裹范围，以及 group、order、mode、value 四个属性。
-模板用法（由模板项目维护）：
-${formatMgTemplateUsage()}
+${mgProvider.getAnnotationInstructions()}
 
 要求：
 - 先判断动画是否能明显提升理解；普通事实、能力描述、并列案例或孤立数字不加 MG，没有合适模板时删除标签
 - 输出从 <!DOCTYPE html> 到 </html> 的完整 HTML
 - 去掉 MG 标签后，正文、段落、字序和标点必须与当前 HTML 完全一致
 - 标签表示动画结构；group 表示渲染样式，不是动画实例标识
-- 默认样式：${MG_DEFAULT_STYLE_HINT}
-- 同一种标签只有一个动画实例时不得填写 order；存在两个或更多实例时，所有同类标签必须按实例首次出现顺序填写连续的 order=1、2、3
-- 一个实例由“标签名称 + order”确定；同一实例的全部节点使用相同 group、order 和 mode，value 从 1 连续编号
 - mode 只能是 together 或 split；标签可以嵌套，但不能把同一动画实例嵌套在自身中
 - 不添加说明、Markdown、CSS、JavaScript 或其他属性
 - 只输出修订后的 HTML`,

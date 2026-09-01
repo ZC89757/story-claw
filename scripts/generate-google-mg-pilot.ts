@@ -23,8 +23,7 @@ import {resolveTitleFunctionArgs, titleFunctionDefinition} from "../../story-cla
 import {emphasisFunctionDefinition, resolveEmphasisFunctionArgs} from "../../story-claw-templates/src/emphasis/index.js";
 import {resolveXYChartFunctionArgs, xyChartFunctionDefinition} from "../../story-claw-templates/src/xy-chart/index.js";
 import {
-  multiSeriesBarChartFunctionDefinition,
-  multiSeriesLineChartFunctionDefinition,
+  multiSeriesChartFunctionDefinition,
   resolveMultiSeriesChartFunctionArgs,
 } from "../../story-claw-templates/src/multi-series-chart/index.js";
 import {containmentFunctionDefinition, resolveContainmentFunctionArgs} from "../../story-claw-templates/src/containment/index.js";
@@ -165,7 +164,7 @@ const TAG_FUNCTIONS: Record<string, string[]> = {
   "weighted-comparison": ["create_weighted_comparison"],
   decomposition: ["create_decomposition_timeline"],
   "xy-chart": ["create_xy_chart_timeline"],
-  "multi-series-chart": ["create_multi_series_bar_chart", "create_multi_series_line_chart"],
+  "multi-series-chart": ["create_multi_series_chart"],
   containment: ["create_containment_timeline"],
   "collage-network": ["create_collage_network"],
   title: ["create_title_cue"],
@@ -179,8 +178,7 @@ const FUNCTION_DEFINITIONS = [
   titleFunctionDefinition,
   emphasisFunctionDefinition,
   xyChartFunctionDefinition,
-  multiSeriesBarChartFunctionDefinition,
-  multiSeriesLineChartFunctionDefinition,
+  multiSeriesChartFunctionDefinition,
   containmentFunctionDefinition,
   decompositionFunctionDefinition,
   weightedComparisonFunctionDefinition,
@@ -195,8 +193,7 @@ const TEMPLATE_BY_FUNCTION: Record<string, string> = {
   create_title_cue: "title",
   create_emphasis_text_cue: "emphasis",
   create_xy_chart_timeline: "xy-chart",
-  create_multi_series_bar_chart: "multi-series-chart",
-  create_multi_series_line_chart: "multi-series-chart",
+  create_multi_series_chart: "multi-series-chart",
   create_containment_timeline: "containment",
   create_decomposition_timeline: "decomposition",
   create_weighted_comparison: "weighted-comparison",
@@ -446,8 +443,7 @@ const resolveOneCall = (call: RawFunctionCall): ResolvedCall => {
     case "create_title_cue": resolved = resolveTitleFunctionArgs(args); break;
     case "create_emphasis_text_cue": resolved = resolveEmphasisFunctionArgs(args); break;
     case "create_xy_chart_timeline": resolved = resolveXYChartFunctionArgs(args); break;
-    case "create_multi_series_bar_chart": resolved = resolveMultiSeriesChartFunctionArgs(args, "bar"); break;
-    case "create_multi_series_line_chart": resolved = resolveMultiSeriesChartFunctionArgs(args, "line"); break;
+    case "create_multi_series_chart": resolved = resolveMultiSeriesChartFunctionArgs(args); break;
     case "create_containment_timeline": resolved = resolveContainmentFunctionArgs(args); break;
     case "create_decomposition_timeline": resolved = resolveDecompositionFunctionArgs(args); break;
     case "create_weighted_comparison": resolved = resolveWeightedComparisonFunctionArgs(args); break;
@@ -467,8 +463,7 @@ const elementAts = (call: RawFunctionCall): number[] => {
     case "create_title_cue":
     case "create_emphasis_text_cue": return [args.at];
     case "create_xy_chart_timeline": return (args.keyframes ?? []).map((item: any) => item.at);
-    case "create_multi_series_bar_chart":
-    case "create_multi_series_line_chart": return (args.series ?? []).flatMap((series: any) => (series.data ?? []).map((item: any) => item.at));
+    case "create_multi_series_chart": return (args.series ?? []).flatMap((series: any) => (series.data ?? []).map((item: any) => item.at));
     case "create_containment_timeline": return [...(args.relations ?? []), ...(args.highlights ?? [])].map((item: any) => item.at);
     case "create_decomposition_timeline": return [...(args.parts ?? []), ...(args.highlights ?? [])].map((item: any) => item.at);
     case "create_weighted_comparison":

@@ -18,10 +18,10 @@ test("MG assembly changes the output without modifying the raw master", async ()
 
   try {
     const rawVideo = novelPaths.episodeRawVideo(novelName, episode);
-    const clip = path.join(novelPaths.mgClipsDir(novelName, episode), "middle.mp4");
+    const outputPath = novelPaths.episodeMgRawVideo(novelName, episode);
     await Promise.all([
       fs.mkdir(path.dirname(rawVideo), {recursive: true}),
-      fs.mkdir(path.dirname(clip), {recursive: true}),
+      fs.mkdir(path.dirname(outputPath), {recursive: true}),
     ]);
     await runMediaCommand("ffmpeg", [
       "-loglevel", "error",
@@ -34,22 +34,25 @@ test("MG assembly changes the output without modifying the raw master", async ()
       "-pix_fmt", "yuv420p",
       rawVideo,
     ]);
+    // The renderer now owns the full-episode composition. The assembler is a
+    // validation gate, so provide a conforming rendered output directly here
+    // instead of manufacturing an obsolete middle clip for concat.
     await runMediaCommand("ffmpeg", [
       "-loglevel", "error",
       "-y",
       "-f", "lavfi",
-      "-i", "color=c=blue:s=320x180:r=10:d=1",
-      "-frames:v", "10",
+      "-i", "color=c=blue:s=320x180:r=10:d=3",
+      "-frames:v", "30",
       "-an",
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
-      clip,
+      outputPath,
     ]);
 
     const source = await probeMgVideo(rawVideo);
     const rawHash = await sha256File(rawVideo);
     const plan: MgPlan = {
-      version: 2,
+      version: 3,
       source: {
         rawVideo,
         sha256: rawHash,
@@ -59,24 +62,7 @@ test("MG assembly changes the output without modifying the raw master", async ()
       },
       instances: [],
       functionCalls: [],
-      scenes: [{
-        id: "middle",
-        instance: "progress-timeline-01",
-        group: "horizontal",
-        template: "progress-timeline",
-        renderMode: "replace",
-        start: 1,
-        end: 2,
-        startFrame: 10,
-        endFrame: 20,
-        durationFrames: 10,
-        timelineOffsetFrames: 0,
-        sourceText: "中段 MG",
-        specFile: "specs/middle.json",
-        clipFile: "clips/middle.mp4",
-        background: "#111111",
-        overlays: [],
-      }],
+      scenes: [],
     };
     await fs.mkdir(novelPaths.mgDir(novelName, episode), {recursive: true});
     await fs.writeFile(

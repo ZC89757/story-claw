@@ -4,6 +4,7 @@
 
 import fs from "node:fs/promises";
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
@@ -19,6 +20,7 @@ import { postprocessEpisodeVideo } from "./postprocess.js";
 import { novelPaths } from "../utils/paths.js";
 import { readProgress, getEpisodeRecord, markStage, finalizeEpisode } from "../utils/progress.js";
 import { annotateEssayMg } from "./mg/annotate.js";
+import { validateMgAnnotationHtml } from "./mg/html.js";
 import { planEssayMg } from "./mg/planner.js";
 import { renderAndAssembleEssayMg } from "./mg/assembler.js";
 
@@ -65,8 +67,8 @@ const STORY_PROGRESS = [
 
 const ESSAY_PROGRESS = [
   "原文清理",
-  "MG 语义标注",
   "画面预设",
+  "MG 语义标注",
   "资源建档",
   "剧本分场",
   "分镜制作",
@@ -75,6 +77,32 @@ const ESSAY_PROGRESS = [
   "MG 动画渲染",
   "最终合成",
 ] as const;
+
+const sha256 = (content: string): string => createHash("sha256").update(content).digest("hex");
+
+/**
+ * 只有当前 HTML 合法，且生成时消费的画面预设与当前文件完全一致，才允许续跑复用。
+ * 旧项目没有 provenance 时保守地重建一次。
+ */
+async function hasCurrentEssayMgAnnotation(
+  sel: NovelSelection,
+  record: ReturnType<typeof getEpisodeRecord>,
+): Promise<boolean> {
+  const expectedPresetHash = record.mg_annotation_review?.presetHash;
+  if (record.stages.mgAnnotate !== "done" || !expectedPresetHash) return false;
+  try {
+    const [preset, article, html] = await Promise.all([
+      fs.readFile(novelPaths.visualPreset(sel.novelName, sel.episode), "utf-8"),
+      fs.readFile(novelPaths.cleanedText(sel.novelName, sel.episode), "utf-8"),
+      fs.readFile(novelPaths.mgAnnotation(sel.novelName, sel.episode), "utf-8"),
+    ]);
+    if (sha256(preset) !== expectedPresetHash) return false;
+    validateMgAnnotationHtml(html, article);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter): Promise<SoloRunResult> {
   const title = `${sel.novelName} 第${sel.episode}集`;
@@ -94,8 +122,8 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
   const p = createProgress(progressLabels);
   const progressIndex = {
     clean: 0,
-    mgAnnotate: isEssay ? 1 : -1,
-    visualPreset: isEssay ? 2 : 1,
+    visualPreset: 1,
+    mgAnnotate: isEssay ? 2 : -1,
     archive: isEssay ? 3 : 2,
     segment: isEssay ? 4 : 3,
     storyboard: isEssay ? 5 : 4,
@@ -139,25 +167,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       p.done(progressIndex.clean, title, "原文_clean.txt");
     }
 
-    // 议论文第一步 AI：只做 HTML 语义标注。画面预设仍只读取原文_clean.txt。
-    if (isEssay) {
-      reportPhase({
-        phase: "mg_annotating",
-        label: "生成 MG 语义标注",
-        detail: "正在为适合动态图形表达的原文添加 group、order、mode 和 value",
-      });
-      p.start(progressIndex.mgAnnotate, title);
-      if (epRec.stages.mgAnnotate === "done") {
-        await fs.access(novelPaths.mgAnnotation(sel.novelName, ep));
-        p.done(progressIndex.mgAnnotate, title, "已完成，跳过");
-      } else {
-        await annotateEssayMg(sel);
-        await markStage(sel.novelName, ep, "mgAnnotate", "done");
-        p.done(progressIndex.mgAnnotate, title, "mg_annotation.html");
-      }
-    }
-
-    // 画面预设：故事文标注场景人物；议论文在这里固定逐行 group 边界与画面意图。
+    // 画面预设：故事文标注场景人物；议论文先固定 group、原画与 MG 的视觉意图。
     reportPhase({
       phase: "visual_preset",
       label: "生成画面预设",
@@ -165,21 +175,46 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     });
     p.start(progressIndex.visualPreset, title);
     let presetPath = novelPaths.visualPreset(sel.novelName, ep);
+    let reviewPending = false;
     if (epRec.stages.visualPreset === "done") {
       p.done(progressIndex.visualPreset, title, "已完成，跳过");
     } else if (epRec.stages.visualPreset === "review") {
-      reportPhase({ phase: "visual_preset_review", ...reviewPhase });
-      return "review_pending";
+      // 审核中的预设可能刚被人工修改；先确保其下游 MG HTML 与当前内容一致。
+      reviewPending = true;
+      p.done(progressIndex.visualPreset, title, "等待用户审核");
     } else {
       presetPath = await visualPreset(sel, articleType);
-      if (sel.reviewVisualPreset) {
-        await markStage(sel.novelName, ep, "visualPreset", "review", { chapter: sel.nextChapter });
-        p.done(progressIndex.visualPreset, title, "等待用户审核");
-        reportPhase({ phase: "visual_preset_review", ...reviewPhase });
-        return "review_pending";
-      }
       await markStage(sel.novelName, ep, "visualPreset", "done", { chapter: sel.nextChapter });
       p.done(progressIndex.visualPreset, title, "画面预设.txt");
+      reviewPending = sel.reviewVisualPreset === true;
+    }
+
+    // 议论文第二步 AI：MG HTML 必须读取当前画面预设，并记录它的哈希用于安全续跑。
+    if (isEssay) {
+      reportPhase({
+        phase: "mg_annotating",
+        label: "生成 MG 语义标注",
+        detail: "正在依据画面预设的 MG 视觉意图添加 group、order、mode 和 value",
+      });
+      p.start(progressIndex.mgAnnotate, title);
+      if (await hasCurrentEssayMgAnnotation(sel, epRec)) {
+        p.done(progressIndex.mgAnnotate, title, "已完成，且与当前画面预设一致");
+      } else {
+        const annotation = await annotateEssayMg(sel);
+        await markStage(sel.novelName, ep, "mgAnnotate", "done", {
+          mgAnnotationPresetHash: annotation.presetHash,
+        });
+        p.done(progressIndex.mgAnnotate, title, "mg_annotation.html");
+      }
+    }
+
+    // 联合审核只能在 HTML 已按当前预设生成后进入，避免审核或续跑看到过期 MG。
+    if (reviewPending) {
+      if (epRec.stages.visualPreset !== "review") {
+        await markStage(sel.novelName, ep, "visualPreset", "review", { chapter: sel.nextChapter });
+      }
+      reportPhase({ phase: "visual_preset_review", ...reviewPhase });
+      return "review_pending";
     }
 
     // 资源建档（议论文跳过：无角色无场景）

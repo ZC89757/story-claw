@@ -1429,6 +1429,7 @@
           episode: usage.episode,
           tag: usage.tag,
           order: usage.order,
+          currentStyle: usage.style,
           style: nextStyle,
         });
         showToast(`已将${usage.structureName}替换为${select.options[select.selectedIndex]?.textContent || nextStyle}`);
@@ -1454,6 +1455,7 @@
     const meta = root.querySelector("[data-claw-asset-project-meta]");
     const subtitle = root.querySelector("[data-claw-assets-subtitle]");
     const mgEpisodeSelect = root.querySelector("[data-claw-mg-episode-select]");
+    const galleryButton = root.querySelector("[data-claw-mg-gallery-open]");
     const peoplePane = root.querySelector('[data-claw-asset-pane="people"]');
     const scenesPane = root.querySelector('[data-claw-asset-pane="scenes"]');
     const peopleTab = root.querySelector('[data-claw-asset-tab="people"]');
@@ -1462,6 +1464,7 @@
     try {
       const assets = await api.getAssets(project.novelName);
       if (assets.kind === "mg") {
+        if (galleryButton) galleryButton.hidden = false;
         if (subtitle) subtitle.textContent = "查看 MG 动画样式，并在画面与 MG 联合审核阶段替换本文实例";
         if (meta) meta.textContent = `${assets.styleCount} 种 MG 样式 · 本文已使用 ${assets.instanceCount} 个实例`;
         if (mgEpisodeSelect) {
@@ -1511,6 +1514,7 @@
         }
         return;
       }
+      if (galleryButton) galleryButton.hidden = true;
       if (mgEpisodeSelect) {
         mgEpisodeSelect.hidden = true;
         mgEpisodeSelect.replaceChildren();
@@ -1532,6 +1536,7 @@
         if (!assets.scenes?.length) scenesPane.innerHTML = '<div class="desktop-empty">暂无场景参考图</div>';
       }
     } catch (error) {
+      if (galleryButton) galleryButton.hidden = true;
       const detail = error instanceof Error ? error.message : "读取资产失败";
       if (meta) meta.textContent = project.articleType === "essay" ? "MG 标注协议错误" : "资产读取失败";
       if (subtitle) {
@@ -1563,6 +1568,17 @@
     }
   }
 
+  async function openMgTemplateGallery(button) {
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    try {
+      await api.openMgTemplateGallery();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "打开 MG 样式预览失败");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
   function formatPreviewTime(seconds) {
     const value = Number.isFinite(Number(seconds)) ? Math.max(0, Math.round(Number(seconds))) : 0;
     const hours = Math.floor(value / 3600);
@@ -2944,6 +2960,9 @@
         state.renderWorkspaceActivated = false;
         showProjectChat(project);
       }
+    });
+    root.querySelector("[data-claw-mg-gallery-open]")?.addEventListener("click", (event) => {
+      openMgTemplateGallery(event.currentTarget);
     });
     root.querySelectorAll("[data-claw-page]").forEach((button) => {
       button.addEventListener("click", () => {

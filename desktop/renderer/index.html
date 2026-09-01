@@ -762,6 +762,9 @@
     #storyclaw-gui-concept .claw-assets-view { padding-top: 124px; }
     #storyclaw-gui-concept .claw-assets-head { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
     #storyclaw-gui-concept .claw-assets-head p { margin-top: 8px; color: var(--claw-muted); }
+    #storyclaw-gui-concept .claw-mg-gallery-open { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 1px solid #725125; border-radius: 7px; background: linear-gradient(135deg, #382417, #24201a); color: #f0c17c; font-size: 12px; font-weight: 650; }
+    #storyclaw-gui-concept .claw-mg-gallery-open:hover { border-color: #b87232; color: #ffd29b; }
+    #storyclaw-gui-concept .claw-mg-gallery-open:disabled { cursor: wait; opacity: .6; }
     #storyclaw-gui-concept .claw-asset-layout {
       display: grid;
       grid-template-columns: 228px minmax(0, 1fr);
@@ -1165,7 +1168,7 @@
       </main>
 
       <main class="claw-library-view claw-assets-view" data-claw-view="assets" hidden>
-        <div class="claw-assets-head"><div><h1>资产</h1><p data-claw-assets-subtitle>按项目管理人物与场景参考图</p></div></div>
+        <div class="claw-assets-head"><div><h1>资产</h1><p data-claw-assets-subtitle>按项目管理人物与场景参考图</p></div><button type="button" class="claw-mg-gallery-open" data-claw-mg-gallery-open hidden><i data-lucide="panels-top-left" aria-hidden="true"></i><span>打开全部样式预览</span></button></div>
         <div class="claw-asset-layout">
           <aside class="claw-project-index" aria-label="资产项目分类">
             <span class="claw-project-index-label">项目</span>

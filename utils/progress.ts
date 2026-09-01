@@ -48,6 +48,8 @@ export interface EpisodeRecord {
     status?: "review" | "approved" | "updated";
     instanceCount?: number;
     tagCount?: number;
+    /** 生成当前 MG HTML 时所消费的画面预设 SHA-256。 */
+    presetHash?: string;
   };
 }
 
@@ -70,7 +72,7 @@ export async function markStage(
   episode: number,
   stage: StageName,
   status: StageStatus,
-  extra?: { chapter?: number; sceneNames?: string[] },
+  extra?: { chapter?: number; sceneNames?: string[]; mgAnnotationPresetHash?: string },
 ): Promise<void> {
   const prog = await readProgress(novelName);
   prog.episodes ??= {};
@@ -79,6 +81,12 @@ export async function markStage(
   rec.stages = { ...rec.stages, [stage]: status };
   if (extra?.chapter !== undefined) rec.chapter = extra.chapter;
   if (extra?.sceneNames !== undefined) rec.sceneNames = extra.sceneNames;
+  if (extra?.mgAnnotationPresetHash !== undefined) {
+    rec.mg_annotation_review = {
+      ...rec.mg_annotation_review,
+      presetHash: extra.mgAnnotationPresetHash,
+    };
+  }
   rec.updated_at = new Date().toISOString();
   prog.episodes[key] = rec;
   await writeProgress(novelName, prog);

@@ -35,11 +35,11 @@ const buildTimeline = (source: string): ArticleTimelineEntry[] =>
 test("MG HTML preserves clean text and locates nested groups on the real timeline", () => {
   assert.deepEqual(validateMgAnnotationHtml(html, article), {instanceCount: 3, tagCount: 4});
   const instances = locateMgInstances(html, buildTimeline(article), article);
-  assert.equal(instances.get("progress-timeline-01")?.mode, "split");
-  assert.deepEqual(instances.get("progress-timeline-01")?.tags.map((tag) => tag.value), [1, 2]);
-  assert.equal(instances.get("emphasis-01")?.parentInstance, "decomposition-01");
-  assert.equal(instances.get("emphasis-01")?.depth, 1);
-  assert.ok((instances.get("progress-timeline-01")?.tags[1].start ?? 0) > (instances.get("progress-timeline-01")?.tags[0].end ?? 0));
+  assert.equal(instances.get("progress-timeline::horizontal::one")?.mode, "split");
+  assert.deepEqual(instances.get("progress-timeline::horizontal::one")?.tags.map((tag) => tag.value), [1, 2]);
+  assert.equal(instances.get("emphasis::scale::one")?.parentInstance, "decomposition::cards::one");
+  assert.equal(instances.get("emphasis::scale::one")?.depth, 1);
+  assert.ok((instances.get("progress-timeline::horizontal::one")?.tags[1].start ?? 0) > (instances.get("progress-timeline::horizontal::one")?.tags[0].end ?? 0));
 });
 
 test("MG HTML rejects at because timestamps belong to Function Calling", () => {
@@ -63,7 +63,7 @@ test("single-cue templates cannot reuse one group for multiple tags", () => {
     `<emphasis group="scale" mode="split" value="1">搜索广告</emphasis>仍是基本盘，` +
     `但AI正在冲击<emphasis group="scale" mode="split" value="2">基本盘</emphasis>。` +
     `</p></article></body></html>`;
-  assert.throws(() => validateMgAnnotationHtml(invalid, source), /<emphasis> 只能出现一次/);
+  assert.throws(() => validateMgAnnotationHtml(invalid, source), /<emphasis>.*只能出现一次/);
 });
 
 test("mg-title is executable markup and native title is rejected in article text", () => {
@@ -72,13 +72,13 @@ test("mg-title is executable markup and native title is rejected in article text
     `<mg-title group="fade" mode="together" value="1">${source}</mg-title>` +
     `</p></article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
-  assert.equal(locateMgInstances(valid, buildTimeline(source), source).get("title-01")?.tag, "title");
+  assert.equal(locateMgInstances(valid, buildTimeline(source), source).get("mg-title::fade::one")?.tag, "mg-title");
 
   const native = valid.replaceAll("mg-title", "title");
   assert.throws(() => validateMgAnnotationHtml(native, source));
 });
 
-test("all Shotcraft structural tags map to their internal template names", () => {
+test("all Shotcraft structural tags remain executable through provider-backed HTML tags", () => {
   const source = "界面展示指标转场节拍效果运镜。";
   const annotated = `<!DOCTYPE html><html><body><article><p>` +
     `<mg-showcase group="card-stack" mode="together" value="1">界面</mg-showcase>` +
@@ -89,19 +89,19 @@ test("all Shotcraft structural tags map to their internal template names", () =>
     `<mg-camera group="slow-push-in" mode="together" value="1">效果运镜</mg-camera>` +
     `。</p></article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 6, tagCount: 6});
-  const templates = [...locateMgInstances(annotated, buildTimeline(source), source).values()]
+  const tags = [...locateMgInstances(annotated, buildTimeline(source), source).values()]
     .map((instance) => instance.tag);
-  assert.deepEqual(templates, ["showcase", "metric", "transition", "rhythm", "effect", "camera"]);
+  assert.deepEqual(tags, ["mg-showcase", "mg-metric", "mg-transition", "mg-rhythm", "mg-effect", "mg-camera"]);
 });
 
-test("annotation viewer styles expose concise Chinese labels and attributes", () => {
+test("annotation viewer styles expose provider tags and protocol attributes", () => {
   const decorated = decorateMgAnnotationHtml(html);
   const style = decorated.match(/<style id="story-claw-mg-annotation-style">[\s\S]*?<\/style>/)?.[0] ?? "";
   assert.match(decorated, /id="story-claw-mg-annotation-style"/);
-  assert.match(style, /时间进度,group=/);
-  assert.match(style, /时间进度,group=.*mode=.*value=/);
-  assert.match(style, /整体拆解,group=.*mode=/);
-  assert.match(style, /article decomposition:not\(\[order\]\)::before \{ content: "整体拆解,group=" attr\(group\)\s+",mode=" attr\(mode\); \}/);
+  assert.match(style, /progress-timeline,group=/);
+  assert.match(style, /progress-timeline,group=.*mode=.*value=/);
+  assert.match(style, /decomposition,group=.*mode=/);
+  assert.match(style, /article decomposition\[group="cards"\]:not\(\[order\]\)::before \{ content: "decomposition,group=" attr\(group\)\s+",mode=" attr\(mode\); \}/);
   assert.doesNotMatch(style, /tag=/);
   assert.doesNotMatch(style, /order=implicit/);
   assert.doesNotMatch(style, /·/);
@@ -114,30 +114,37 @@ test("order identifies repeated instances while value identifies nodes inside ea
   const repeated = `<!DOCTYPE html><html><body><article>` +
     `<p><progress-timeline group="horizontal" order="1" mode="split" value="1">十年前</progress-timeline>走向` +
     `<progress-timeline group="horizontal" order="1" mode="split" value="2">今天</progress-timeline>。</p>` +
-    `<p><progress-timeline group="vertical" order="2" mode="together" value="1">芯片</progress-timeline>走向` +
-    `<progress-timeline group="vertical" order="2" mode="together" value="2">模型</progress-timeline>。</p>` +
+    `<p><progress-timeline group="horizontal" order="2" mode="together" value="1">芯片</progress-timeline>走向` +
+    `<progress-timeline group="horizontal" order="2" mode="together" value="2">模型</progress-timeline>。</p>` +
     `</article></body></html>`;
 
   assert.deepEqual(validateMgAnnotationHtml(repeated, source), {instanceCount: 2, tagCount: 4});
   const instances = locateMgInstances(repeated, buildTimeline(source), source);
-  assert.equal(instances.get("progress-timeline-01")?.group, "horizontal");
-  assert.equal(instances.get("progress-timeline-02")?.group, "vertical");
-  assert.deepEqual(instances.get("progress-timeline-02")?.tags.map((tag) => tag.value), [1, 2]);
+  assert.equal(instances.get("progress-timeline::horizontal::01")?.group, "horizontal");
+  assert.equal(instances.get("progress-timeline::horizontal::02")?.group, "horizontal");
+  assert.deepEqual(instances.get("progress-timeline::horizontal::02")?.tags.map((tag) => tag.value), [1, 2]);
 
-  const sameStyle = repeated.replaceAll('group="vertical" order="2"', 'group="horizontal" order="2"');
+  const differentGroups = repeated
+    .replaceAll('group="horizontal" order="2"', 'group="vertical" order="1"')
+    .replaceAll('group="horizontal" order="1" mode="split"', 'group="horizontal" mode="split"')
+    .replaceAll('group="vertical" order="1" mode="together" value="1">芯片</progress-timeline>走向<progress-timeline group="vertical" order="1" mode="together" value="2">模型', 'group="vertical" mode="together" value="1">芯片</progress-timeline>走向<progress-timeline group="vertical" mode="together" value="2">模型');
+  assert.deepEqual(validateMgAnnotationHtml(differentGroups, source), {instanceCount: 2, tagCount: 4});
+  assert.equal(locateMgInstances(differentGroups, buildTimeline(source), source).get("progress-timeline::vertical::one")?.group, "vertical");
+
+  const sameStyle = repeated;
   assert.deepEqual(validateMgAnnotationHtml(sameStyle, source), {instanceCount: 2, tagCount: 4});
-  assert.equal(locateMgInstances(sameStyle, buildTimeline(source), source).get("progress-timeline-02")?.group, "horizontal");
+  assert.equal(locateMgInstances(sameStyle, buildTimeline(source), source).get("progress-timeline::horizontal::02")?.group, "horizontal");
 
   const decorated = decorateMgAnnotationHtml(repeated);
   const style = decorated.match(/<style id="story-claw-mg-annotation-style">[\s\S]*?<\/style>/)?.[0] ?? "";
-  assert.match(style, /article progress-timeline\[order="1"\]::before \{ content: "时间进度,group=" attr\(group\)\s+",order=" attr\(order\)\s+",mode=" attr\(mode\)\s+",value=" attr\(value\); \}/);
-  assert.match(style, /article progress-timeline\[order="2"\]::before \{ content: "时间进度,group=" attr\(group\)\s+",order=" attr\(order\)\s+",mode=" attr\(mode\)\s+",value=" attr\(value\); \}/);
+  assert.match(style, /article progress-timeline\[group="horizontal"\]\[order="1"\]::before \{ content: "progress-timeline,group=" attr\(group\)\s+",order=" attr\(order\)\s+",mode=" attr\(mode\)\s+",value=" attr\(value\); \}/);
+  assert.match(style, /article progress-timeline\[group="horizontal"\]\[order="2"\]::before \{ content: "progress-timeline,group=" attr\(group\)\s+",order=" attr\(order\)\s+",mode=" attr\(mode\)\s+",value=" attr\(value\); \}/);
   assert.doesNotMatch(style, /tag=/);
   assert.doesNotMatch(style, /order=implicit/);
   assert.doesNotMatch(style, /·/);
 });
 
-test("order is forbidden for one instance and mandatory for every repeated instance", () => {
+test("order is forbidden for one tag/group instance and mandatory for repeated tag/group instances", () => {
   const singletonSource = "十年前走向今天。";
   const redundant = `<!DOCTYPE html><html><body><article><p>` +
     `<progress-timeline group="horizontal" order="1" mode="split" value="1">十年前</progress-timeline>走向` +
@@ -146,17 +153,26 @@ test("order is forbidden for one instance and mandatory for every repeated insta
   assert.throws(() => validateMgAnnotationHtml(redundant, singletonSource), /只有一个实例时不应填写 order/);
 
   const repeatedSource = ["十年前走向今天。", "芯片走向模型。"].join("\n\n");
-  const missing = `<!DOCTYPE html><html><body><article>` +
+  const differentGroups = `<!DOCTYPE html><html><body><article>` +
     `<p><progress-timeline group="horizontal" mode="split" value="1">十年前</progress-timeline>走向` +
     `<progress-timeline group="horizontal" mode="split" value="2">今天</progress-timeline>。</p>` +
-    `<p><progress-timeline group="vertical" order="2" mode="together" value="1">芯片</progress-timeline>走向` +
-    `<progress-timeline group="vertical" order="2" mode="together" value="2">模型</progress-timeline>。</p>` +
+    `<p><progress-timeline group="vertical" mode="together" value="1">芯片</progress-timeline>走向` +
+    `<progress-timeline group="vertical" mode="together" value="2">模型</progress-timeline>。</p>` +
     `</article></body></html>`;
-  assert.throws(() => validateMgAnnotationHtml(missing, repeatedSource), /所有同类标签都必须填写 order/);
+  // Different groups are different instances by themselves; order is not
+  // shared across groups and is therefore omitted for both singleton groups.
+  assert.deepEqual(validateMgAnnotationHtml(differentGroups, repeatedSource), {instanceCount: 2, tagCount: 4});
 
-  const reversed = missing
-    .replaceAll('group="horizontal" mode="split"', 'group="horizontal" order="2" mode="split"')
-    .replaceAll('group="vertical" order="2"', 'group="vertical" order="1"');
+  const redundantDifferentGroupOrder = differentGroups.replaceAll('group="vertical" mode=', 'group="vertical" order="2" mode=');
+  assert.throws(() => validateMgAnnotationHtml(redundantDifferentGroupOrder, repeatedSource), /vertical.*只有一个实例时不应填写 order/);
+
+  const sameGroup = differentGroups.replaceAll('group="vertical" mode=', 'group="horizontal" order="2" mode=')
+    .replaceAll('group="horizontal" mode="split"', 'group="horizontal" order="1" mode="split"');
+  assert.deepEqual(validateMgAnnotationHtml(sameGroup, repeatedSource), {instanceCount: 2, tagCount: 4});
+
+  const reversed = sameGroup
+    .replaceAll('group="horizontal" order="1" mode="split"', 'group="horizontal" order="2" mode="split"')
+    .replaceAll('group="horizontal" order="2" mode="together"', 'group="horizontal" order="1" mode="together"');
   assert.throws(() => validateMgAnnotationHtml(reversed, repeatedSource), /order 必须按首次出现顺序从 1 连续编号/);
 });
 
@@ -208,11 +224,10 @@ test("Function Calling receives only schemas used by the HTML tags", () => {
     new Set([
       "create_timed_table",
       "create_emphasis_text_cue",
-      "create_multi_series_bar_chart",
-      "create_multi_series_line_chart",
+      "create_multi_series_chart",
     ]),
   );
-  assert.equal(definitions.length, 4);
+  assert.equal(definitions.length, 3);
 });
 
 test("image stack and grid expose the same media contract", () => {
@@ -233,10 +248,10 @@ test("image stack and grid expose the same media contract", () => {
   };
   const stack = resolveMgFunctionCall({id: "image-stack", name: "create_image_stack", arguments: args});
   const grid = resolveMgFunctionCall({id: "image-grid", name: "create_image_grid", arguments: {...args, group: "grid"}});
-  assert.equal(stack.template, "image-stack");
-  assert.equal(grid.template, "image-grid");
-  assert.deepEqual((stack.spec as {images: Array<{at: number}>}).images.map((item) => item.at), [0, 2]);
-  assert.deepEqual(Object.keys(stack.spec as object), Object.keys(grid.spec as object));
+  assert.equal(stack.htmlTag, "image-stack");
+  assert.equal(grid.htmlTag, "image-grid");
+  assert.deepEqual((stack.render.spec as {images: Array<{at: number}>}).images.map((item) => item.at), [0, 2]);
+  assert.deepEqual(Object.keys(stack.render.spec as object), Object.keys(grid.render.spec as object));
 });
 
 test("effect and camera tags are executable and camera scenes retain the raw base", () => {
@@ -262,8 +277,8 @@ test("effect and camera tags are executable and camera scenes retain the raw bas
     instances,
     {...video, duration: 20, durationFrames: 500},
   );
-  assert.ok(scenes.some((scene) => scene.template === "camera" && scene.renderMode === "overlay" && scene.baseFile));
-  assert.ok(scenes.some((scene) => scene.template === "raw-overlay" || scene.overlays.some((overlay) => overlay.template === "effect")));
+  assert.ok(scenes.some((scene) => scene.render.kind === "camera" && scene.layerRole === "scene"));
+  assert.ok(scenes.some((scene) => scene.render.kind === "effect" && scene.layerRole === "overlay"));
 });
 
 const makeTag = (
@@ -274,7 +289,7 @@ const makeTag = (
 ): LocatedMgTag => ({
   tag: "progress-timeline",
   group: "horizontal",
-  instanceKey: "progress-timeline-01",
+  instanceKey: "progress-timeline::horizontal::one",
   mode,
   value,
   text: value === 1 ? "1998年创办" : "2023年推出Gemini",
@@ -286,7 +301,7 @@ const makeTag = (
 });
 
 const makeInstance = (mode: MgMode): MgInstanceInfo => ({
-  instanceKey: "progress-timeline-01",
+  instanceKey: "progress-timeline::horizontal::one",
   tag: "progress-timeline",
   group: "horizontal",
   mode,
@@ -338,11 +353,11 @@ test("together renders one continuous window across all group nodes", () => {
 test("an MG cue near the end never exceeds the raw master frame range", () => {
   const endTag = makeTag("together", 1, 19.99, 20);
   const instance: MgInstanceInfo = {
-    instanceKey: "emphasis-01",
+    instanceKey: "emphasis::scale::one",
     tag: "emphasis",
     group: "scale",
     mode: "together",
-    tags: [{...endTag, tag: "emphasis", group: "scale", instanceKey: "emphasis-01"}],
+    tags: [{...endTag, tag: "emphasis", group: "scale", instanceKey: "emphasis::scale::one"}],
     paragraphEnd: 20,
     depth: 0,
   };

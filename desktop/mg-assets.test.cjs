@@ -3,44 +3,66 @@ const test = require("node:test");
 const {listMgAnnotationInstances, replaceMgAnnotationStyle} = require("./mg-assets.cjs");
 
 const catalog = [
-  {template: "progress-timeline", style: "horizontal", name: "横向", structureName: "进度条"},
-  {template: "progress-timeline", style: "vertical", name: "纵向", structureName: "进度条"},
-  {template: "timed-table", style: "grid", name: "动态数据表格", structureName: "动态表格"},
-  {template: "title", style: "fade", name: "淡入标题", structureName: "标题动画"},
-  {template: "effect", style: "scanline-annotate-focus", name: "扫描聚焦", structureName: "视觉效果"},
-  {template: "camera", style: "slow-push-in", name: "缓慢推近", structureName: "运镜"},
-  {template: "showcase", style: "card-stack", name: "卡片堆叠", structureName: "界面陈列"},
-  {template: "metric", style: "counter-confetti", name: "计数庆祝", structureName: "指标动画"},
-  {template: "transition", style: "whip-pan", name: "甩镜转场", structureName: "转场"},
-  {template: "rhythm", style: "beat-pump", name: "节拍脉冲", structureName: "节拍强调"},
+  {htmlTag: "progress-timeline", style: "horizontal", name: "横向", structureName: "进度条"},
+  {htmlTag: "progress-timeline", style: "vertical", name: "纵向", structureName: "进度条"},
+  {htmlTag: "timed-table", style: "grid", name: "动态数据表格", structureName: "动态表格"},
+  {htmlTag: "mg-title", style: "fade", name: "淡入标题", structureName: "标题动画"},
+  {htmlTag: "mg-effect", style: "scanline-annotate-focus", name: "扫描聚焦", structureName: "视觉效果"},
+  {htmlTag: "mg-camera", style: "slow-push-in", name: "缓慢推近", structureName: "运镜"},
+  {htmlTag: "mg-showcase", style: "card-stack", name: "卡片堆叠", structureName: "界面陈列"},
+  {htmlTag: "mg-metric", style: "counter-confetti", name: "计数庆祝", structureName: "指标动画"},
+  {htmlTag: "mg-transition", style: "whip-pan", name: "甩镜转场", structureName: "转场"},
+  {htmlTag: "mg-rhythm", style: "beat-pump", name: "节拍脉冲", structureName: "节拍强调"},
 ];
 
 const html = `<!DOCTYPE html><html><body><article><p>
 <progress-timeline group="horizontal" order="1" mode="split" value="1">十年前</progress-timeline>
-<progress-timeline group="horizontal" order="1" mode="split" value="2">今天</progress-timeline>
-<progress-timeline group="vertical" order="2" mode="together" value="1">芯片</progress-timeline>
+<progress-timeline group="horizontal" order="2" mode="split" value="1">今天</progress-timeline>
+<progress-timeline group="horizontal" order="3" mode="split" value="1">明天</progress-timeline>
+<progress-timeline group="vertical" order="1" mode="together" value="1">芯片</progress-timeline>
+<progress-timeline group="vertical" order="2" mode="together" value="1">模型</progress-timeline>
 </p></article></body></html>`;
 
-test("MG asset instances use tag plus order rather than style group", () => {
+test("MG asset instances use tag plus group plus order", () => {
   const instances = listMgAnnotationInstances(html, 1, true, catalog);
-  assert.deepEqual(instances.map((item) => item.instanceKey), ["progress-timeline-01", "progress-timeline-02"]);
-  assert.deepEqual(instances[0].texts, ["十年前", "今天"]);
+  assert.deepEqual(instances.map((item) => item.instanceKey), [
+    "progress-timeline::horizontal::01",
+    "progress-timeline::horizontal::02",
+    "progress-timeline::horizontal::03",
+    "progress-timeline::vertical::01",
+    "progress-timeline::vertical::02",
+  ]);
+  assert.deepEqual(instances[0].texts, ["十年前"]);
   assert.equal(instances[0].style, "horizontal");
-  assert.equal(instances[1].style, "vertical");
+  assert.equal(instances[3].style, "vertical");
 });
 
-test("style replacement changes every node selected by tag and order only", () => {
-  const result = replaceMgAnnotationStyle(html, {tag: "progress-timeline", order: 2, style: "horizontal"}, catalog);
+test("style replacement selects current group and order", () => {
+  const result = replaceMgAnnotationStyle(html, {tag: "progress-timeline", currentStyle: "horizontal", order: 3, style: "vertical"}, catalog);
   assert.equal(result.changedTagCount, 1);
   const instances = listMgAnnotationInstances(result.html, 1, true, catalog);
-  assert.equal(instances[0].style, "horizontal");
-  assert.equal(instances[1].style, "horizontal");
-  assert.match(result.html, /group="horizontal" order="2"/);
+  assert.deepEqual(instances.filter((item) => item.style === "horizontal").map((item) => item.order), [1, 2]);
+  assert.deepEqual(instances.filter((item) => item.style === "vertical").map((item) => item.order), [1, 2, 3]);
+  assert.match(result.html, /group="vertical" order="3"/);
+});
+
+test("style replacement renumbers orders within both affected tag/group buckets", () => {
+  const source = `<!DOCTYPE html><html><body><article><p>` +
+    `<progress-timeline group="horizontal" order="1" mode="together" value="1">甲</progress-timeline>` +
+    `<progress-timeline group="horizontal" order="2" mode="together" value="1">乙</progress-timeline>` +
+    `<progress-timeline group="vertical" mode="together" value="1">丙</progress-timeline>` +
+    `</p></article></body></html>`;
+  const result = replaceMgAnnotationStyle(source, {
+    tag: "progress-timeline", currentStyle: "horizontal", order: 2, style: "vertical",
+  }, catalog);
+  assert.equal(result.changedTagCount, 1);
+  const instances = listMgAnnotationInstances(result.html, 1, true, catalog);
+  assert.deepEqual(instances.map((item) => [item.style, item.order]), [["horizontal", undefined], ["vertical", 1], ["vertical", 2]]);
 });
 
 test("style replacement rejects a style from another structural type", () => {
   assert.throws(
-    () => replaceMgAnnotationStyle(html, {tag: "progress-timeline", order: 1, style: "radial"}, catalog),
+    () => replaceMgAnnotationStyle(html, {tag: "progress-timeline", currentStyle: "horizontal", order: 1, style: "radial"}, catalog),
     /未注册/,
   );
 });
@@ -60,7 +82,7 @@ test("a singleton is replaced by tag without adding order", () => {
 
 test("repeated templates reject replacement without order instead of choosing the first instance", () => {
   assert.throws(
-    () => replaceMgAnnotationStyle(html, {tag: "progress-timeline", style: "vertical"}, catalog),
+    () => replaceMgAnnotationStyle(html, {tag: "progress-timeline", currentStyle: "horizontal", style: "vertical"}, catalog),
     /存在多个实例，替换时必须提供 order/,
   );
 });
@@ -74,7 +96,7 @@ test("new protocol exposes Chinese structure and style names and keeps repeated 
     '<timed-table group="grid" order="2" mode="split" value="1">21 个模型</timed-table>' +
     '</p></article></body></html>';
   const instances = listMgAnnotationInstances(fresh, 1, true, catalog);
-  assert.deepEqual(instances.map((item) => item.instanceKey), ["title-01", "timed-table-01", "timed-table-02"]);
+  assert.deepEqual(instances.map((item) => item.instanceKey), ["mg-title::fade::one", "timed-table::grid::01", "timed-table::grid::02"]);
   assert.equal(instances[0].structureName, "标题动画");
   assert.equal(instances[0].styleName, "淡入标题");
   assert.equal(instances[1].structureName, "动态表格");
@@ -116,7 +138,7 @@ test("Shotcraft tags are parsed and style replacement keeps their template mappi
     '<mg-rhythm group="beat-pump" mode="together" value="1">重音</mg-rhythm>' +
     '</p></article></body></html>';
   const instances = listMgAnnotationInstances(shotcraft, 1, true, catalog);
-  assert.deepEqual(instances.map((item) => item.template), ["effect", "camera", "showcase", "metric", "transition", "rhythm"]);
-  const replaced = replaceMgAnnotationStyle(shotcraft, {tag: "mg-effect", style: "scanline-annotate-focus", order: null}, catalog);
+  assert.deepEqual(instances.map((item) => item.tag), ["mg-effect", "mg-camera", "mg-showcase", "mg-metric", "mg-transition", "mg-rhythm"]);
+  const replaced = replaceMgAnnotationStyle(shotcraft, {tag: "mg-effect", currentStyle: "scanline-annotate-focus", style: "scanline-annotate-focus", order: null}, catalog);
   assert.equal(replaced.changedTagCount, 1);
 });
