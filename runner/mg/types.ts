@@ -1,4 +1,10 @@
-import type {MgLayerRole, MgRuntimeEpisodeInput, MgRuntimeLayer, MgRuntimeLayerPlacement} from "@story-claw/mg-templates/provider";
+import type {
+  CompositionNode,
+  MgCompositionBundle,
+  MgLayerRole,
+  MgRuntimeLayer,
+  MgRuntimeLayerPlacement,
+} from "@story-claw/mg-templates/provider";
 
 export type MgMode = "together" | "split";
 
@@ -62,17 +68,50 @@ export type MgScenePlan = MgRuntimeLayerPlacement & {
   specFile?: string;
 };
 
-export type MgRenderBundle = MgRuntimeEpisodeInput & {
-  version: 3;
+export type MgRenderBundle = MgCompositionBundle & {
+  version: 4;
+};
+
+export type VisualFunctionStatus =
+  | "queued"
+  | "preparing_reference"
+  | "rendering_template"
+  | "generating_video"
+  | "normalizing"
+  | "completed"
+  | "failed";
+
+export type VisualFunctionRecord = {
+  id: string;
+  taskId: string;
+  /** Stable digest of the call arguments and resolved timeline window. */
+  taskSignature: string;
+  scopeKey: string;
+  name: string;
+  instanceKey: string;
+  htmlTag: string;
+  group: string;
+  order?: number;
+  arguments: Record<string, unknown>;
+  status: VisualFunctionStatus;
+  retries: number;
+  start: number;
+  end: number;
+  duration: number;
+  startFrame: number;
+  endFrame: number;
+  layerRole: MgLayerRole;
+  activeWindows?: Array<{startFrame: number; endFrame: number}>;
+  videoPath?: string;
+  error?: string;
 };
 
 export type MgPlan = {
-  version: 3;
+  version: 4;
   source: MgVideoInfo & {
-    rawVideo: string;
-    sha256: string;
     html: string;
     timeline: string;
+    audio: string;
   };
   instances: Array<{
     instanceKey: string;
@@ -83,18 +122,8 @@ export type MgPlan = {
     tagCount: number;
     starts: number[];
   }>;
-  functionCalls: Array<{
-    id: string;
-    name: string;
-    instanceKey: string;
-    htmlTag: string;
-    group: string;
-    order?: number;
-    at: number;
-    arguments: Record<string, unknown>;
-    specFile: string;
-  }>;
-  scenes: Array<Omit<MgScenePlan, "render"> & {
-    render: Omit<MgRuntimeLayer, "spec"> & {specFile: string};
-  }>;
+  functionCalls: VisualFunctionRecord[];
+  nodes: CompositionNode[];
 };
+
+export type MgCompositionNode = CompositionNode;

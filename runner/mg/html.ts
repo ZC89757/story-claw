@@ -19,6 +19,9 @@ export const MG_TAG_NAMES = mgProvider.templates.map((template) => template.html
 const MG_TAGS = new Set<string>(MG_TAG_NAMES);
 const GROUP_PATTERN = /^[A-Za-z0-9_-]+$/;
 const STYLE_ID = "story-claw-mg-annotation-style";
+const SC_VIDEO_TAG = "sc-video";
+
+const isScVideo = (tag: string | undefined): boolean => tag === SC_VIDEO_TAG;
 
 const annotationContent = (
   tag: string,
@@ -27,8 +30,8 @@ const annotationContent = (
 ): string => [
   `"${tag},group=" attr(group)`,
   ordered ? `",order=" attr(order)` : "",
-  `",mode=" attr(mode)`,
-  withValue ? `",value=" attr(value)` : "",
+  isScVideo(tag) ? "" : `",mode=" attr(mode)`,
+  !isScVideo(tag) && withValue ? `",value=" attr(value)` : "",
 ].filter(Boolean).join(" ");
 
 const collectMgInstanceCounts = (html: string): Map<string, {tag: string; group: string; order?: number; count: number}> => {
@@ -239,7 +242,8 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       const endOffset = relativeOffset;
       if (!isMg) return;
 
-      const allowedAttrs = new Set(["group", "order", "mode", "value"]);
+      const scVideo = isScVideo(htmlTag);
+      const allowedAttrs = new Set(scVideo ? ["group", "order"] : ["group", "order", "mode", "value"]);
       const unknownAttrs = Object.keys(attrs).filter((name) => !allowedAttrs.has(name));
       if (unknownAttrs.length) throw new Error(`<${htmlTag}> 包含不支持的属性: ${unknownAttrs.join(", ")}`);
       if (!group || !GROUP_PATTERN.test(group) || group.length > 80) throw new Error(`<${htmlTag}> 缺少合法 group`);
@@ -250,20 +254,22 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       if (attrs.order !== undefined && (!Number.isInteger(order) || order! < 1 || order! > 999)) {
         throw new Error(`<${htmlTag}> 的 order 必须是 1-999 的正整数`);
       }
-      if (attrs.mode !== "together" && attrs.mode !== "split") {
+      if (!scVideo && attrs.mode !== "together" && attrs.mode !== "split") {
         throw new Error(`<${htmlTag}> 的 mode 必须是 together 或 split`);
       }
-      const value = Number(attrs.value);
-      if (!Number.isInteger(value) || value < 1) throw new Error(`<${htmlTag}> 的 value 必须是正整数`);
+      if (scVideo && group !== "normal") throw new Error(`<${htmlTag}> 目前只允许 group=normal`);
+      const value = scVideo ? 1 : Number(attrs.value);
+      if (!scVideo && (!Number.isInteger(value) || value < 1)) throw new Error(`<${htmlTag}> 的 value 必须是正整数`);
       if (endOffset <= startOffset || !textContent(node).trim()) throw new Error(`<${htmlTag}> 不能包裹空文本`);
       if (ancestors.includes(instanceKey!)) throw new Error(`动画实例 ${instanceKey} 不能嵌套自身`);
 
+      const mode: MgMode = scVideo ? "together" : attrs.mode as MgMode;
       tags.push({
         tag: htmlTag!,
         group,
         ...(order === undefined ? {} : {order}),
         instanceKey: instanceKey!,
-        mode: attrs.mode,
+        mode,
         value,
         text: textContent(node),
         startOffset,
@@ -313,11 +319,11 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
     if (instanceTags.some((tag) => tag.group !== first.group)) throw new Error(`${instanceKey} 的 group 样式不一致`);
     if (instanceTags.some((tag) => tag.mode !== first.mode)) throw new Error(`${instanceKey} 的 mode 不一致`);
     if (instanceTags.some((tag) => tag.parentInstance !== first.parentInstance)) {
-      throw new Error(`${instanceKey} 出现在不同嵌套层级`);
+      throw new Error(`${instanceKey} 出现在不同父实例；这些是独立实例，必须用连续 order 区分`);
     }
     mgProvider.validateAnnotatedInstance({htmlTag: first.tag, tagCount: instanceTags.length});
     const values = [...instanceTags].sort((a, b) => a.documentOrder - b.documentOrder).map((tag) => tag.value);
-    if (values.some((value, index) => value !== index + 1)) {
+    if (!isScVideo(first.tag) && values.some((value, index) => value !== index + 1)) {
       throw new Error(`${instanceKey} 的 value 必须按正文顺序从 1 连续编号`);
     }
   }

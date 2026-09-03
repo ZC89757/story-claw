@@ -8,7 +8,7 @@ import {prepareMgAnnotationHtml} from "./html.js";
 
 const mgProvider = getMgTemplateProvider();
 
-const MG_ANNOTATION_SYSTEM = `你负责为议论文原文添加 MG 动画语义标签。
+const MG_ANNOTATION_SYSTEM = `你负责为议论文原文添加视觉动画语义标签。
 
 输出要求：
 - 输出一份从 <!DOCTYPE html> 到 </html> 的完整 HTML，只包含一个 <article>
@@ -23,13 +23,15 @@ const MG_ANNOTATION_SYSTEM = `你负责为议论文原文添加 MG 动画语义�
 ${mgProvider.getAnnotationInstructions()}
 
 上游画面预设约束：
-- 你会同时收到“议论文画面预设”。其中每行的“画面”描述原画方向，“MG”描述该段原文应如何通过动态图形被理解
-- 把该预设当作本次 HTML 标注的上游视觉契约：MG 为“无”的 group 不强行添加标签；有具体 MG 意图的 group 只选与该意图相符的模板、包裹范围、group 和 mode
-- 保持预设的原文顺序和 group 边界，不得把不相邻 group 合并成同一个动画实例；MG 意图只用于决策，绝不能写入 HTML 正文
+- 你会同时收到“议论文画面预设”。每行包含画面内容、动画形式、动画节奏和视觉细节
+- 把该预设当作本次 HTML 标注的上游视觉契约：需要 AI 生成普通视频时使用 <sc-video group="normal">；结构化 MG 使用对应模板标签
+- <sc-video> 与其他标签平级，只包裹实际需要生成视频的原文，不要求覆盖全文
+- <sc-video> 只允许 group="normal" 和可选 order，不使用 mode 或 value
+- 保持预设的原文顺序和 group 边界，不得把不相邻 group 合并成同一个动画实例；视觉意图只用于决策，绝不能写入 HTML 正文
 - 预设只描述视觉意图；at 仍属于后续 Function Calling 阶段，禁止在本 HTML 中输出 at
 
 标注规则：
-- 标签只包裹实际对应动画节点或元素的文字
+- 标签只包裹实际对应动画节点、元素或视频片段的文字
 - 可以嵌套，但嵌套标签必须属于不同动画实例
 - <mg-title> 和 <emphasis> 每个动画实例只能出现一次
 - 不要让无关的全屏动画重叠；只标注动态图形明显优于普通画面的内容`;

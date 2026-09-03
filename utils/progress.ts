@@ -72,13 +72,21 @@ export async function markStage(
   episode: number,
   stage: StageName,
   status: StageStatus,
-  extra?: { chapter?: number; sceneNames?: string[]; mgAnnotationPresetHash?: string },
+  extra?: {
+    chapter?: number;
+    sceneNames?: string[];
+    mgAnnotationPresetHash?: string;
+    invalidateStages?: StageName[];
+  },
 ): Promise<void> {
   const prog = await readProgress(novelName);
   prog.episodes ??= {};
   const key = String(episode);
   const rec: EpisodeRecord = prog.episodes[key] ?? { stages: {} };
   rec.stages = { ...rec.stages, [stage]: status };
+  for (const invalidated of extra?.invalidateStages ?? []) {
+    if (invalidated !== stage) delete rec.stages[invalidated];
+  }
   if (extra?.chapter !== undefined) rec.chapter = extra.chapter;
   if (extra?.sceneNames !== undefined) rec.sceneNames = extra.sceneNames;
   if (extra?.mgAnnotationPresetHash !== undefined) {

@@ -685,6 +685,11 @@ function videoSize(aspectRatio: string): [number, number] {
   return aspectRatio === "16:9" ? [1280, 720] : [720, 1280];
 }
 
+export function getVisualTagVideoSettings(aspectRatio: string): {width: number; height: number; fps: number} {
+  const [width, height] = videoSize(aspectRatio);
+  return {width, height, fps: getVideoFps()};
+}
+
 async function tryGenerateVideoComfyUI(
   imgBase64: string,
   prompt: string,
@@ -828,6 +833,60 @@ export interface LocalCharTiming {
   char: string;
   start: number;
   end: number;
+}
+
+/** Generate one visual-tag video with the shared GPU concurrency and retry policy. */
+export async function generateVisualTagVideo(
+  imagePath: string,
+  prompt: string,
+  outputPath: string,
+  aspectRatio: string,
+  duration: number,
+): Promise<void> {
+  await generateVideo(_globalVidSem, imagePath, prompt, outputPath, aspectRatio, duration);
+}
+
+/** Generate one visual-tag reference image with the shared image concurrency policy. */
+export async function generateVisualTagImage(
+  prompt: string,
+  referenceImages: string[],
+  outputPath: string,
+  aspectRatio: string,
+): Promise<void> {
+  await generateImage(_globalImgSem, prompt, referenceImages, outputPath, aspectRatio);
+}
+
+/** Normalize a generated tag clip to an exact timeline window, freezing its last frame when short. */
+export async function normalizeVisualTagVideo(
+  inputPath: string,
+  outputPath: string,
+  width: number,
+  height: number,
+  fps: number,
+  durationFrames: number,
+): Promise<void> {
+  if (!Number.isInteger(durationFrames) || durationFrames < 1) {
+    throw new Error(`视觉片段目标帧数无效: ${durationFrames}`);
+  }
+  const targetDuration = durationFrames / fps;
+  await fs.mkdir(path.dirname(outputPath), {recursive: true});
+  const filter = [
+    `scale=${width}:${height}:force_original_aspect_ratio=increase`,
+    `crop=${width}:${height}:(iw-ow)/2:(ih-oh)/2`,
+    "setsar=1",
+    `tpad=stop_mode=clone:stop_duration=${targetDuration.toFixed(6)}`,
+    `trim=duration=${targetDuration.toFixed(6)}`,
+    "setpts=PTS-STARTPTS",
+  ].join(",");
+  await execFileAsync("ffmpeg", [
+    "-y", "-i", inputPath,
+    "-vf", filter,
+    "-r", String(fps),
+    "-frames:v", String(durationFrames),
+    "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+    "-pix_fmt", "yuv420p", "-an",
+    outputPath,
+  ]);
 }
 
 export interface ArticleTimelineEntry {
@@ -1129,6 +1188,134 @@ export async function ttsPhase4Concat(audioFiles: string[], outputPath: string):
   ]);
   await fs.unlink(listFile).catch(() => {});
   console.log(`[TTS Phase 4] 完成 → ${path.basename(outputPath)}`);
+}
+
+export interface EssayAudioTimelineResult {
+  alignedAudioPath: string;
+  articleTimelinePath: string;
+  globalSubtitlesJsonPath?: string;
+  globalSubtitlesAssPath?: string;
+  width: number;
+  height: number;
+  fps: number;
+  duration: number;
+  durationFrames: number;
+}
+
+/**
+ * 议论文专用的全量 TTS 与绝对时间轴准备阶段。
+ *
+ * 该阶段只读取清稿，不依赖 scripts/storyboards、panel 视频或原画母版。
+ * 生成的 article_timeline.json 是后续视觉标签 Function Calling 的唯一全文时钟。
+ */
+export async function prepareEssayAudioTimeline(
+  sel: NovelSelection,
+): Promise<EssayAudioTimelineResult> {
+  const outputDir = novelPaths.essayAudioDir(sel.novelName, sel.episode);
+  const articlePath = novelPaths.cleanedText(sel.novelName, sel.episode);
+  const alignedAudioPath = novelPaths.episodeAlignedAudio(sel.novelName, sel.episode);
+  const articleTimelinePath = novelPaths.articleTimeline(sel.novelName, sel.episode);
+  const globalSubtitlesJsonPath = SUBTITLES_ENABLED
+    ? novelPaths.globalSubtitlesJson(sel.novelName, sel.episode)
+    : undefined;
+  const globalSubtitlesAssPath = SUBTITLES_ENABLED
+    ? novelPaths.globalSubtitlesAss(sel.novelName, sel.episode)
+    : undefined;
+  const article = await fs.readFile(articlePath, "utf-8");
+  const groups = article
+    .split(/\r?\n/)
+    .filter((text) => text.length > 0)
+    .map((text, globalOrder) => ({text, global_order: globalOrder}));
+  if (!groups.length) throw new Error(`[议论文 TTS] 清稿为空: ${articlePath}`);
+
+  await fs.mkdir(outputDir, {recursive: true});
+  const ttsResults = await runGroupTtsPipeline(
+    groups,
+    {},
+    outputDir,
+    "essay",
+    sel.aspectRatio,
+    true,
+  );
+  const audioFiles = groups.map((_, index) =>
+    path.join(outputDir, `g${String(index).padStart(2, "0")}_tts.mp3`),
+  );
+  const missingAudio = audioFiles.filter((filePath) => !fsSync.existsSync(filePath));
+  if (missingAudio.length) {
+    throw new Error(`[议论文 TTS] 音频片段不完整: ${missingAudio.map((item) => path.basename(item)).join(", ")}`);
+  }
+
+  const nextAudioPath = `${alignedAudioPath}.next.wav`;
+  await fs.rm(nextAudioPath, {force: true});
+  const audioInputs = audioFiles.flatMap((filePath) => ["-i", filePath]);
+  const concatExpression = audioFiles.map((_, index) => `[${index}:a]`).join("")
+    + `concat=n=${audioFiles.length}:v=0:a=1[a]`;
+  await execFileAsync("ffmpeg", [
+    "-y", ...audioInputs,
+    "-filter_complex", concatExpression,
+    "-map", "[a]",
+    "-ac", "2",
+    "-ar", "44100",
+    "-c:a", "pcm_s16le",
+    nextAudioPath,
+  ]);
+  await fs.rm(alignedAudioPath, {force: true});
+  await fs.rename(nextAudioPath, alignedAudioPath);
+
+  const durations = ttsResults.map((result) => result.duration);
+  if (!ttsResults.every((result) => Array.isArray(result.charTimings))) {
+    throw new Error("[议论文 TTS] 部分正文没有生成字级时间");
+  }
+  const articleTimeline = buildGlobalArticleTimeline(
+    ttsResults.map((result, globalOrder) => ({
+      globalOrder,
+      charTimings: result.charTimings!,
+    })),
+    durations,
+    1,
+  );
+  await fs.writeFile(articleTimelinePath, `${JSON.stringify(articleTimeline, null, 2)}\n`, "utf-8");
+
+  if (globalSubtitlesJsonPath && globalSubtitlesAssPath) {
+    if (!ttsResults.every((result) => Array.isArray(result.subtitleEvents))) {
+      throw new Error("[议论文 TTS] 部分正文没有生成字幕时间");
+    }
+    const subtitleEvents = buildGlobalSubtitleTimeline(
+      ttsResults.map((result, globalOrder) => ({
+        globalOrder,
+        subtitleEvents: result.subtitleEvents!,
+      })),
+      durations,
+      1,
+    );
+    await Promise.all([
+      fs.writeFile(globalSubtitlesJsonPath, `${JSON.stringify(subtitleEvents, null, 2)}\n`, "utf-8"),
+      fs.writeFile(globalSubtitlesAssPath, buildAss(subtitleEvents, sel.aspectRatio), "utf-8"),
+    ]);
+  }
+
+  const duration = await getAudioDurationReal(alignedAudioPath);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`[议论文 TTS] 无效的整集音频时长: ${duration}`);
+  }
+  const [width, height] = videoSize(sel.aspectRatio);
+  const fps = getVideoFps();
+  const durationFrames = Math.max(1, Math.ceil(duration * fps));
+  console.log(
+    `[议论文 TTS] ${articleTimeline.length} 个字符 / ${duration.toFixed(3)}s -> `
+    + `${path.basename(alignedAudioPath)} / ${path.basename(articleTimelinePath)}`,
+  );
+  return {
+    alignedAudioPath,
+    articleTimelinePath,
+    globalSubtitlesJsonPath,
+    globalSubtitlesAssPath,
+    width,
+    height,
+    fps,
+    duration,
+    durationFrames,
+  };
 }
 
 // ── 阶段一:音色分配（archive 调用，按角色一次性分配，写入 voice_map）────────────
@@ -2297,7 +2484,7 @@ export async function buildEpisodeMaster(
   };
 }
 
-/** 将选定的无声画面母版烧上字幕并合入已经对齐的旁白音轨。 */
+/** 将视觉母版烧上字幕，并把已经对齐的旁白与模板音效混合。 */
 export async function finalizeEpisodeMedia(
   videoPath: string,
   alignedAudioPath: string,
@@ -2320,7 +2507,7 @@ export async function finalizeEpisodeMedia(
   args.push("-map", "0:v:0");
   if (hasMgSfx) {
     // MG templates carry a quiet, fixed SFX track. Mix it under the aligned
-    // narration instead of replacing it; the raw master remains untouched.
+    // narration instead of replacing it.
     args.push(
       "-filter_complex", "[0:a]aresample=44100[mg];[1:a]aresample=44100[voice];[voice][mg]amix=inputs=2:duration=first:dropout_transition=0[aout]",
       "-map", "[aout]",

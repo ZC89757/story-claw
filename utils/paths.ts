@@ -102,6 +102,10 @@ export const novelPaths = {
   articleTimeline: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "article_timeline.json"),
 
+  /** 议论文全文 TTS 中间目录：workspace/{名}/ep{XX}/essay_audio/ */
+  essayAudioDir: (novelName: string, episodeNum: number) =>
+    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "essay_audio"),
+
   /** 整集全局字幕事件：workspace/{名}/ep{XX}/global_subtitles.json */
   globalSubtitlesJson: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "global_subtitles.json"),
@@ -161,9 +165,6 @@ export const novelPaths = {
   /** Remotion 渲染所需的完整场景数据 */
   mgRenderBundle: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "render_bundle.json"),
-
-  mgSpecsDir: (novelName: string, episodeNum: number) =>
-    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "specs"),
 
   mgClipsDir: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "clips"),

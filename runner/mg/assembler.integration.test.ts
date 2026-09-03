@@ -52,17 +52,16 @@ test("MG assembly changes the output without modifying the raw master", async ()
     const source = await probeMgVideo(rawVideo);
     const rawHash = await sha256File(rawVideo);
     const plan: MgPlan = {
-      version: 3,
+      version: 4,
       source: {
-        rawVideo,
-        sha256: rawHash,
         ...source,
         html: "mg_annotation.html",
         timeline: "article_timeline.json",
+        audio: "ep01_aligned_audio.wav",
       },
       instances: [],
       functionCalls: [],
-      scenes: [],
+      nodes: [],
     };
     await fs.mkdir(novelPaths.mgDir(novelName, episode), {recursive: true});
     await fs.writeFile(

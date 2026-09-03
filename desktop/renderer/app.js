@@ -758,17 +758,13 @@
   }
 
   function reviewPhaseCopy(articleType) {
-    return articleType === "essay"
-      ? {
-        label: "等待审核画面与 MG 标注",
-        detail: "画面预设和 MG 标注已生成，请确认或提出修改意见",
-        activity: "等待你审核画面与 MG 标注",
-      }
-      : {
-        label: "等待审核画面预设",
-        detail: "画面预设已生成，请确认或提出修改意见",
-        activity: "等待你审核画面预设",
-      };
+    return {
+      label: "等待审核画面预设",
+      detail: articleType === "essay"
+        ? "画面预设已生成，请确认或提出修改意见；确认后生成视觉标签 HTML"
+        : "画面预设已生成，请确认或提出修改意见",
+      activity: "等待你审核画面预设",
+    };
   }
 
   function normalizeConversation(value) {
@@ -1390,59 +1386,10 @@
     head.append(title, meta);
     article.append(head);
 
-    if (!usage.editable) {
-      const locked = document.createElement("span");
-      locked.className = "claw-mg-lock-note";
-      locked.textContent = "联合审核已结束，样式已锁定";
-      article.appendChild(locked);
-      return article;
-    }
-
-    const control = document.createElement("div");
-    control.className = "claw-mg-style-control";
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", `${usage.structureName}样式`);
-    (usage.compatibleStyles || []).forEach((styleItem) => {
-      const option = document.createElement("option");
-      option.value = styleItem.style;
-      option.textContent = styleItem.name;
-      option.selected = styleItem.style === usage.style;
-      select.appendChild(option);
-    });
-    const replace = document.createElement("button");
-    replace.type = "button";
-    replace.className = "claw-mg-replace";
-    replace.innerHTML = '<i data-lucide="replace" aria-hidden="true"></i><span>替换</span>';
-    const updateDisabled = () => {
-      replace.disabled = select.value === usage.style || select.options.length < 2;
-    };
-    select.addEventListener("change", updateDisabled);
-    updateDisabled();
-    replace.addEventListener("click", async () => {
-      const nextStyle = select.value;
-      if (!nextStyle || nextStyle === usage.style) return;
-      select.disabled = true;
-      replace.disabled = true;
-      try {
-        await api.replaceMgStyle({
-          novelName: project.novelName,
-          episode: usage.episode,
-          tag: usage.tag,
-          order: usage.order,
-          currentStyle: usage.style,
-          style: nextStyle,
-        });
-        showToast(`已将${usage.structureName}替换为${select.options[select.selectedIndex]?.textContent || nextStyle}`);
-        await renderAssets(project);
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : "替换 MG 样式失败");
-        select.disabled = false;
-        updateDisabled();
-      }
-    });
-    control.append(select, replace);
-    article.appendChild(control);
-    queueMicrotask(() => window.lucide?.createIcons({ attrs: { width: 15, height: 15 } }));
+    const locked = document.createElement("span");
+    locked.className = "claw-mg-lock-note";
+    locked.textContent = "由视觉标签 HTML 自动确定";
+    article.appendChild(locked);
     return article;
   }
 
@@ -1465,7 +1412,7 @@
       const assets = await api.getAssets(project.novelName);
       if (assets.kind === "mg") {
         if (galleryButton) galleryButton.hidden = false;
-        if (subtitle) subtitle.textContent = "查看 MG 动画样式，并在画面与 MG 联合审核阶段替换本文实例";
+        if (subtitle) subtitle.textContent = "查看模板样式和视觉标签 HTML 已使用的实例";
         if (meta) meta.textContent = `${assets.styleCount} 种 MG 样式 · 本文已使用 ${assets.instanceCount} 个实例`;
         if (mgEpisodeSelect) {
           const episodes = [...new Set((assets.episodes || assets.usages || [])
@@ -2286,6 +2233,15 @@
   }
 
   const STORY_VISUAL_PRESET_FIELDS = ["场景", "人物", "景别", "角度", "镜头运动", "光影", "情绪", "语言", "独白"];
+  const ESSAY_VISUAL_PRESET_FIELDS = ["画面内容", "动画形式", "动画节奏", "视觉细节"];
+
+  function parseEssayVisualPresetAnnotation(annotation) {
+    const match = String(annotation || "").match(
+      /^画面内容\s*[：:]\s*(.*?)\s*[；;]\s*动画形式\s*[：:]\s*(.*?)\s*[；;]\s*动画节奏\s*[：:]\s*(.*?)\s*[；;]\s*视觉细节\s*[：:]\s*(.*?)\s*$/,
+    );
+    if (!match) return null;
+    return Object.fromEntries(ESSAY_VISUAL_PRESET_FIELDS.map((field, index) => [field, match[index + 1].trim()]));
+  }
 
   function parseVisualPresetText(value) {
     const sourceRows = String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -2296,18 +2252,19 @@
         annotation: validAnnotation ? line.slice(start + 1, -1).trim() : "",
       };
     });
-    const articleType = sourceRows.length > 0 && sourceRows.every((row) => /^画面\s*[：:]/.test(row.annotation))
+    const essayRows = sourceRows.map((row) => parseEssayVisualPresetAnnotation(row.annotation));
+    const articleType = sourceRows.length > 0 && essayRows.every(Boolean)
       ? "essay"
       : "story";
-    const fields = articleType === "essay" ? ["画面意图"] : STORY_VISUAL_PRESET_FIELDS;
+    const fields = articleType === "essay" ? ESSAY_VISUAL_PRESET_FIELDS : STORY_VISUAL_PRESET_FIELDS;
     const rows = sourceRows.map((row, index) => {
-      const values = articleType === "essay"
-        ? [row.annotation.replace(/^画面\s*[：:]/, "").trim()]
-        : row.annotation.split("|");
+      const values = articleType === "essay" ? null : row.annotation.split("|");
       return {
         index: index + 1,
         original: row.original,
-        fields: Object.fromEntries(fields.map((field, fieldIndex) => [field, String(values[fieldIndex] || "").trim()])),
+        fields: articleType === "essay"
+          ? essayRows[index]
+          : Object.fromEntries(fields.map((field, fieldIndex) => [field, String(values[fieldIndex] || "").trim()])),
       };
     });
     return { articleType, fields, rows };
@@ -2324,35 +2281,15 @@
     wrapper.dataset.status = card?.status || "superseded";
     wrapper.dataset.articleType = articleType;
     wrapper.setAttribute("role", "region");
-    wrapper.setAttribute("aria-label", `${articleType === "essay" ? "画面与 MG 标注" : "画面预设"}审核，共 ${parsed.rows.length} 条画面预设`);
+    wrapper.setAttribute("aria-label", `画面预设审核，共 ${parsed.rows.length} 条画面预设`);
     const head = document.createElement("div");
     head.className = "claw-preset-review-head";
     const copy = document.createElement("div");
     copy.className = "claw-preset-review-copy";
     const title = document.createElement("strong");
-    title.textContent = articleType === "essay"
-      ? `画面与 MG 标注审核 · ${parsed.rows.length} 条画面预设`
-      : `画面预设 · ${parsed.rows.length} 条`;
+    title.textContent = `画面预设 · ${parsed.rows.length} 条`;
     copy.appendChild(title);
     head.appendChild(copy);
-    if (articleType === "essay") {
-      const openMg = document.createElement("button");
-      openMg.type = "button";
-      openMg.className = "claw-mg-open";
-      openMg.innerHTML = '<i data-lucide="external-link" aria-hidden="true"></i><span>在浏览器中查看 MG 标注</span>';
-      openMg.addEventListener("click", async () => {
-        if (openMg.disabled) return;
-        openMg.disabled = true;
-        try {
-          await api.openMgAnnotation(card?.projectName || "", card?.episode || 1);
-        } catch (error) {
-          showToast(error instanceof Error ? error.message : "MG 标注暂时无法打开");
-        } finally {
-          openMg.disabled = false;
-        }
-      });
-      head.appendChild(openMg);
-    }
     wrapper.appendChild(head);
 
     const tableWrap = document.createElement("div");
@@ -2428,8 +2365,8 @@
       settings?.ethnicity ? `人物风格：${settings.ethnicity}` : "人物风格：自动",
       typeof settings?.reviewVisualPreset === "boolean"
         ? settings.reviewVisualPreset
-          ? settings?.articleType === "essay" ? "审核画面与 MG 标注" : "审核画面预设"
-          : settings?.articleType === "essay" ? "不审核画面与 MG 标注" : "不审核画面预设"
+          ? "审核画面预设"
+          : "不审核画面预设"
         : "审核选项待选择",
       typeof settings?.requireFinalConfirmation === "boolean" ? (settings.requireFinalConfirmation ? "需要最终确认" : "最终确认选项待选择") : "最终确认选项待选择",
     ].filter(Boolean);
@@ -3175,7 +3112,6 @@
         pause_pipeline: "正在暂停流水线",
         show_visual_preset: "正在展示画面预设",
         revise_visual_preset: "正在根据意见修改画面预设",
-        revise_mg_annotation: "正在根据意见修改 MG 标注",
       };
       state.agentActivityLabel = event.status === "error"
         ? "操作未完成"
@@ -3210,12 +3146,12 @@
         progressCard.phase = "visual_preset_review";
         progressCard.label = reviewCopy.label;
         progressCard.detail = card.articleType === "essay"
-          ? "画面预设已展示，可打开 MG 标注并确认或继续提出修改意见"
+          ? "画面预设已展示；确认后才会生成视觉标签 HTML"
           : "画面预设已展示，请确认或继续提出修改意见";
       }
       state.agentActivityLabel = reviewCopy.activity;
       state.agentActivityDetail = card.articleType === "essay"
-        ? "可以浏览 MG 标注、确认，或继续提出修改意见"
+        ? "可以确认，也可以修改画面内容、动画形式、节奏或视觉细节"
         : "可以确认，也可以继续提出修改意见";
       scheduleConversationPersist();
       renderAgentMessages();

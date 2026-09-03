@@ -10,10 +10,10 @@ import { createProgress, progressBar } from "../ui/progress.js";
 import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
 import type { RenderProgress, SceneRenderResult } from "./pipeline.js";
 import {
-  buildEpisodeMaster,
   finalizeEpisodeMedia,
   globalAlignAndMerge,
   initRenderLog,
+  prepareEssayAudioTimeline,
 } from "./render.js";
 import { generateEpisodeCovers } from "./cover.js";
 import { postprocessEpisodeVideo } from "./postprocess.js";
@@ -21,7 +21,7 @@ import { novelPaths } from "../utils/paths.js";
 import { readProgress, getEpisodeRecord, markStage, finalizeEpisode } from "../utils/progress.js";
 import { annotateEssayMg } from "./mg/annotate.js";
 import { validateMgAnnotationHtml } from "./mg/html.js";
-import { planEssayMg } from "./mg/planner.js";
+import { isEssayMgPlanCurrent, planEssayMg } from "./mg/planner.js";
 import { renderAndAssembleEssayMg } from "./mg/assembler.js";
 
 export type SoloRunResult = "done" | "images_only" | "already_done" | "review_pending" | "failed";
@@ -68,13 +68,10 @@ const STORY_PROGRESS = [
 const ESSAY_PROGRESS = [
   "原文清理",
   "画面预设",
-  "MG 语义标注",
-  "资源建档",
-  "剧本分场",
-  "分镜制作",
-  "原画渲染",
-  "MG 参数规划",
-  "MG 动画渲染",
+  "视觉标签 HTML",
+  "全量配音与时间轴",
+  "视觉片段生成",
+  "时间轴合成",
   "最终合成",
 ] as const;
 
@@ -112,8 +109,8 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
   const progressLabels = isEssay ? ESSAY_PROGRESS : STORY_PROGRESS;
   const reviewPhase = isEssay
     ? {
-      label: "等待审核画面与 MG 标注",
-      detail: "画面预设和 MG 标注已生成，请确认或提出修改意见",
+      label: "等待审核画面预设",
+      detail: "画面预设已生成，请确认或提出修改意见；确认后才生成视觉标签 HTML",
     }
     : {
       label: "等待审核画面预设",
@@ -124,15 +121,17 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     clean: 0,
     visualPreset: 1,
     mgAnnotate: isEssay ? 2 : -1,
-    archive: isEssay ? 3 : 2,
-    segment: isEssay ? 4 : 3,
-    storyboard: isEssay ? 5 : 4,
-    render: isEssay ? 6 : 5,
-    mgPlan: isEssay ? 7 : -1,
-    mgRender: isEssay ? 8 : -1,
-    finalize: isEssay ? 9 : -1,
+    archive: isEssay ? -1 : 2,
+    segment: isEssay ? -1 : 3,
+    storyboard: isEssay ? -1 : 4,
+    render: isEssay ? 3 : 5,
+    mgPlan: isEssay ? 4 : -1,
+    mgRender: isEssay ? 5 : -1,
+    finalize: isEssay ? 6 : -1,
   } as const;
   let gpuStarted = false;
+  let essayAnnotationChanged = false;
+  let essayTimelineChanged = false;
   let terminalPhase: SoloPhaseEvent | null = null;
 
   const reportPhase = (event: SoloPhaseEvent): void => {
@@ -150,11 +149,20 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     reportPhase({ phase: "gpu_stopped", label: "GPU 已关闭", detail: "本次渲染实例已经停止计费" });
   };
 
-  reportPhase({ phase: "planning", label: "规划中", detail: `${title} 正在生成分场与分镜规划` });
+  reportPhase({
+    phase: "planning",
+    label: "规划中",
+    detail: isEssay ? `${title} 正在准备视觉标签视频流水线` : `${title} 正在生成分场与分镜规划`,
+  });
 
   try {
     // 读取本集已记录的阶段进度，用于跳过已完成阶段（续跑）
-    const epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
+    const initialProgress = await readProgress(sel.novelName);
+    const episodeWasAdapted = Array.isArray(initialProgress?.adapted)
+      && initialProgress.adapted.some((item: unknown) => (
+        Boolean(item) && typeof item === "object" && (item as {episode?: unknown}).episode === ep
+      ));
+    let epRec = getEpisodeRecord(initialProgress, ep);
 
     // 原文清理
     reportPhase({ phase: "preparing", label: "整理原文", detail: `${title} 正在读取并清理原始章节` });
@@ -167,11 +175,11 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       p.done(progressIndex.clean, title, "原文_clean.txt");
     }
 
-    // 画面预设：故事文标注场景人物；议论文先固定 group、原画与 MG 的视觉意图。
+    // 画面预设：故事文标注场景人物；议论文规划画面、动画形式、节奏与视觉细节。
     reportPhase({
       phase: "visual_preset",
       label: "生成画面预设",
-      detail: isEssay ? "正在逐句划分分镜组并规划画面意图" : "正在逐句分析场景、人物与镜头语言",
+      detail: isEssay ? "正在逐句规划画面内容、动画形式、节奏与视觉细节" : "正在逐句分析场景、人物与镜头语言",
     });
     p.start(progressIndex.visualPreset, title);
     let presetPath = novelPaths.visualPreset(sel.novelName, ep);
@@ -189,12 +197,19 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       reviewPending = sel.reviewVisualPreset === true;
     }
 
-    // 议论文第二步 AI：MG HTML 必须读取当前画面预设，并记录它的哈希用于安全续跑。
+    // 新生成的议论文画面预设先审核；审核通过的续跑才生成视觉标签 HTML。
+    if (reviewPending) {
+      await markStage(sel.novelName, ep, "visualPreset", "review", { chapter: sel.nextChapter });
+      reportPhase({ phase: "visual_preset_review", ...reviewPhase });
+      return "review_pending";
+    }
+
+    // 议论文第二步 AI：视觉标签 HTML 读取已审核的画面预设，并记录哈希用于安全续跑。
     if (isEssay) {
       reportPhase({
         phase: "mg_annotating",
-        label: "生成 MG 语义标注",
-        detail: "正在依据画面预设的 MG 视觉意图添加 group、order、mode 和 value",
+        label: "生成视觉标签 HTML",
+        detail: "正在依据画面预设添加 sc-video 与 MG 标签",
       });
       p.start(progressIndex.mgAnnotate, title);
       if (await hasCurrentEssayMgAnnotation(sel, epRec)) {
@@ -203,83 +218,66 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         const annotation = await annotateEssayMg(sel);
         await markStage(sel.novelName, ep, "mgAnnotate", "done", {
           mgAnnotationPresetHash: annotation.presetHash,
+          invalidateStages: ["mgPlan", "mgRender", "finalize"],
         });
+        essayAnnotationChanged = true;
         p.done(progressIndex.mgAnnotate, title, "mg_annotation.html");
       }
     }
 
-    // 联合审核只能在 HTML 已按当前预设生成后进入，避免审核或续跑看到过期 MG。
-    if (reviewPending) {
-      if (epRec.stages.visualPreset !== "review") {
-        await markStage(sel.novelName, ep, "visualPreset", "review", { chapter: sel.nextChapter });
+    // 上面的阶段可能刚写入完成或失效标记；后续完成判断必须读取最新记录。
+    epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
+
+    if (!isEssay) {
+      reportPhase({ phase: "archiving", label: "资源建档", detail: "正在整理角色、场景与参考图资源" });
+      p.start(progressIndex.archive, title);
+      let archiveResult: { sceneNames: string[] };
+      if (epRec.stages.archive === "done") {
+        archiveResult = { sceneNames: epRec.sceneNames ?? [] };
+        p.done(progressIndex.archive, title, `已完成，跳过（场景${archiveResult.sceneNames.length}个）`);
+      } else {
+        archiveResult = await archive(sel, presetPath);
+        await markStage(sel.novelName, ep, "archive", "done", { sceneNames: archiveResult.sceneNames });
+        p.done(progressIndex.archive, title, `场景${archiveResult.sceneNames.length}个`);
       }
-      reportPhase({ phase: "visual_preset_review", ...reviewPhase });
-      return "review_pending";
+      reportPhase({ phase: "segmenting", label: "剧本分场", detail: "正在按场景拆分本集原文" });
+      p.start(progressIndex.segment, title);
+      let scriptsDir = novelPaths.scriptsDir(sel.novelName, ep);
+      if (epRec.stages.segment === "done") {
+        p.done(progressIndex.segment, title, "已完成，跳过");
+      } else {
+        scriptsDir = await segment(sel, archiveResult, presetPath, articleType);
+        await markStage(sel.novelName, ep, "segment", "done");
+        p.done(progressIndex.segment, title, "scripts/");
+      }
+
+      reportPhase({ phase: "storyboarding", label: "分镜制作", detail: "正在为各场景规划镜头与画面提示词" });
+      p.start(progressIndex.storyboard, title);
+      if (epRec.stages.storyboard === "done") {
+        p.done(progressIndex.storyboard, title, "已完成，跳过");
+      } else {
+        await storyboard(sel, scriptsDir, (prog) => {
+          reportPhase({ phase: "storyboarding", label: "分镜制作", detail: `已完成 ${prog.done} / ${prog.total} 个场景` });
+          p.updateSubLines(progressIndex.storyboard, title, [`分镜  ${progressBar(prog.done, prog.total)}`]);
+        }, articleType);
+        await markStage(sel.novelName, ep, "storyboard", "done");
+        p.done(progressIndex.storyboard, title);
+      }
+
+      reportPhase({ phase: "ordering", label: "整理分镜顺序", detail: "正在按原文顺序分配全局镜头编号" });
+      await assignGlobalOrder(sel.novelName, ep, archiveResult.sceneNames, articleType);
+      epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
     }
 
-    // 资源建档（议论文跳过：无角色无场景）
-    reportPhase({
-      phase: "archiving",
-      label: isEssay ? "检查资源建档" : "资源建档",
-      detail: isEssay ? "议论文无需角色与场景资源，正在跳过" : "正在整理角色、场景与参考图资源",
-    });
-    p.start(progressIndex.archive, title);
-    let archiveResult: { sceneNames: string[] };
-    if (isEssay) {
-      archiveResult = { sceneNames: [] };
-      p.done(progressIndex.archive, title, "议论文，跳过资源建档");
-    } else if (epRec.stages.archive === "done") {
-      archiveResult = { sceneNames: epRec.sceneNames ?? [] };
-      p.done(progressIndex.archive, title, `已完成，跳过（场景${archiveResult.sceneNames.length}个）`);
-    } else {
-      archiveResult = await archive(sel, presetPath);
-      await markStage(sel.novelName, ep, "archive", "done", { sceneNames: archiveResult.sceneNames });
-      p.done(progressIndex.archive, title, `场景${archiveResult.sceneNames.length}个`);
+    let essayPlanCurrent = false;
+    if (isEssay && !essayAnnotationChanged && epRec.stages.mgPlan === "done") {
+      essayPlanCurrent = await isEssayMgPlanCurrent(sel);
+      if (!essayPlanCurrent) console.log("  [视觉规划] 已有缓存与当前输入不一致，将重新生成");
     }
 
-    // 剧本分场
-    reportPhase({
-      phase: "segmenting",
-      label: isEssay ? "分配分镜任务" : "剧本分场",
-      detail: isEssay ? "正在按画面预设行数均匀分配分镜任务" : "正在按场景拆分本集原文",
-    });
-    p.start(progressIndex.segment, title);
-    let scriptsDir = novelPaths.scriptsDir(sel.novelName, ep);
-    if (epRec.stages.segment === "done") {
-      p.done(progressIndex.segment, title, "已完成，跳过");
-    } else {
-      scriptsDir = await segment(sel, archiveResult, presetPath, articleType);
-      await markStage(sel.novelName, ep, "segment", "done");
-      p.done(progressIndex.segment, title, "scripts/");
-    }
-
-    // 分镜制作
-    reportPhase({ phase: "storyboarding", label: "分镜制作", detail: "正在为各场景规划镜头与画面提示词" });
-    p.start(progressIndex.storyboard, title);
-    if (epRec.stages.storyboard === "done") {
-      p.done(progressIndex.storyboard, title, "已完成，跳过");
-    } else {
-      await storyboard(sel, scriptsDir, (prog) => {
-        reportPhase({
-          phase: "storyboarding",
-          label: "分镜制作",
-          detail: `已完成 ${prog.done} / ${prog.total} 个${isEssay ? "任务文件" : "场景"}`,
-        });
-        p.updateSubLines(progressIndex.storyboard, title, [
-          `分镜  ${progressBar(prog.done, prog.total)}`,
-        ]);
-      }, articleType);
-      await markStage(sel.novelName, ep, "storyboard", "done");
-      p.done(progressIndex.storyboard, title);
-    }
-
-    // ── 为 group 附上 global_order ──
-    reportPhase({ phase: "ordering", label: "整理分镜顺序", detail: "正在按原文顺序分配全局镜头编号" });
-    await assignGlobalOrder(sel.novelName, ep, archiveResult.sceneNames, articleType);
-
-    // 故事以 render 为终点；议论文只有 MG、字幕、音轨和后处理全部完成才算完成。
+    // 故事以 render 为终点；议论文还要求最终产物对应当前视觉规划输入。
     const isEpisodeDone = isEssay
-      ? epRec.stages.finalize === "done"
+      ? !essayAnnotationChanged && essayPlanCurrent && epRec.stages.finalize === "done"
       : epRec.stages.render === "done";
     if (isEpisodeDone) {
       await fs.access(novelPaths.episodeVideo(sel.novelName, ep));
@@ -299,147 +297,160 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       return "already_done";
     }
 
-    const needsOriginalRender = epRec.stages.render !== "done";
+    const needsMediaPreparation = epRec.stages.render !== "done";
 
-    // 只有原画尚未完成时才申请 GPU；MG 续跑不占用远端渲染实例。
-    if (needsOriginalRender && !sel.imagesOnly) {
-      reportPhase({
-        phase: "gpu_queued",
-        label: "GPU 启动与预热中",
-        detail: "正在申请 GPU 实例，并等待渲染服务完成预热与自检",
-      });
-      console.log(`\n  正在启动 GPU；实例启动后会自动等待渲染服务预热...`);
-      // 从发起抢占起就接管生命周期，确保就绪探测失败时也会进入 finally 关机。
-      gpuStarted = true;
-      execSync("python -u scripts/grab_gpu.py", { stdio: "inherit" });
-      console.log(`  GPU 实例已就绪\n`);
-      reportPhase({ phase: "gpu_ready", label: "GPU 已就绪", detail: "渲染资源已准备完成" });
-    }
-
-    let sceneResults: SceneRenderResult[] = [];
-    if (needsOriginalRender) {
-      // 渲染（每个场景的 JSONL → 视频+TTS，各场景并行）
+    if (isEssay) {
+      if (sel.imagesOnly) {
+        throw new Error("议论文视觉标签流水线不支持只生分镜图模式");
+      }
       reportPhase({
         phase: "rendering",
-        label: sel.imagesOnly ? "生成分镜图" : isEssay ? "渲染原画" : "渲染合成中",
-        detail: sel.imagesOnly ? "正在生成分镜静态图" : "正在生成配音和原画视频",
+        label: "生成全量配音与时间轴",
+        detail: "正在为清稿全文生成旁白、字级绝对时间和字幕事件",
       });
       p.start(progressIndex.render, title);
       initRenderLog(novelPaths.episodeDir(sel.novelName, sel.episode) + "/render.log");
-      const storyboardsDir = novelPaths.storyboardsDir(sel.novelName, sel.episode);
-      let jsonlFiles: string[] = [];
-      try {
-        jsonlFiles = (await fs.readdir(storyboardsDir))
-          .filter((f) => f.startsWith("storyboard_") && f.endsWith(".jsonl"))
-          .map((f) => f.replace(/^storyboard_/, "").replace(/\.jsonl$/, ""));
-      } catch { /* storyboards/ 目录不存在则跳过 */ }
-
-      const renderProgress: Record<string, RenderProgress> = {};
-      const updateRenderSubLines = () => {
-        p.updateSubLines(
-          progressIndex.render,
-          title,
-          Object.values(renderProgress).map(
-            (rp) => `${rp.scene}  ${progressBar(rp.done, rp.total)}`,
-          ),
-        );
-      };
-
-      sceneResults = await Promise.all(
-        jsonlFiles.map((sceneName) =>
-          renderScene(sel, sceneName, (rp) => {
-            renderProgress[sceneName] = rp;
-            reportPhase({
-              phase: "rendering",
-              label: sel.imagesOnly ? "生成分镜图" : isEssay ? "渲染原画" : "渲染合成中",
-              detail: `${rp.scene} · 已完成 ${rp.done} / ${rp.total} 个镜头`,
-            });
-            updateRenderSubLines();
-          }, isEssay),
-        ),
-      );
-      p.done(progressIndex.render, title, `${jsonlFiles.length} 个场景`);
-
-      // panel 静态图完成后即可生成横竖封面；失败只告警，不阻断本集。
-      if (!sel.imagesOnly) {
-        try {
-          await generateEpisodeCovers(sel);
-        } catch (err) {
-          console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
-        }
-      }
-
-      // images-only 只产出分镜图，不生成母版、时间轴或 MG。
-      if (sel.imagesOnly) {
-        await markStage(sel.novelName, ep, "render", "images_only");
-        console.log(`\n  ${"=".repeat(50)}`);
-        console.log(`  只生图完成！分镜图目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
-        console.log(`  将项目默认渲染模式改为完整渲染后，对同一集再跑一次 /solo 即可补生视频。`);
-        console.log();
-        terminalPhase = { phase: "completed", label: "分镜图已完成", detail: "已生成全部分镜静态图" };
-        return "images_only";
-      }
-
-      reportPhase({
-        phase: "merging",
-        label: isEssay ? "构建原画母版" : "合并成片",
-        detail: isEssay
-          ? "正在生成只读原画、对齐音轨、字级时间轴和字幕事件"
-          : "正在对齐各场景音视频并合并本集成片",
-      });
-      const episodeVideoPath = novelPaths.episodeVideo(sel.novelName, ep);
-      const rawVideoPath = novelPaths.episodeRawVideo(sel.novelName, ep);
-      const epDir = novelPaths.episodeDir(sel.novelName, ep);
-
-      if (isEssay) {
-        await buildEpisodeMaster(
-          sceneResults,
-          epDir,
-          rawVideoPath,
-          novelPaths.episodeAlignedAudio(sel.novelName, ep),
-        );
-        await markStage(sel.novelName, ep, "render", "done");
-        // 后续 Function Calling 与 Remotion 不使用远端 GPU，母版完成后立即停机。
-        stopGpu();
-      } else if (sceneResults.length > 0) {
-        await globalAlignAndMerge(sceneResults, episodeVideoPath, epDir, rawVideoPath);
-      }
-    } else {
-      p.done(progressIndex.render, title, "原画母版已完成，跳过");
-      if (isEssay) {
+      if (needsMediaPreparation) {
+        await prepareEssayAudioTimeline(sel);
+        await markStage(sel.novelName, ep, "render", "done", {
+          invalidateStages: ["mgPlan", "mgRender", "finalize"],
+        });
+        essayTimelineChanged = true;
+        epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
+        p.done(progressIndex.render, title, "article_timeline.json / 对齐音轨");
+      } else {
         await Promise.all([
-          fs.access(novelPaths.episodeRawVideo(sel.novelName, ep)),
           fs.access(novelPaths.episodeAlignedAudio(sel.novelName, ep)),
           fs.access(novelPaths.articleTimeline(sel.novelName, ep)),
         ]);
+        p.done(progressIndex.render, title, "已完成，跳过");
+      }
+    } else {
+      if (needsMediaPreparation && !sel.imagesOnly) {
+        reportPhase({
+          phase: "gpu_queued",
+          label: "GPU 启动与预热中",
+          detail: "正在申请 GPU 实例，并等待渲染服务完成预热与自检",
+        });
+        console.log(`\n  正在启动 GPU；实例启动后会自动等待渲染服务预热...`);
+        gpuStarted = true;
+        execSync("python -u scripts/grab_gpu.py", { stdio: "inherit" });
+        console.log(`  GPU 实例已就绪\n`);
+        reportPhase({ phase: "gpu_ready", label: "GPU 已就绪", detail: "渲染资源已准备完成" });
+      }
+
+      if (needsMediaPreparation) {
+        reportPhase({
+          phase: "rendering",
+          label: sel.imagesOnly ? "生成分镜图" : "渲染合成中",
+          detail: sel.imagesOnly ? "正在生成分镜静态图" : "正在生成配音和分镜视频",
+        });
+        p.start(progressIndex.render, title);
+        initRenderLog(novelPaths.episodeDir(sel.novelName, sel.episode) + "/render.log");
+        const storyboardsDir = novelPaths.storyboardsDir(sel.novelName, sel.episode);
+        let jsonlFiles: string[] = [];
+        try {
+          jsonlFiles = (await fs.readdir(storyboardsDir))
+            .filter((f) => f.startsWith("storyboard_") && f.endsWith(".jsonl"))
+            .map((f) => f.replace(/^storyboard_/, "").replace(/\.jsonl$/, ""));
+        } catch { /* storyboards/ 目录不存在则跳过 */ }
+
+        const renderProgress: Record<string, RenderProgress> = {};
+        const sceneResults: SceneRenderResult[] = await Promise.all(
+          jsonlFiles.map((sceneName) => renderScene(sel, sceneName, (rp) => {
+            renderProgress[sceneName] = rp;
+            reportPhase({
+              phase: "rendering",
+              label: sel.imagesOnly ? "生成分镜图" : "渲染合成中",
+              detail: `${rp.scene} · 已完成 ${rp.done} / ${rp.total} 个镜头`,
+            });
+            p.updateSubLines(
+              progressIndex.render,
+              title,
+              Object.values(renderProgress).map((item) => `${item.scene}  ${progressBar(item.done, item.total)}`),
+            );
+          }, false)),
+        );
+        p.done(progressIndex.render, title, `${jsonlFiles.length} 个场景`);
+
+        if (!sel.imagesOnly) {
+          try {
+            await generateEpisodeCovers(sel);
+          } catch (err) {
+            console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
+          }
+        }
+        if (sel.imagesOnly) {
+          await markStage(sel.novelName, ep, "render", "images_only");
+          terminalPhase = { phase: "completed", label: "分镜图已完成", detail: "已生成全部分镜静态图" };
+          return "images_only";
+        }
+
+        reportPhase({ phase: "merging", label: "合并成片", detail: "正在对齐各场景音视频并合并本集成片" });
+        if (sceneResults.length > 0) {
+          await globalAlignAndMerge(
+            sceneResults,
+            novelPaths.episodeVideo(sel.novelName, ep),
+            novelPaths.episodeDir(sel.novelName, ep),
+            novelPaths.episodeRawVideo(sel.novelName, ep),
+          );
+        }
+      } else {
+        p.done(progressIndex.render, title, "已完成，跳过");
       }
     }
 
-    // 即使原画已完成，images-only 也不进入 MG 和最终合成阶段。
-    if (sel.imagesOnly) {
-      terminalPhase = { phase: "completed", label: "分镜图已完成", detail: "只生分镜图模式未执行 MG" };
-      return "images_only";
-    }
-
     if (isEssay) {
-      // 第二步 AI：直接读取完整 HTML + 字级时间轴，以 Function Calling 填写模板内容和 at。
-      reportPhase({ phase: "mg_planning", label: "规划 MG 参数", detail: "正在调用动画模板函数并校验绝对时间戳" });
+      const needsVisualPlanning = essayAnnotationChanged
+        || essayTimelineChanged
+        || !essayPlanCurrent;
+      if (needsVisualPlanning) {
+        reportPhase({
+          phase: "gpu_queued",
+          label: "GPU 启动与预热中",
+          detail: "时间轴已就绪，正在启动视觉片段生成服务",
+        });
+        console.log(`\n  正在启动 GPU；实例启动后会自动等待渲染服务预热...`);
+        gpuStarted = true;
+        execSync("python -u scripts/grab_gpu.py", { stdio: "inherit" });
+        console.log(`  GPU 实例已就绪\n`);
+        reportPhase({ phase: "gpu_ready", label: "GPU 已就绪", detail: "视觉片段生成服务已准备完成" });
+      }
+
+      reportPhase({
+        phase: "mg_planning",
+        label: "生成视觉视频片段",
+        detail: "正在按最外层标签 scope 启动有限并发 Agent，并等待 Function Calling 视频任务完成",
+      });
       p.start(progressIndex.mgPlan, title);
-      if (epRec.stages.mgPlan === "done") {
+      if (!needsVisualPlanning) {
         await Promise.all([
           fs.access(novelPaths.mgPlan(sel.novelName, ep)),
           fs.access(novelPaths.mgRenderBundle(sel.novelName, ep)),
         ]);
         p.done(progressIndex.mgPlan, title, "已完成，跳过");
       } else {
+        // Invalidate the old composition before planning starts so an
+        // interruption can never pair a new plan with the previous final video.
+        await markStage(sel.novelName, ep, "render", "done", {
+          invalidateStages: ["mgPlan", "mgRender", "finalize"],
+        });
         await planEssayMg(sel);
         await markStage(sel.novelName, ep, "mgPlan", "done");
-        p.done(progressIndex.mgPlan, title, "function_calls.json / mg_plan.json");
+        epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
+        p.done(progressIndex.mgPlan, title, "function_calls.json / 视频片段 / mg_plan.json");
       }
+      // planEssayMg 只有在全部 Function Calling 视频片段落盘后才返回。
+      stopGpu();
 
-      reportPhase({ phase: "mg_rendering", label: "渲染 MG 动画", detail: "正在渲染模板并按时间轴插回原画" });
+      reportPhase({
+        phase: "mg_rendering",
+        label: "按时间轴合成",
+        detail: "正在用 Remotion 按时间窗口和嵌套层级合成全部视觉片段",
+      });
       p.start(progressIndex.mgRender, title);
-      if (epRec.stages.mgRender === "done") {
+      const needsVisualRendering = needsVisualPlanning || epRec.stages.mgRender !== "done";
+      if (!needsVisualRendering) {
         await fs.access(novelPaths.episodeMgRawVideo(sel.novelName, ep));
         p.done(progressIndex.mgRender, title, "已完成，跳过");
       } else {
@@ -448,7 +459,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         p.done(progressIndex.mgRender, title, "epXX_mg_raw.mp4");
       }
 
-      reportPhase({ phase: "finalizing", label: "合成音轨与字幕", detail: "正在给 MG 原片加入对齐旁白和字幕" });
+      reportPhase({ phase: "finalizing", label: "合成音轨与字幕", detail: "正在为视觉合成原片加入旁白和字幕" });
       p.start(progressIndex.finalize, title);
       // 若上次在进度落盘前中断，必须重新执行后处理，不能让旧 marker 跳过新封装的视频。
       await fs.rm(novelPaths.postprocessMarker(sel.novelName, ep), { force: true });
@@ -458,6 +469,11 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         novelPaths.episodeVideo(sel.novelName, ep),
         novelPaths.globalSubtitlesAss(sel.novelName, ep),
       );
+      try {
+        await generateEpisodeCovers(sel);
+      } catch (err) {
+        console.warn(`  [封面] 生成失败，视频集不受影响: ${err}`);
+      }
     }
 
     // ── 最终视频后处理：故事加标题并 1.1x；议论文 1.2x 并混入本地随机 BGM。
@@ -473,7 +489,11 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     if (isEssay) p.done(progressIndex.finalize, title, "字幕、音轨与后处理完成");
 
     // 整集完成和章节推进同一次写入；议论文以 finalize、故事以 render 作为终态。
-    await finalizeEpisode(sel.novelName, ep, isEssay ? "finalize" : "render");
+    if (isEssay && episodeWasAdapted) {
+      await markStage(sel.novelName, ep, "finalize", "done");
+    } else {
+      await finalizeEpisode(sel.novelName, ep, isEssay ? "finalize" : "render");
+    }
 
     console.log(`\n  ${"=".repeat(50)}`);
     console.log(`  完成！产物目录: ${novelPaths.episodeDir(sel.novelName, sel.episode)}`);
