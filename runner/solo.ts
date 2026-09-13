@@ -3,8 +3,10 @@
  */
 
 import fs from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
@@ -76,6 +78,8 @@ const ESSAY_PROGRESS = [
 ] as const;
 
 const sha256 = (content: string): string => createHash("sha256").update(content).digest("hex");
+const STORY_CLAW_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SHUTDOWN_GPU_SCRIPT = path.join(STORY_CLAW_ROOT, "scripts", "shutdown_gpu.py");
 
 /**
  * 只有当前 HTML 合法，且生成时消费的画面预设与当前文件完全一致，才允许续跑复用。
@@ -144,7 +148,9 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
 
   const stopGpu = (): void => {
     if (!gpuStarted) return;
-    execSync("python -u scripts/shutdown_gpu.py", { stdio: "inherit" });
+    // Remotion's bundler may change process.cwd() to the template package.
+    // Resolve this host-owned script from solo.ts instead of relying on cwd.
+    execFileSync("python", ["-u", SHUTDOWN_GPU_SCRIPT], { stdio: "inherit" });
     gpuStarted = false;
     reportPhase({ phase: "gpu_stopped", label: "GPU 已关闭", detail: "本次渲染实例已经停止计费" });
   };

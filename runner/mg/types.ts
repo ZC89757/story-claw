@@ -8,6 +8,12 @@ import type {
 
 export type MgMode = "together" | "split";
 
+/** Static directed-graph topology approved in the annotation HTML. */
+export type DirectedGraphAnnotation = Readonly<{
+  nodes: readonly string[];
+  edges: readonly (readonly [number, number])[];
+}>;
+
 export type LocatedMgTag = {
   /** Public HTML structural tag supplied by the template Provider. */
   tag: string;
@@ -15,7 +21,9 @@ export type LocatedMgTag = {
   order?: number;
   instanceKey: string;
   mode: MgMode;
-  value: number;
+  value?: number;
+  values?: string[];
+  graph?: DirectedGraphAnnotation;
   text: string;
   start: number;
   end: number;
@@ -35,6 +43,7 @@ export type MgInstanceInfo = {
   paragraphEnd: number;
   depth: number;
   parentInstance?: string;
+  graph?: DirectedGraphAnnotation;
 };
 
 export type RawMgFunctionCall = {

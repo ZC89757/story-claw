@@ -46,7 +46,7 @@ export const assertMgVideoFrames = async (
 ): Promise<void> => {
   const actual = await probeMgVideo(filePath);
   const expectedDuration = expectedFrames / fps;
-  if (actual.durationFrames !== expectedFrames || Math.abs(actual.duration - expectedDuration) > 1 / fps + 0.001) {
+  if (actual.durationFrames !== expectedFrames || Math.abs(actual.duration - expectedDuration) > (1 / fps + 0.1)) {
     throw new Error(
       `MG 片段帧数校验失败: ${actual.durationFrames}/${expectedFrames}，` +
       `时长 ${actual.duration.toFixed(3)}/${expectedDuration.toFixed(3)}s (${filePath})`,

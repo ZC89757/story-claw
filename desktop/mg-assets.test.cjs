@@ -8,7 +8,6 @@ const catalog = [
   {htmlTag: "timed-table", style: "grid", name: "动态数据表格", structureName: "动态表格"},
   {htmlTag: "mg-title", style: "fade", name: "淡入标题", structureName: "标题动画"},
   {htmlTag: "mg-effect", style: "scanline-annotate-focus", name: "扫描聚焦", structureName: "视觉效果"},
-  {htmlTag: "mg-camera", style: "slow-push-in", name: "缓慢推近", structureName: "运镜"},
   {htmlTag: "mg-showcase", style: "card-stack", name: "卡片堆叠", structureName: "界面陈列"},
   {htmlTag: "mg-metric", style: "counter-confetti", name: "计数庆祝", structureName: "指标动画"},
   {htmlTag: "mg-transition", style: "whip-pan", name: "甩镜转场", structureName: "转场"},
@@ -131,14 +130,13 @@ test("repeated new-protocol tags must carry continuous order values", () => {
 test("Shotcraft tags are parsed and style replacement keeps their template mapping", () => {
   const shotcraft = '<!DOCTYPE html><html><body><article><p>' +
     '<mg-effect group="scanline-annotate-focus" mode="together" value="1">扫描页面</mg-effect>' +
-    '<mg-camera group="slow-push-in" mode="together" value="1">推近核心</mg-camera>' +
     '<mg-showcase group="card-stack" mode="together" value="1">功能卡片</mg-showcase>' +
     '<mg-metric group="counter-confetti" mode="together" value="1">完成率</mg-metric>' +
     '<mg-transition group="whip-pan" mode="together" value="1">下一段</mg-transition>' +
     '<mg-rhythm group="beat-pump" mode="together" value="1">重音</mg-rhythm>' +
     '</p></article></body></html>';
   const instances = listMgAnnotationInstances(shotcraft, 1, true, catalog);
-  assert.deepEqual(instances.map((item) => item.tag), ["mg-effect", "mg-camera", "mg-showcase", "mg-metric", "mg-transition", "mg-rhythm"]);
+  assert.deepEqual(instances.map((item) => item.tag), ["mg-effect", "mg-showcase", "mg-metric", "mg-transition", "mg-rhythm"]);
   const replaced = replaceMgAnnotationStyle(shotcraft, {tag: "mg-effect", currentStyle: "scanline-annotate-focus", style: "scanline-annotate-focus", order: null}, catalog);
   assert.equal(replaced.changedTagCount, 1);
 });

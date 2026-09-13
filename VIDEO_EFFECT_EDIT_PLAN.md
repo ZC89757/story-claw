@@ -73,7 +73,7 @@ VLM 扫描该特效的 `start_anchor_window` 与 `end_anchor_window` 帧序列�
 
 ### 阶段 5：固定镜头绿幕特效视频生成
 1. 依据 $D = t_{end} - t_{start}$ 换算 LTX 帧数 ($8k+1$)。
-2. 视频 Prompt 描述特效从起始形态演变的动态过程，**强制要求镜头固定（fixed camera, static shot）**。
+2. 视频 Prompt 描述特效从起始形态演变的动态过程，**强制要求画面构图固定（fixed framing, static shot）**。
 3. 以 `effect_init_green.png` 为参考图，提交 ComfyUI LTX i2v 生成 `greenscreen_effect.mp4`。
 
 ---

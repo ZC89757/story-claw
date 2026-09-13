@@ -314,15 +314,30 @@ async function generateStillVideo(
   ], { cwd: path.dirname(outputPath) });
 }
 
-/** ffmpeg 提取视频最后一帧 */
-async function extractLastFrame(videoPath: string, outputPng: string): Promise<boolean> {
+/** Extract the exact final decoded video frame. */
+export async function extractLastFrame(videoPath: string, outputPng: string): Promise<boolean> {
   try {
+    const {stdout} = await execFileAsync("ffprobe", [
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-count_frames",
+      "-show_entries", "stream=nb_read_frames,nb_frames",
+      "-of", "json",
+      videoPath,
+    ]);
+    const probe = JSON.parse(stdout) as {streams?: Array<{nb_read_frames?: string; nb_frames?: string}>};
+    const stream = probe.streams?.[0];
+    const frameCount = Number(stream?.nb_read_frames ?? stream?.nb_frames);
+    if (!Number.isInteger(frameCount) || frameCount < 1) return false;
+    await fs.mkdir(path.dirname(outputPng), {recursive: true});
     await execFileAsync("ffmpeg", [
-      "-y", "-sseof", "-0.5",
-      "-i", path.basename(videoPath),
+      "-y",
+      "-i", videoPath,
+      "-vf", `select=eq(n\\,${frameCount - 1})`,
+      "-fps_mode", "vfr",
       "-frames:v", "1",
-      path.basename(outputPng),
-    ], { cwd: path.dirname(videoPath) });
+      outputPng,
+    ]);
     return fsSync.existsSync(outputPng);
   } catch {
     return false;

@@ -5,8 +5,10 @@ import {fileURLToPath} from "node:url";
 import {bundle} from "@remotion/bundler";
 import {renderMedia, selectComposition} from "@remotion/renderer";
 import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
+import {EnvHttpProxyAgent} from "undici";
 import type {NovelSelection} from "../../ui/select.js";
 import {generateImage} from "../../utils/image-gen.js";
+import {removeSolidBackground as removeSolidBackgroundImage} from "../../utils/remove-solid-background.js";
 import {novelPaths} from "../../utils/paths.js";
 import {assertMgVideoFrames} from "./media.js";
 import type {MgPlan, MgRenderBundle} from "./types.js";
@@ -15,11 +17,16 @@ import type {
   MgRuntimeCompositionNode,
   MgRuntimeEpisodeInput,
   MgRuntimeLayer,
+  MgReferenceImageGenerationRequest,
+  MgSolidBackgroundRemovalRequest,
 } from "@story-claw/mg-templates/provider";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const mgProvider = getMgTemplateProvider();
 const REMOTION_ENTRY = fileURLToPath(mgProvider.runtimeEntryUrl);
+const fetchDispatcher = new EnvHttpProxyAgent();
+const fetchWithProxy = (input: string | URL, init: RequestInit = {}) =>
+  fetch(input, {...init, dispatcher: fetchDispatcher} as RequestInit);
 
 const assetKey = (source: string): string => createHash("sha256").update(source).digest("hex").slice(0, 24);
 const imageFileExtension = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i;
@@ -52,6 +59,106 @@ const localImagePath = async (source: string, baseDir: string, publicDir: string
   return undefined;
 };
 
+const MAX_REFERENCE_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/** Resolve a searched direct image URL to a local file for image-to-image generation. */
+const downloadReferenceImage = async (
+  source: string,
+  baseDir: string,
+  publicDir: string,
+): Promise<string> => {
+  const value = source.trim();
+  if (!value) throw new Error("参考图片地址不能为空");
+  if (/^https?:\/\//i.test(value)) {
+    const directory = path.join(publicDir, "assets", "reference-images");
+    await fs.mkdir(directory, {recursive: true});
+    const key = assetKey(value);
+    let response: Response;
+    try {
+      response = await fetchWithProxy(value, {
+        headers: {"user-agent": "StoryClaw/1.0 reference-image"},
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (error) {
+      throw new Error(`参考图片 URL 请求失败: ${value} (${error instanceof Error ? error.message : String(error)})`);
+    }
+    if (!response.ok) throw new Error(`参考图片 URL 请求失败 ${response.status}: ${value}`);
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType && !/^image\//i.test(contentType) && !/octet-stream/i.test(contentType)) {
+      throw new Error(`参考图片 URL 返回的不是图片（${contentType}）: ${value}`);
+    }
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length > MAX_REFERENCE_IMAGE_BYTES) throw new Error(`参考图片超过 ${MAX_REFERENCE_IMAGE_BYTES / 1024 / 1024}MB: ${value}`);
+    const output = path.join(directory, `${key}${imageExtension(value, contentType)}`);
+    await fs.writeFile(output, data);
+    return output;
+  }
+  const local = await localImagePath(value, baseDir, publicDir);
+  if (!local) throw new Error(`找不到人物参考图片: ${value}`);
+  const extension = path.extname(local).toLowerCase();
+  if (extension && !imageFileExtension.test(extension)) throw new Error(`人物参考图片不是支持的图片文件: ${value}`);
+  return local;
+};
+
+/** Generic host callback for reference-conditioned image generation. */
+const makeReferenceImageGenerator = (
+  baseDir: string,
+  publicDir: string,
+): ((input: MgReferenceImageGenerationRequest) => Promise<string>) => {
+  const cache = new Map<string, Promise<string>>();
+  return (input) => {
+    const key = assetKey(JSON.stringify({
+      cacheKey: input.cacheKey,
+      prompt: input.prompt,
+      references: input.references,
+      aspectRatio: input.aspectRatio,
+    }));
+    const existing = cache.get(key);
+    if (existing) return existing;
+    const pending = (async () => {
+      const directory = path.join(publicDir, "assets", "generated");
+      await fs.mkdir(directory, {recursive: true});
+      const output = path.join(directory, `${key}.png`);
+      try {
+        const stat = await fs.stat(output);
+        if (stat.isFile() && stat.size > 0) return output;
+      } catch { /* Generate below. */ }
+      const references = [...new Set(input.references.map((value) => String(value).trim()).filter(Boolean))];
+      if (!references.length) throw new Error("参考图生图至少需要一张人物参考图片");
+      const localReferences = await Promise.all(references.map((source) => downloadReferenceImage(source, baseDir, publicDir)));
+      await generateImage(input.prompt, output, localReferences, input.aspectRatio);
+      return output;
+    })();
+    cache.set(key, pending);
+    return pending;
+  };
+};
+
+/** Generic host callback for deterministic solid-background removal. */
+const makeSolidBackgroundRemover = (
+  publicDir: string,
+): ((input: MgSolidBackgroundRemovalRequest) => Promise<string>) => {
+  const cache = new Map<string, Promise<string>>();
+  return (input) => {
+    const key = assetKey(JSON.stringify({cacheKey: input.cacheKey, sourcePath: input.sourcePath, backgroundColor: input.backgroundColor}));
+    const existing = cache.get(key);
+    if (existing) return existing;
+    const pending = (async () => {
+      const directory = path.join(publicDir, "assets", "cutouts");
+      await fs.mkdir(directory, {recursive: true});
+      const output = path.join(directory, `${key}.png`);
+      try {
+        const stat = await fs.stat(output);
+        if (stat.isFile() && stat.size > 0) return output;
+      } catch { /* Process below. */ }
+      await removeSolidBackgroundImage(input.sourcePath, output, input.backgroundColor);
+      return output;
+    })();
+    cache.set(key, pending);
+    return pending;
+  };
+};
+
 const makeImageResolver = (
   baseDir: string,
   publicDir: string,
@@ -68,7 +175,7 @@ const makeImageResolver = (
       await fs.mkdir(assetsDir, {recursive: true});
       const key = assetKey(source);
       if (/^https?:\/\//i.test(source)) {
-        const response = await fetch(source, {signal: AbortSignal.timeout(60_000)});
+        const response = await fetchWithProxy(source, {signal: AbortSignal.timeout(60_000)});
         if (!response.ok) throw new Error(`图片 URL 请求失败 ${response.status}: ${source}`);
         const contentType = response.headers.get("content-type") ?? "";
         if (contentType && !/^image\//i.test(contentType)) throw new Error(`图片 URL 返回的不是图片（${contentType}）: ${source}`);
@@ -149,6 +256,8 @@ const preparePublicAssets = async (
   await mgProvider.prepareRuntimeAssets({
     layers: runtimeLayers,
     resolveImage: makeImageResolver(baseDir, publicDir, bundleData.width, bundleData.height),
+    generateImageFromReferences: makeReferenceImageGenerator(baseDir, publicDir),
+    removeSolidBackground: makeSolidBackgroundRemover(publicDir),
   });
 };
 

@@ -57,7 +57,7 @@ Novel Chapter (.txt)
     ▼
 ┌────────────────────────────────────────────────────────────────┐
 │ 1  Visual Preset       Tag every line: scene / character /      │
-│                        shot size / angle / camera move / mood   │
+│                        shot size / angle / framing / mood       │
 │ 2  Asset Archiving     Identify characters & scenes; generate   │
 │                        stage-aware reference images + voices    │
 │ 3  Script Segmentation Split the chapter into per-scene scripts │

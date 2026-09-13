@@ -36,13 +36,13 @@ from PIL import Image
 
 # aspect_ratio → imageSize 映射（gpt-image-2 支持的尺寸）
 ASPECT_TO_SIZE: dict[str, str] = {
-    "9:16": "1024x1536",   # 竖版
-    "16:9": "1536x1024",   # 横版
-    "1:1":  "1024x1024",   # 方形
-    "3:2":  "1536x1024",   # 近似横版
-    "2:3":  "1024x1536",   # 近似竖版
+    "9:16": "1k",   # 竖版 (Grok format)
+    "16:9": "1k",   # 横版 (Grok format)
+    "1:1":  "1k",   # 方形 (Grok format)
+    "3:2":  "1k",   # 近似横版
+    "2:3":  "1k",   # 近似竖版
 }
-DEFAULT_SIZE = "1024x1024"
+DEFAULT_SIZE = "1k"
 # 参考图压缩目标短边像素（避免超大图占带宽/tokens）
 COMPRESS_MAX_PX = 512
 

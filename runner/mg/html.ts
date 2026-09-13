@@ -1,7 +1,7 @@
 import {createRequire} from "node:module";
 import type {ArticleTimelineEntry} from "../render.js";
 import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
-import type {LocatedMgTag, MgInstanceInfo, MgMode} from "./types.js";
+import type {DirectedGraphAnnotation, LocatedMgTag, MgInstanceInfo, MgMode} from "./types.js";
 
 const require = createRequire(import.meta.url);
 const parse5 = require("parse5") as {parse(input: string): HtmlNode};
@@ -20,8 +20,65 @@ const MG_TAGS = new Set<string>(MG_TAG_NAMES);
 const GROUP_PATTERN = /^[A-Za-z0-9_-]+$/;
 const STYLE_ID = "story-claw-mg-annotation-style";
 const SC_VIDEO_TAG = "sc-video";
+const SC_LONGTAKE_TAG = "sc-longtake";
+const VALUE_MARKER_CLASS = "mg-value";
 
 const isScVideo = (tag: string | undefined): boolean => tag === SC_VIDEO_TAG;
+const isScLongtake = (tag: string | undefined): boolean => tag === SC_LONGTAKE_TAG;
+const isGeneratedVideoTag = (tag: string | undefined): boolean => isScVideo(tag) || isScLongtake(tag);
+
+const parseValuesAttribute = (tag: string, raw: string | undefined): string[] => {
+  if (raw === undefined) throw new Error(`<${tag}> 的 values 必须是 JSON 字符串数组`);
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error(`<${tag}> 的 values 不是合法 JSON`); }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((item) => typeof item !== "string" || !item.trim())) {
+    throw new Error(`<${tag}> 的 values 必须是非空字符串数组`);
+  }
+  const values = parsed as string[];
+  if (new Set(values).size !== values.length) throw new Error(`<${tag}> 的 values 不允许重复词语`);
+  return values;
+};
+
+const parseDirectedGraphTopology = (attrs: Record<string, string>): DirectedGraphAnnotation | undefined => {
+  const hasNodes = attrs.nodes !== undefined;
+  const hasEdges = attrs.edges !== undefined;
+  if (!hasNodes && !hasEdges) return undefined;
+  if (!hasNodes || !hasEdges) throw new Error("<directed-graph> 的 nodes 和 edges 必须同时提供");
+
+  let rawNodes: unknown;
+  let rawEdges: unknown;
+  try {
+    rawNodes = JSON.parse(attrs.nodes);
+    rawEdges = JSON.parse(attrs.edges);
+  } catch {
+    throw new Error("<directed-graph> 的 nodes/edges 必须是合法 JSON");
+  }
+  if (!Array.isArray(rawNodes) || rawNodes.length < 1 || rawNodes.length > 40
+    || rawNodes.some((node) => typeof node !== "string" || !node.trim() || node.length > 80)) {
+    throw new Error("<directed-graph> 的 nodes 必须是 1-40 个非空字符串");
+  }
+  const nodes = rawNodes.map((node) => String(node).trim());
+  if (new Set(nodes).size !== nodes.length) throw new Error("<directed-graph> 的 nodes 不允许重复");
+  if (!Array.isArray(rawEdges) || rawEdges.length < 1 || rawEdges.length > 40
+    || rawEdges.some((edge) => !Array.isArray(edge) || edge.length !== 2
+      || !Number.isInteger(edge[0]) || !Number.isInteger(edge[1]))) {
+    throw new Error("<directed-graph> 的 edges 必须是 1-40 个 [from,to] 整数对");
+  }
+  const edgeKeys = new Set<string>();
+  const edges = rawEdges.map((edge) => {
+    const from = Number(edge[0]);
+    const to = Number(edge[1]);
+    if (from < 0 || from >= nodes.length || to < 0 || to >= nodes.length) {
+      throw new Error("<directed-graph> 的 edges 节点索引超出 nodes 范围");
+    }
+    if (from === to) throw new Error("<directed-graph> 的 edges 不能连接节点自身");
+    const key = `${from}:${to}`;
+    if (edgeKeys.has(key)) throw new Error("<directed-graph> 的 edges 不允许重复方向");
+    edgeKeys.add(key);
+    return [from, to] as const;
+  });
+  return {nodes, edges};
+};
 
 const annotationContent = (
   tag: string,
@@ -30,8 +87,8 @@ const annotationContent = (
 ): string => [
   `"${tag},group=" attr(group)`,
   ordered ? `",order=" attr(order)` : "",
-  isScVideo(tag) ? "" : `",mode=" attr(mode)`,
-  !isScVideo(tag) && withValue ? `",value=" attr(value)` : "",
+  isGeneratedVideoTag(tag) ? "" : `",mode=" attr(mode)`,
+  !isGeneratedVideoTag(tag) && withValue ? `",value=" attr(value)` : "",
 ].filter(Boolean).join(" ");
 
 const collectMgInstanceCounts = (html: string): Map<string, {tag: string; group: string; order?: number; count: number}> => {
@@ -74,6 +131,10 @@ const tagColorRules = (): string => MG_TAG_NAMES.map((tag, index) => {
   return `article ${tag} { --mg-accent: ${accent}; --mg-fill: ${fill}; }`;
 }).join("\n");
 
+const valueMarkerRules = (): string => `${tagSelectors('[mode="together"]')} .${VALUE_MARKER_CLASS} {
+  padding: 1px 3px; border-bottom: 3px solid var(--mg-accent); background: rgba(255, 255, 255, .46); font-weight: 900;
+}`;
+
 const buildMgAnnotationStyle = (html: string): string => `<style id="${STYLE_ID}">
 :root { color-scheme: light; }
 body { margin: 0; background: #f3f5f6; color: #20262c; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
@@ -84,6 +145,7 @@ ${tagSelectors()} {
   padding: 2px 4px; border-bottom: 2px solid var(--mg-accent); border-radius: 3px;
   background: var(--mg-fill); box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
+${valueMarkerRules()}
 ${tagSelectors("::before")} {
   display: inline-block; margin: 0 6px 2px 0; padding: 1px 6px; border-radius: 3px;
   background: var(--mg-accent); color: #fff; font: 600 10px/1.5 Consolas, "Microsoft YaHei", sans-serif;
@@ -126,6 +188,12 @@ const textContent = (node: HtmlNode): string => {
   return (node.childNodes ?? []).map(textContent).join("");
 };
 
+const attrsOf = (node: HtmlNode): Record<string, string> =>
+  Object.fromEntries((node.attrs ?? []).map((attr) => [attr.name, attr.value]));
+
+const isValueMarker = (node: HtmlNode): boolean =>
+  node.tagName === "span" && attrsOf(node).class === VALUE_MARKER_CLASS;
+
 const descendants = (node: HtmlNode, predicate: (candidate: HtmlNode) => boolean): HtmlNode[] => {
   const found: HtmlNode[] = [];
   const visit = (candidate: HtmlNode) => {
@@ -135,9 +203,6 @@ const descendants = (node: HtmlNode, predicate: (candidate: HtmlNode) => boolean
   visit(node);
   return found;
 };
-
-const attrsOf = (node: HtmlNode): Record<string, string> =>
-  Object.fromEntries((node.attrs ?? []).map((attr) => [attr.name, attr.value]));
 
 const sourceParagraphs = (articleSource: string): string[] =>
   articleSource
@@ -157,7 +222,9 @@ type ParsedStructure = {
     order?: number;
     instanceKey: string;
     mode: MgMode;
-    value: number;
+    value?: number;
+    values?: string[];
+    graph?: DirectedGraphAnnotation;
     text: string;
     startOffset: number;
     endOffset: number;
@@ -220,6 +287,7 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
   if (allMgNodes.length !== articleMgNodes.length) throw new Error("MG 标签只能出现在 article 正文中");
 
   const tags: ParsedStructure["tags"] = [];
+  const valueMarkers: Array<{parentInstance: string; text: string}> = [];
   let documentOrder = 0;
   paragraphs.forEach((paragraph, paragraphIndex) => {
     let relativeOffset = 0;
@@ -229,7 +297,17 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
         return;
       }
       const isMg = Boolean(node.tagName && MG_TAGS.has(node.tagName));
-      if (node.tagName && !isMg) throw new Error(`MG HTML 正文包含不支持的标签 <${node.tagName}>`);
+      const valueMarker = isValueMarker(node);
+      if (node.tagName && !isMg && !valueMarker) throw new Error(`MG HTML 正文包含不支持的标签 <${node.tagName}>`);
+      if (valueMarker) {
+        const parentInstance = ancestors.at(-1);
+        const markerText = textContent(node).trim();
+        if (!parentInstance) throw new Error(`.${VALUE_MARKER_CLASS} 只能出现在 MG 标签内部`);
+        if (!markerText) throw new Error(`.${VALUE_MARKER_CLASS} 不能包裹空文本`);
+        valueMarkers.push({parentInstance, text: markerText});
+        for (const child of node.childNodes ?? []) walk(child, ancestors);
+        return;
+      }
       const attrs = isMg ? attrsOf(node) : {};
       const htmlTag = isMg ? node.tagName : undefined;
       const group = attrs.group;
@@ -242,8 +320,11 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       const endOffset = relativeOffset;
       if (!isMg) return;
 
-      const scVideo = isScVideo(htmlTag);
-      const allowedAttrs = new Set(scVideo ? ["group", "order"] : ["group", "order", "mode", "value"]);
+      const generatedVideo = isGeneratedVideoTag(htmlTag);
+      const graphTag = htmlTag === "directed-graph";
+      const allowedAttrs = new Set(generatedVideo
+        ? ["group", "order"]
+        : ["group", "order", "mode", "value", "values", ...(graphTag ? ["nodes", "edges"] : [])]);
       const unknownAttrs = Object.keys(attrs).filter((name) => !allowedAttrs.has(name));
       if (unknownAttrs.length) throw new Error(`<${htmlTag}> 包含不支持的属性: ${unknownAttrs.join(", ")}`);
       if (!group || !GROUP_PATTERN.test(group) || group.length > 80) throw new Error(`<${htmlTag}> 缺少合法 group`);
@@ -254,23 +335,36 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       if (attrs.order !== undefined && (!Number.isInteger(order) || order! < 1 || order! > 999)) {
         throw new Error(`<${htmlTag}> 的 order 必须是 1-999 的正整数`);
       }
-      if (!scVideo && attrs.mode !== "together" && attrs.mode !== "split") {
+      if (!generatedVideo && attrs.mode !== "together" && attrs.mode !== "split") {
         throw new Error(`<${htmlTag}> 的 mode 必须是 together 或 split`);
       }
-      if (scVideo && group !== "normal") throw new Error(`<${htmlTag}> 目前只允许 group=normal`);
-      const value = scVideo ? 1 : Number(attrs.value);
-      if (!scVideo && (!Number.isInteger(value) || value < 1)) throw new Error(`<${htmlTag}> 的 value 必须是正整数`);
+      if (isScVideo(htmlTag) && group !== "normal") throw new Error(`<${htmlTag}> 目前只允许 group=normal`);
+      if (isScLongtake(htmlTag) && group !== "relay") throw new Error(`<${htmlTag}> 目前只允许 group=relay`);
+      const value = generatedVideo ? 1 : (attrs.value === undefined ? undefined : Number(attrs.value));
+      const values = !generatedVideo
+        && attrs.mode === "together"
+        && attrs.values !== undefined
+        ? parseValuesAttribute(htmlTag!, attrs.values)
+        : undefined;
+      const graph = graphTag ? parseDirectedGraphTopology(attrs) : undefined;
+      if (graphTag && !graph) throw new Error("<directed-graph> 必须提供已审核的 nodes 和 edges");
+      if (!generatedVideo && attrs.mode === "split" && (value === undefined || !Number.isInteger(value) || value < 1)) throw new Error(`<${htmlTag}> 的 split value 必须是正整数`);
+      if (!generatedVideo && attrs.mode === "split" && attrs.values !== undefined) throw new Error(`<${htmlTag}> 的 split 不允许使用 values`);
+      if (!generatedVideo && attrs.mode === "together" && attrs.value !== undefined) throw new Error(`<${htmlTag}> 的 together 不允许使用 value`);
+      if (values && values.some((item) => !textContent(node).includes(item))) throw new Error(`<${htmlTag}> 的 values 必须逐字出现在标签正文中`);
       if (endOffset <= startOffset || !textContent(node).trim()) throw new Error(`<${htmlTag}> 不能包裹空文本`);
       if (ancestors.includes(instanceKey!)) throw new Error(`动画实例 ${instanceKey} 不能嵌套自身`);
 
-      const mode: MgMode = scVideo ? "together" : attrs.mode as MgMode;
+      const mode: MgMode = generatedVideo ? "together" : attrs.mode as MgMode;
       tags.push({
         tag: htmlTag!,
         group,
         ...(order === undefined ? {} : {order}),
         instanceKey: instanceKey!,
         mode,
-        value,
+        ...(value === undefined ? {} : {value}),
+        ...(values ? {values} : {}),
+        ...(graph ? {graph} : {}),
         text: textContent(node),
         startOffset,
         endOffset,
@@ -321,10 +415,19 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
     if (instanceTags.some((tag) => tag.parentInstance !== first.parentInstance)) {
       throw new Error(`${instanceKey} 出现在不同父实例；这些是独立实例，必须用连续 order 区分`);
     }
+    if (instanceTags.some((tag) => JSON.stringify(tag.graph ?? null) !== JSON.stringify(first.graph ?? null))) {
+      throw new Error(`${instanceKey} 的 directed-graph 拓扑不一致`);
+    }
     mgProvider.validateAnnotatedInstance({htmlTag: first.tag, tagCount: instanceTags.length});
     const values = [...instanceTags].sort((a, b) => a.documentOrder - b.documentOrder).map((tag) => tag.value);
-    if (!isScVideo(first.tag) && values.some((value, index) => value !== index + 1)) {
+    if (!isGeneratedVideoTag(first.tag) && first.mode === "split" && values.some((value, index) => value !== index + 1)) {
       throw new Error(`${instanceKey} 的 value 必须按正文顺序从 1 连续编号`);
+    }
+  }
+  for (const marker of valueMarkers) {
+    const parent = byInstance.get(marker.parentInstance)?.[0];
+    if (!parent || parent.mode !== "together" || !parent.values?.includes(marker.text)) {
+      throw new Error(`.${VALUE_MARKER_CLASS} 文本“${marker.text}”必须列在父级 together 标签的 values 中`);
     }
   }
 
@@ -409,6 +512,7 @@ export const locateMgInstances = (
         paragraphEnd: tag.paragraphEnd,
         depth: tag.depth,
         parentInstance: tag.parentInstance,
+        ...(tag.graph ? {graph: tag.graph} : {}),
       });
       continue;
     }

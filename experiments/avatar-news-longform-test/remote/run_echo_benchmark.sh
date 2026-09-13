@@ -15,7 +15,7 @@ cd "$ROOT/src/echomimic_v3"
 python "$ROOT/remote/echo_single_gpu.py" \
   --image_path "$RUN_DIR/input/reference_9x16.png" \
   --audio_path "$RUN_DIR/input/article.wav" \
-  --prompt "An anime female financial news anchor speaks directly to the camera with a professional calm expression, accurate lip movement, subtle blinking and small natural head movements, restrained presenter posture, static camera, clean bright studio background, consistent face, hair and clothing." \
+  --prompt "An anime female financial news anchor speaks directly ahead with a professional calm expression, accurate lip movement, subtle blinking and small natural head movements, restrained presenter posture, fixed framing, clean bright studio background, consistent face, hair and clothing." \
   --num_inference_steps 8 \
   --config_path config/config.yaml \
   --model_name "$ROOT/models/echo/Wan2.1-Fun-V1.1-1.3B-InP" \
@@ -35,7 +35,7 @@ python "$ROOT/remote/echo_single_gpu.py" \
   --weight_dtype bfloat16 \
   --sample_size 512 896 \
   --fps 25 \
-  --negative_prompt "subtitles, captions, text, watermark, logo, deformed face, duplicate person, extra limbs, bad hands, camera movement, identity drift" \
+  --negative_prompt "subtitles, captions, text, watermark, logo, deformed face, duplicate person, extra limbs, bad hands, framing movement, identity drift" \
   --shift 5.0
 
 finished="$(date +%s)"

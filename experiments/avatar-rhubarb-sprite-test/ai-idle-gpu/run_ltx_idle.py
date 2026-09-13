@@ -22,11 +22,11 @@ DEFAULT_OUTPUT = SCRIPT_DIR / "output" / "idle_blink_hair_576x1024.mp4"
 DEFAULT_WORKFLOW = REPO_ROOT / "video_ltx2_3_i2v_PRESUB.json"
 DEFAULT_PROMPT = (
     "A static vertical medium shot of the same anime female news presenter from the reference image. "
-    "She looks directly at the camera and keeps the exact same identity, pose, framing, outfit, and white background. "
+    "She looks directly ahead and keeps the exact same identity, pose, framing, outfit, and white background. "
     "Her mouth remains gently closed and completely still; she is not speaking. "
     "She performs one brief, natural, continuous blink around the middle of the clip, with smooth eyelid motion. "
     "A very gentle breeze makes only the bangs and hair tips sway subtly. "
-    "No head movement, no body movement, no camera movement, no zoom, no scene change."
+    "No head movement, no body movement, no framing movement, no zoom, no scene change."
 )
 def resolve_base_url(args: argparse.Namespace) -> str:
     if args.base_url:

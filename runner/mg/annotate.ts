@@ -24,9 +24,11 @@ ${mgProvider.getAnnotationInstructions()}
 
 上游画面预设约束：
 - 你会同时收到“议论文画面预设”。每行包含画面内容、动画形式、动画节奏和视觉细节
-- 把该预设当作本次 HTML 标注的上游视觉契约：需要 AI 生成普通视频时使用 <sc-video group="normal">；结构化 MG 使用对应模板标签
+- 把该预设当作本次 HTML 标注的上游视觉契约：需要 AI 生成普通短视频时使用 <sc-video group="normal">；需要较长连续视觉叙事时使用 <sc-longtake group="relay">；结构化 MG 使用对应模板标签
 - <sc-video> 与其他标签平级，只包裹实际需要生成视频的原文，不要求覆盖全文
 - <sc-video> 只允许 group="normal" 和可选 order，不使用 mode 或 value
+- <sc-longtake> 与 <sc-video> 平级，只包裹一个连续视觉实例；只允许 group="relay" 和可选 order，不使用 mode 或 value
+- 当一段话需要保持同一镜头轴线、主体和运动连续，但预计超过单次 AI 视频的稳定时长时，优先使用 <sc-longtake>；普通短片仍使用 <sc-video>
 - 保持预设的原文顺序和 group 边界，不得把不相邻 group 合并成同一个动画实例；视觉意图只用于决策，绝不能写入 HTML 正文
 - 预设只描述视觉意图；at 仍属于后续 Function Calling 阶段，禁止在本 HTML 中输出 at
 
@@ -34,7 +36,8 @@ ${mgProvider.getAnnotationInstructions()}
 - 标签只包裹实际对应动画节点、元素或视频片段的文字
 - 可以嵌套，但嵌套标签必须属于不同动画实例
 - <mg-title> 和 <emphasis> 每个动画实例只能出现一次
-- 不要让无关的全屏动画重叠；只标注动态图形明显优于普通画面的内容`;
+- 不要让无关的全屏动画重叠；只标注动态图形明显优于普通画面的内容
+- mode="split" 时每个节点独立标注并使用 value；mode="together" 时只使用一个外层标签包裹完整范围，并用 values='["词语1","词语2"]' 指定节点词。values 必须是 JSON 字符串数组且逐字出现在正文中`;
 
 export interface EssayMgAnnotationResult {
   outputPath: string;

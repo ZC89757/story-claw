@@ -4,6 +4,7 @@ import {createHash} from "node:crypto";
 import path from "node:path";
 import type {ToolDefinition} from "@mariozechner/pi-coding-agent";
 import {runSubAgent} from "../../agent.js";
+import {searchWebTool} from "../../tools/search-web.js";
 import type {NovelSelection} from "../../ui/select.js";
 import {novelPaths} from "../../utils/paths.js";
 import {
@@ -12,12 +13,14 @@ import {
   getMediaDuration,
   getVisualTagVideoSettings,
   normalizeVisualTagVideo,
+  extractLastFrame,
   type ArticleTimelineEntry,
 } from "../render.js";
 import {locateMgInstances, validateMgAnnotationHtml} from "./html.js";
-import {assertMgVideoFrames} from "./media.js";
+import {assertMgVideoFrames, runMediaCommand} from "./media.js";
 import {mgProvider, resolveMgFunctionCall} from "./registry.js";
 import type {
+  DirectedGraphAnnotation,
   MgCompositionNode,
   MgInstanceInfo,
   MgPlan,
@@ -37,6 +40,16 @@ const SCOPE_CONCURRENCY = 4;
 const SCOPE_MAX_ATTEMPTS = 3;
 const MEDIA_MAX_ATTEMPTS = 3;
 const VISUAL_RENDER_CACHE_VERSION = 2;
+
+const isGeneratedVideoTag = (tag: string | undefined): boolean =>
+  tag === "sc-video" || tag === "sc-longtake";
+
+const directedGraphNodeId = (index: number): string => `n${index}`;
+
+const formatDirectedGraphTopology = (graph: DirectedGraphAnnotation): string => JSON.stringify({
+  nodes: graph.nodes.map((label, index) => ({id: directedGraphNodeId(index), label})),
+  edges: graph.edges.map(([from, to]) => ({from: directedGraphNodeId(from), to: directedGraphNodeId(to)})),
+}, null, 2);
 
 export const selectMgFunctionDefinitions = (tags: Iterable<string>) =>
   mgProvider.getPlanningTools([...new Set(tags)]);
@@ -66,7 +79,7 @@ const taskSignature = (input: {
   mode: MgInstanceInfo["mode"];
   name: string;
   arguments: Record<string, unknown>;
-  sourceTags: Array<{text: string; value: number; start: number; end: number}>;
+  sourceTags: Array<{text: string; value?: number; start: number; end: number}>;
   render: unknown;
   startFrame: number;
   endFrame: number;
@@ -215,6 +228,40 @@ const placementFor = (candidate: WindowCandidate, index: number, video: MgVideoI
   render: candidate.call.render,
 });
 
+const directedGraphTopologyErrors = (
+  call: ResolvedMgFunctionCall,
+  instance: MgInstanceInfo,
+): string[] => {
+  if (instance.tag !== "directed-graph") return [];
+  const graph = instance.graph;
+  if (!graph) return ["HTML directed-graph 缺少已审核的 nodes/edges 拓扑"];
+  const errors: string[] = [];
+  const rawNodes = call.arguments.nodes;
+  const rawEdges = call.arguments.edges;
+  if (!Array.isArray(rawNodes) || rawNodes.length !== graph.nodes.length) {
+    errors.push(`Function Call 的 nodes 数量必须为 ${graph.nodes.length}`);
+  } else {
+    rawNodes.forEach((raw, index) => {
+      const node = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+      const expectedId = directedGraphNodeId(index);
+      if (node.id !== expectedId) errors.push(`nodes[${index}].id 必须保持为 ${expectedId}`);
+      if (node.label !== graph.nodes[index]) errors.push(`nodes[${index}].label 不得修改 HTML 拓扑文字`);
+    });
+  }
+  if (!Array.isArray(rawEdges) || rawEdges.length !== graph.edges.length) {
+    errors.push(`Function Call 的 edges 数量必须为 ${graph.edges.length}`);
+  } else {
+    rawEdges.forEach((raw, index) => {
+      const edge = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+      const [from, to] = graph.edges[index];
+      if (edge.from !== directedGraphNodeId(from) || edge.to !== directedGraphNodeId(to)) {
+        errors.push(`edges[${index}] 必须保持 HTML 中的 ${directedGraphNodeId(from)} -> ${directedGraphNodeId(to)}`);
+      }
+    });
+  }
+  return errors;
+};
+
 const buildScenes = (
   calls: ResolvedMgFunctionCall[],
   instances: Map<string, MgInstanceInfo>,
@@ -251,6 +298,7 @@ const validateResolvedCall = (
   if (call.order !== instance.order) {
     errors.push(`order 应为 ${instance.order ?? "null"}，实际为 ${call.order ?? "null"}`);
   }
+  errors.push(...directedGraphTopologyErrors(call, instance));
   const rootAt = instance.tags[0].start;
   if (!Number.isFinite(call.at) || Math.abs(call.at - rootAt) > AT_TOLERANCE_SECONDS) {
     errors.push(`根 at=${call.at}，应接近 ${rootAt}`);
@@ -263,6 +311,21 @@ const validateResolvedCall = (
   if (call.elementAts.some((at) => at > videoDuration + AT_TOLERANCE_SECONDS)) {
     errors.push("存在超出整集时长的元素 at");
   }
+  if (call.htmlTag === "sc-longtake") {
+    const segments = Array.isArray(call.arguments.segments) ? call.arguments.segments : [];
+    const segmentAts = segments.map((segment: any) => Number(segment?.at));
+    const endAt = instance.tags.at(-1)!.end;
+    if (segmentAts.length < 2 || segmentAts.length > 8 || segmentAts.some((at) => !Number.isFinite(at))) {
+      errors.push("接力一镜到底必须包含 2-8 个有效 segments");
+    } else {
+      if (Math.abs(segmentAts[0] - rootAt) > AT_TOLERANCE_SECONDS) {
+        errors.push(`第一段 at=${segmentAts[0]}，应接近实例起点 ${rootAt}`);
+      }
+      if (segmentAts.some((at, index) => index > 0 && at >= endAt)) {
+        errors.push(`后续分段 at 必须早于实例结束 ${endAt}`);
+      }
+    }
+  }
   if (errors.length) throw new Error(errors.join("\n"));
 };
 
@@ -270,21 +333,30 @@ const bindHostTimeline = (
   call: ResolvedMgFunctionCall,
   instance: MgInstanceInfo,
 ): ResolvedMgFunctionCall => {
-  if (call.htmlTag !== "sc-video") return call;
+  if (!isGeneratedVideoTag(call.htmlTag)) return call;
   const rootAt = instance.tags[0].start;
-  const argumentsWithoutAt = Object.fromEntries(
-    Object.entries(call.arguments).filter(([key]) => key !== "at"),
-  );
+  const argumentsWithoutAt = call.htmlTag === "sc-longtake"
+    ? {...call.arguments, at: rootAt}
+    : Object.fromEntries(
+      Object.entries(call.arguments).filter(([key]) => key !== "at"),
+    );
   const renderSpec = call.render.spec && typeof call.render.spec === "object"
-    ? Object.fromEntries(
-      Object.entries(call.render.spec as Record<string, unknown>).filter(([key]) => key !== "at"),
-    )
+    ? call.htmlTag === "sc-longtake"
+      ? {...call.render.spec as Record<string, unknown>, at: rootAt}
+      : Object.fromEntries(
+        Object.entries(call.render.spec as Record<string, unknown>).filter(([key]) => key !== "at"),
+      )
     : call.render.spec;
+  const elementAts = call.htmlTag === "sc-longtake"
+    ? [rootAt, ...(Array.isArray(argumentsWithoutAt.segments)
+      ? argumentsWithoutAt.segments.map((segment: any) => Number(segment?.at)).filter(Number.isFinite)
+      : [])]
+    : [rootAt];
   return {
     ...call,
     arguments: argumentsWithoutAt,
     at: rootAt,
-    elementAts: [rootAt],
+    elementAts,
     render: {...call.render, spec: renderSpec},
   };
 };
@@ -332,11 +404,21 @@ const formatScopePrompt = (
     .sort((left, right) => left.tags[0].documentOrder - right.tags[0].documentOrder)
     .map((instance) => {
       const indent = "  ".repeat(instance.depth - root.depth);
-      const values = instance.tag === "sc-video"
+      const values = isGeneratedVideoTag(instance.tag)
         ? instance.tags.map((tag) => `「${tag.text}」`).join("；")
-        : instance.tags.map((tag) => `value=${tag.value}「${tag.text}」`).join("；");
+        : instance.mode === "together"
+          ? `覆盖正文「${instance.tags[0].text}」；节点词 values=${JSON.stringify(instance.tags[0].values ?? [])}`
+          : instance.tags.map((tag) => `value=${tag.value}「${tag.text}」`).join("；");
       return `${indent}- <${instance.tag}> group=${instance.group} order=${instance.order ?? "null"} depth=${instance.depth}：${values}`;
     })
+    .join("\n");
+  const graphContracts = members
+    .filter((instance) => instance.tag === "directed-graph" && instance.graph)
+    .map((instance) => [
+      `\n已由人工审核的 directed-graph 固定拓扑（实例 ${instance.instanceKey}；Function Call 必须原样复制，不能增删、改名、改连线；只补每个节点和连线的绝对 at，以及每条边的 relation）：`,
+      formatDirectedGraphTopology(instance.graph!),
+      "节点 id 必须使用 n0、n1……，nodes 和 edges 的顺序也必须保持不变。",
+    ].join("\n"))
     .join("\n");
   return [
     feedback ? `上次校验错误：\n${feedback}\n请重新处理当前 scope 的全部实例。` : "",
@@ -347,8 +429,9 @@ const formatScopePrompt = (
     "",
     "子结构：",
     structure,
+    graphContracts,
     "",
-    ...(members.some((instance) => instance.tag === "sc-video") ? [
+    ...(members.some((instance) => isGeneratedVideoTag(instance.tag)) ? [
       "可用参考图白名单：",
       referenceImages.length ? referenceImages.map((filePath) => `- ${filePath}`).join("\n") : "- 无",
       "",
@@ -409,10 +492,11 @@ const requestScopeCalls = async (
       };
     },
   }));
+  tools.unshift(searchWebTool);
 
   await runSubAgent(
     tools,
-    `${mgProvider.getPlanningInstructions()}\n\n你只接收当前 scope 的原文和时间，不得补写其他正文。工具调用被接受后会进入代码维护的视频任务队列。`,
+    `${mgProvider.getPlanningInstructions()}\n\n${mgProvider.getTemplatePlanningInstructions(members.map((instance) => instance.tag))}\n\n你只接收当前 scope 的原文和时间，不得补写其他正文。需要网络素材时必须先完成搜索和素材选择，再调用 MG Function Calling。工具调用被接受后会进入代码维护的视频任务队列。`,
     formatScopePrompt(root, members, timeline, referenceImages, feedback),
     `[视觉 Function Calling ${root.instanceKey}]`,
     [],
@@ -447,7 +531,7 @@ const runScope = async (
 const ownTargetWindow = (instance: MgInstanceInfo, video: MgVideoInfo): {startFrame: number; endFrame: number} => {
   const start = instance.tags[0].start;
   const last = instance.tags.at(-1)!;
-  const end = instance.tag === "sc-video"
+  const end = isGeneratedVideoTag(instance.tag)
     ? last.end
     : Math.max(last.end + TRAILING_VISIBLE_SECONDS, start + MIN_VISIBLE_SECONDS);
   const startFrame = Math.max(0, Math.min(video.durationFrames - 1, Math.round(start * video.fps)));
@@ -586,7 +670,7 @@ const describeTask = (
       mode: instance.mode,
       name: call.name,
       arguments: call.arguments,
-      sourceTags: instance.tags.map(({text, value, start, end}) => ({text, value, start, end})),
+      sourceTags: instance.tags.map(({text, value, start, end}) => ({text, ...(value === undefined ? {} : {value}), start, end})),
       render: call.render,
       startFrame,
       endFrame,
@@ -627,6 +711,7 @@ const selectReferenceImage = async (
   referenceImages: string[],
   clipsDir: string,
   fileStem: string,
+  fallbackPrompt = "",
 ): Promise<string> => {
   const args = call.arguments as Record<string, unknown>;
   const state = String(args.reference_image_state ?? "none");
@@ -639,7 +724,7 @@ const selectReferenceImage = async (
   const referencePath = path.join(clipsDir, `${fileStem}_reference.png`);
   const prompt = state === "generate"
     ? String(args.reference_image_prompt ?? "").trim()
-    : String(args.video_prompt ?? "").trim();
+    : fallbackPrompt.trim() || String(args.video_prompt ?? "").trim();
   if (!prompt) throw new Error("缺少参考图或首帧提示词");
   if (!fsSync.existsSync(referencePath)) {
     await generateVisualTagImage(
@@ -687,6 +772,155 @@ const renderScVideoTask = async (
     record.endFrame - record.startFrame,
   );
   await assertMgVideoFrames(outputPath, record.endFrame - record.startFrame, video.fps);
+  return outputPath;
+};
+
+export type ScLongtakeSegmentWindow = {
+  index: number;
+  startFrame: number;
+  endFrame: number;
+};
+
+/** Convert absolute segment timestamps into adjacent, non-empty frame windows. */
+export const computeScLongtakeSegmentWindows = (
+  segments: unknown,
+  startFrame: number,
+  endFrame: number,
+  fps: number,
+): ScLongtakeSegmentWindow[] => {
+  if (!Array.isArray(segments) || segments.length < 2 || segments.length > 8) {
+    throw new Error("<sc-longtake> 必须包含 2-8 个 segments");
+  }
+  if (!Number.isInteger(startFrame) || !Number.isInteger(endFrame) || endFrame <= startFrame) {
+    throw new Error("<sc-longtake> 的主时间窗口无效");
+  }
+  if (!Number.isFinite(fps) || fps <= 0) throw new Error("<sc-longtake> 的帧率无效");
+
+  const timestamps = segments.map((segment: any, index) => {
+    const at = Number(segment?.at);
+    if (!Number.isFinite(at) || at < 0) throw new Error(`<sc-longtake> segments[${index}].at 无效`);
+    return at;
+  });
+  for (let index = 1; index < timestamps.length; index++) {
+    if (timestamps[index] <= timestamps[index - 1]) {
+      throw new Error("<sc-longtake> segments.at 必须严格递增");
+    }
+  }
+  if (Math.abs(timestamps[0] - startFrame / fps) > AT_TOLERANCE_SECONDS) {
+    throw new Error("<sc-longtake> 第一段 at 必须接近主时间窗口起点");
+  }
+
+  const starts = [
+    startFrame,
+    ...timestamps.slice(1).map((at) => Math.round(at * fps)),
+  ];
+  return starts.map((segmentStart, index) => {
+    const segmentEnd = index + 1 < starts.length ? starts[index + 1] : endFrame;
+    if (segmentStart < startFrame || segmentStart >= endFrame || segmentEnd <= segmentStart) {
+      throw new Error(`<sc-longtake> 第 ${index + 1} 段没有有效的帧区间`);
+    }
+    return {index, startFrame: segmentStart, endFrame: segmentEnd};
+  });
+};
+
+const concatScLongtakeSegments = async (
+  segmentPaths: string[],
+  outputPath: string,
+): Promise<void> => {
+  if (!segmentPaths.length) throw new Error("<sc-longtake> 没有可拼接的视频片段");
+  const directory = path.dirname(outputPath);
+  const listPath = `${outputPath}.concat.txt`;
+  const tempOutput = `${outputPath}.concat.mp4`;
+  const list = segmentPaths
+    .map((segmentPath) => `file '${path.basename(segmentPath).replace(/'/g, "'\\''")}'`)
+    .join("\n");
+  await fs.writeFile(listPath, `${list}\n`, "utf-8");
+  try {
+    await runMediaCommand(
+      "ffmpeg",
+      ["-y", "-f", "concat", "-safe", "0", "-i", path.basename(listPath), "-c", "copy", path.basename(tempOutput)],
+      directory,
+    );
+    await fs.rename(tempOutput, outputPath);
+  } finally {
+    await fs.rm(listPath, {force: true});
+    await fs.rm(tempOutput, {force: true});
+  }
+};
+
+const renderScLongtakeTask = async (
+  sel: NovelSelection,
+  call: ResolvedMgFunctionCall,
+  record: VisualFunctionRecord,
+  referenceImages: string[],
+  clipsDir: string,
+  video: MgVideoInfo,
+  update: (status: VisualFunctionStatus, extra?: Partial<VisualFunctionRecord>) => Promise<void>,
+): Promise<string> => {
+  const stem = clipFileStem(call.instanceKey, record.taskSignature);
+  const outputPath = path.join(clipsDir, `${stem}.mp4`);
+  const targetFrames = record.endFrame - record.startFrame;
+  if (await reuseValidClip(outputPath, targetFrames, video.fps)) return outputPath;
+
+  const args = call.arguments as Record<string, unknown>;
+  const segments = Array.isArray(args.segments) ? args.segments : [];
+  const windows = computeScLongtakeSegmentWindows(segments, record.startFrame, record.endFrame, video.fps);
+  const normalizedPaths: string[] = [];
+  let previousTail: string | undefined;
+
+  for (const window of windows) {
+    const segmentNumber = String(window.index + 1).padStart(2, "0");
+    const segmentStem = `${stem}_seg${segmentNumber}`;
+    const generatedPath = path.join(clipsDir, `${segmentStem}_generated.mp4`);
+    const normalizedPath = path.join(clipsDir, `${segmentStem}.mp4`);
+    const tailPath = path.join(clipsDir, `${segmentStem}_tail.png`);
+    const segmentFrames = window.endFrame - window.startFrame;
+    const segment = segments[window.index] as Record<string, unknown>;
+    const basePrompt = String(segment?.video_prompt ?? "").trim();
+    if (!basePrompt) throw new Error(`<sc-longtake> segments[${window.index}] 缺少 video_prompt`);
+
+    const validSegment = await reuseValidClip(normalizedPath, segmentFrames, video.fps);
+    if (!validSegment) {
+      await fs.rm(tailPath, {force: true});
+      let firstFrame = previousTail;
+      if (!firstFrame) {
+        await update("preparing_reference");
+        firstFrame = await selectReferenceImage(sel, call, referenceImages, clipsDir, stem, basePrompt);
+      }
+      const continuityPrompt = window.index === 0
+        ? basePrompt
+        : `Start exactly from the supplied first frame and continue the same uninterrupted shot. Preserve the same subject identity, camera axis, lens, viewpoint, lighting, spatial layout, and motion direction; do not reset the composition or introduce a cut. ${basePrompt}`;
+      await update("generating_video");
+      if (!fsSync.existsSync(generatedPath)) {
+        await generateVisualTagVideo(
+          firstFrame,
+          `${continuityPrompt} No background music, speech, subtitles, captions, text overlays, logos or watermarks.`,
+          generatedPath,
+          sel.aspectRatio,
+          segmentFrames / video.fps,
+        );
+      }
+      await update("normalizing");
+      await normalizeVisualTagVideo(
+        generatedPath,
+        normalizedPath,
+        video.width,
+        video.height,
+        video.fps,
+        segmentFrames,
+      );
+      await assertMgVideoFrames(normalizedPath, segmentFrames, video.fps);
+    }
+    if (!fsSync.existsSync(normalizedPath)) throw new Error(`<sc-longtake> 第 ${window.index + 1} 段生成失败`);
+    if (!fsSync.existsSync(tailPath) && !(await extractLastFrame(normalizedPath, tailPath))) {
+      throw new Error(`<sc-longtake> 第 ${window.index + 1} 段尾帧提取失败`);
+    }
+    normalizedPaths.push(normalizedPath);
+    previousTail = tailPath;
+  }
+
+  await concatScLongtakeSegments(normalizedPaths, outputPath);
+  await assertMgVideoFrames(outputPath, targetFrames, video.fps);
   return outputPath;
 };
 
@@ -1044,7 +1278,17 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
             video,
             (status, extra) => updateRecord(index, status, extra),
           )
-          : await renderTemplateTask(
+          : call.htmlTag === "sc-longtake"
+            ? await renderScLongtakeTask(
+              sel,
+              call,
+              record,
+              referenceImages,
+              clipsDir,
+              video,
+              (status, extra) => updateRecord(index, status, extra),
+            )
+            : await renderTemplateTask(
             sel,
             call,
             record,

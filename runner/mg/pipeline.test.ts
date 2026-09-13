@@ -8,7 +8,7 @@ import {
   stripMgAnnotationDecoration,
   validateMgAnnotationHtml,
 } from "./html.js";
-import {compileMgScenes, selectMgFunctionDefinitions} from "./planner.js";
+import {compileMgScenes, computeScLongtakeSegmentWindows, selectMgFunctionDefinitions} from "./planner.js";
 import {resolveMgFunctionCall} from "./registry.js";
 import type {LocatedMgTag, MgInstanceInfo, MgMode, MgVideoInfo} from "./types.js";
 
@@ -20,7 +20,7 @@ const article = [
 const html = `<!DOCTYPE html>
 <html><body><article>
 <p>谷歌从<progress-timeline group="horizontal" mode="split" value="1">搜索入口</progress-timeline>走向<progress-timeline group="horizontal" mode="split" value="2">AI基础设施</progress-timeline>。</p>
-<p><decomposition group="cards" mode="together" value="1">底层是<emphasis group="scale" mode="together" value="1">芯片</emphasis>，中间是模型，上层是应用</decomposition>。</p>
+<p><decomposition group="cards" mode="together">底层是<emphasis group="scale" mode="together">芯片</emphasis>，中间是模型，上层是应用</decomposition>。</p>
 </article></body></html>`;
 
 const buildTimeline = (source: string): ArticleTimelineEntry[] =>
@@ -50,6 +50,71 @@ test("MG HTML rejects at because timestamps belong to Function Calling", () => {
   assert.throws(() => validateMgAnnotationHtml(invalid, article), /不支持的属性: at/);
 });
 
+test("directed-graph keeps the reviewed topology in the located instance", () => {
+  const source = "显卡连接研究机构。";
+  const valid = `<!DOCTYPE html><html><body><article><p>`
+    + `<directed-graph group="flow" mode="together" nodes='["显卡","研究机构"]' edges='[[0,1]]'>${source}</directed-graph>`
+    + `</p></article></body></html>`;
+  assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
+  const instance = locateMgInstances(valid, buildTimeline(source), source).get("directed-graph::flow::one");
+  assert.deepEqual(instance?.graph, {nodes: ["显卡", "研究机构"], edges: [[0, 1]]});
+  assert.throws(
+    () => validateMgAnnotationHtml(valid.replace("edges='[[0,1]]'", "edges='[[0,2]]'"), source),
+    /节点索引超出 nodes 范围/,
+  );
+  assert.throws(
+    () => validateMgAnnotationHtml(valid.replace(" nodes='[\"显卡\",\"研究机构\"]'", ""), source),
+    /nodes 和 edges 必须同时提供/,
+  );
+});
+
+test("sc-longtake is a single relay video instance without mode or value", () => {
+  const source = "这次转向虽然在短期内增加了成本。";
+  const valid = `<!DOCTYPE html><html><body><article><p>`
+    + `<sc-longtake group="relay">${source}</sc-longtake>`
+    + `</p></article></body></html>`;
+  assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
+  const instance = locateMgInstances(valid, buildTimeline(source), source).get("sc-longtake::relay::one");
+  assert.equal(instance?.mode, "together");
+  assert.deepEqual(instance?.tags.map((tag) => tag.value), [1]);
+
+  assert.throws(
+    () => validateMgAnnotationHtml(valid.replace('group="relay"', 'group="relay" mode="together"'), source),
+    /包含不支持的属性: mode/,
+  );
+  assert.throws(
+    () => validateMgAnnotationHtml(valid.replace('group="relay"', 'group="relay" value="1"'), source),
+    /包含不支持的属性: value/,
+  );
+  assert.throws(
+    () => validateMgAnnotationHtml(valid.replace('group="relay"', 'group="normal"'), source),
+    /group 样式 normal 不可用/,
+  );
+});
+
+test("sc-longtake maps absolute segment times to adjacent non-empty frame windows", () => {
+  assert.deepEqual(
+    computeScLongtakeSegmentWindows([
+      {at: 10.2, video_prompt: "first"},
+      {at: 11.5, video_prompt: "second"},
+      {at: 12.9, video_prompt: "third"},
+    ], 255, 400, 25),
+    [
+      {index: 0, startFrame: 255, endFrame: 288},
+      {index: 1, startFrame: 288, endFrame: 323},
+      {index: 2, startFrame: 323, endFrame: 400},
+    ],
+  );
+  assert.throws(() => computeScLongtakeSegmentWindows([
+    {at: 10, video_prompt: "first"},
+    {at: 10, video_prompt: "second"},
+  ], 250, 350, 25), /segments\.at 必须严格递增/);
+  assert.throws(() => computeScLongtakeSegmentWindows([
+    {at: 10, video_prompt: "first"},
+    {at: 11, video_prompt: "second"},
+  ], 250, 260, 25), /第 2 段没有有效的帧区间/);
+});
+
 test("MG HTML rejects text or formatting markup outside the executable tag protocol", () => {
   const extraText = html.replace("</article>", "额外说明</article>");
   assert.throws(() => validateMgAnnotationHtml(extraText, article), /article 只能直接包含正文 p/);
@@ -69,7 +134,7 @@ test("single-cue templates cannot reuse one group for multiple tags", () => {
 test("mg-title is executable markup and native title is rejected in article text", () => {
   const source = "谷歌的第二次创业";
   const valid = `<!DOCTYPE html><html><body><article><p>` +
-    `<mg-title group="fade" mode="together" value="1">${source}</mg-title>` +
+    `<mg-title group="fade" mode="together">${source}</mg-title>` +
     `</p></article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
   assert.equal(locateMgInstances(valid, buildTimeline(source), source).get("mg-title::fade::one")?.tag, "mg-title");
@@ -79,19 +144,18 @@ test("mg-title is executable markup and native title is rejected in article text
 });
 
 test("all Shotcraft structural tags remain executable through provider-backed HTML tags", () => {
-  const source = "界面展示指标转场节拍效果运镜。";
+  const source = "界面展示指标转场节拍效果。";
   const annotated = `<!DOCTYPE html><html><body><article><p>` +
-    `<mg-showcase group="card-stack" mode="together" value="1">界面</mg-showcase>` +
-    `<mg-metric group="counter-confetti" mode="together" value="1">展示</mg-metric>` +
-    `<mg-transition group="flash-cut" mode="together" value="1">指标</mg-transition>` +
-    `<mg-rhythm group="beat-pump" mode="together" value="1">转场</mg-rhythm>` +
-    `<mg-effect group="line-unfold-panel" mode="together" value="1">节拍</mg-effect>` +
-    `<mg-camera group="slow-push-in" mode="together" value="1">效果运镜</mg-camera>` +
+    `<mg-showcase group="card-stack" mode="together">界面</mg-showcase>` +
+    `<mg-metric group="counter-confetti" mode="together">展示</mg-metric>` +
+    `<mg-transition group="flash-cut" mode="together">指标</mg-transition>` +
+    `<mg-rhythm group="beat-pump" mode="together">转场</mg-rhythm>` +
+    `<mg-effect group="line-unfold-panel" mode="together">节拍效果</mg-effect>` +
     `。</p></article></body></html>`;
-  assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 6, tagCount: 6});
+  assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 5, tagCount: 5});
   const tags = [...locateMgInstances(annotated, buildTimeline(source), source).values()]
     .map((instance) => instance.tag);
-  assert.deepEqual(tags, ["mg-showcase", "mg-metric", "mg-transition", "mg-rhythm", "mg-effect", "mg-camera"]);
+  assert.deepEqual(tags, ["mg-showcase", "mg-metric", "mg-transition", "mg-rhythm", "mg-effect"]);
 });
 
 test("annotation viewer styles expose provider tags and protocol attributes", () => {
@@ -109,36 +173,35 @@ test("annotation viewer styles expose provider tags and protocol attributes", ()
   assert.equal(decorateMgAnnotationHtml(decorated), decorated);
 });
 
-test("order identifies repeated instances while value identifies nodes inside each instance", () => {
+test("order identifies repeated instances while value and values identify their nodes", () => {
   const source = ["十年前走向今天。", "芯片走向模型。"].join("\n\n");
   const repeated = `<!DOCTYPE html><html><body><article>` +
     `<p><progress-timeline group="horizontal" order="1" mode="split" value="1">十年前</progress-timeline>走向` +
     `<progress-timeline group="horizontal" order="1" mode="split" value="2">今天</progress-timeline>。</p>` +
-    `<p><progress-timeline group="horizontal" order="2" mode="together" value="1">芯片</progress-timeline>走向` +
-    `<progress-timeline group="horizontal" order="2" mode="together" value="2">模型</progress-timeline>。</p>` +
+    `<p><progress-timeline group="horizontal" order="2" mode="together" values='["芯片","模型"]'>` +
+    `<span class="mg-value">芯片</span>走向<span class="mg-value">模型</span></progress-timeline>。</p>` +
     `</article></body></html>`;
 
-  assert.deepEqual(validateMgAnnotationHtml(repeated, source), {instanceCount: 2, tagCount: 4});
+  assert.deepEqual(validateMgAnnotationHtml(repeated, source), {instanceCount: 2, tagCount: 3});
   const instances = locateMgInstances(repeated, buildTimeline(source), source);
   assert.equal(instances.get("progress-timeline::horizontal::01")?.group, "horizontal");
   assert.equal(instances.get("progress-timeline::horizontal::02")?.group, "horizontal");
-  assert.deepEqual(instances.get("progress-timeline::horizontal::02")?.tags.map((tag) => tag.value), [1, 2]);
+  assert.deepEqual(instances.get("progress-timeline::horizontal::02")?.tags[0].values, ["芯片", "模型"]);
 
   const differentGroups = repeated
-    .replaceAll('group="horizontal" order="2"', 'group="vertical" order="1"')
     .replaceAll('group="horizontal" order="1" mode="split"', 'group="horizontal" mode="split"')
-    .replaceAll('group="vertical" order="1" mode="together" value="1">芯片</progress-timeline>走向<progress-timeline group="vertical" order="1" mode="together" value="2">模型', 'group="vertical" mode="together" value="1">芯片</progress-timeline>走向<progress-timeline group="vertical" mode="together" value="2">模型');
-  assert.deepEqual(validateMgAnnotationHtml(differentGroups, source), {instanceCount: 2, tagCount: 4});
+    .replace('group="horizontal" order="2" mode="together"', 'group="vertical" mode="together"');
+  assert.deepEqual(validateMgAnnotationHtml(differentGroups, source), {instanceCount: 2, tagCount: 3});
   assert.equal(locateMgInstances(differentGroups, buildTimeline(source), source).get("progress-timeline::vertical::one")?.group, "vertical");
 
   const sameStyle = repeated;
-  assert.deepEqual(validateMgAnnotationHtml(sameStyle, source), {instanceCount: 2, tagCount: 4});
+  assert.deepEqual(validateMgAnnotationHtml(sameStyle, source), {instanceCount: 2, tagCount: 3});
   assert.equal(locateMgInstances(sameStyle, buildTimeline(source), source).get("progress-timeline::horizontal::02")?.group, "horizontal");
 
   const decorated = decorateMgAnnotationHtml(repeated);
   const style = decorated.match(/<style id="story-claw-mg-annotation-style">[\s\S]*?<\/style>/)?.[0] ?? "";
   assert.match(style, /article progress-timeline\[group="horizontal"\]\[order="1"\]::before \{ content: "progress-timeline,group=" attr\(group\)\s+",order=" attr\(order\)\s+",mode=" attr\(mode\)\s+",value=" attr\(value\); \}/);
-  assert.match(style, /article progress-timeline\[group="horizontal"\]\[order="2"\]::before \{ content: "progress-timeline,group=" attr\(group\)\s+",order=" attr\(order\)\s+",mode=" attr\(mode\)\s+",value=" attr\(value\); \}/);
+  assert.match(style, /article progress-timeline\[group="horizontal"\]\[order="2"\]::before \{ content: "progress-timeline,group=" attr\(group\)\s+",order=" attr\(order\)\s+",mode=" attr\(mode\); \}/);
   assert.doesNotMatch(style, /tag=/);
   assert.doesNotMatch(style, /order=implicit/);
   assert.doesNotMatch(style, /·/);
@@ -156,19 +219,18 @@ test("order is forbidden for one tag/group instance and mandatory for repeated t
   const differentGroups = `<!DOCTYPE html><html><body><article>` +
     `<p><progress-timeline group="horizontal" mode="split" value="1">十年前</progress-timeline>走向` +
     `<progress-timeline group="horizontal" mode="split" value="2">今天</progress-timeline>。</p>` +
-    `<p><progress-timeline group="vertical" mode="together" value="1">芯片</progress-timeline>走向` +
-    `<progress-timeline group="vertical" mode="together" value="2">模型</progress-timeline>。</p>` +
+    `<p><progress-timeline group="vertical" mode="together" values='["芯片","模型"]'>芯片走向模型</progress-timeline>。</p>` +
     `</article></body></html>`;
   // Different groups are different instances by themselves; order is not
   // shared across groups and is therefore omitted for both singleton groups.
-  assert.deepEqual(validateMgAnnotationHtml(differentGroups, repeatedSource), {instanceCount: 2, tagCount: 4});
+  assert.deepEqual(validateMgAnnotationHtml(differentGroups, repeatedSource), {instanceCount: 2, tagCount: 3});
 
-  const redundantDifferentGroupOrder = differentGroups.replaceAll('group="vertical" mode=', 'group="vertical" order="2" mode=');
+  const redundantDifferentGroupOrder = differentGroups.replace('group="vertical" mode=', 'group="vertical" order="2" mode=');
   assert.throws(() => validateMgAnnotationHtml(redundantDifferentGroupOrder, repeatedSource), /vertical.*只有一个实例时不应填写 order/);
 
-  const sameGroup = differentGroups.replaceAll('group="vertical" mode=', 'group="horizontal" order="2" mode=')
+  const sameGroup = differentGroups.replace('group="vertical" mode=', 'group="horizontal" order="2" mode=')
     .replaceAll('group="horizontal" mode="split"', 'group="horizontal" order="1" mode="split"');
-  assert.deepEqual(validateMgAnnotationHtml(sameGroup, repeatedSource), {instanceCount: 2, tagCount: 4});
+  assert.deepEqual(validateMgAnnotationHtml(sameGroup, repeatedSource), {instanceCount: 2, tagCount: 3});
 
   const reversed = sameGroup
     .replaceAll('group="horizontal" order="1" mode="split"', 'group="horizontal" order="2" mode="split"')
@@ -254,30 +316,24 @@ test("image stack and grid expose the same media contract", () => {
   assert.deepEqual(Object.keys(stack.render.spec as object), Object.keys(grid.render.spec as object));
 });
 
-test("effect and camera tags are executable and camera scenes retain the raw base", () => {
-  const source = "先扫描页面，再推近核心数字。";
+test("effect tags remain executable through the provider", () => {
+  const source = "先扫描页面，再确认核心数字。";
   const annotated = `<!DOCTYPE html><html><body><article><p>` +
-    `先<mg-effect group="scanline-annotate-focus" mode="together" value="1">扫描页面</mg-effect>，再` +
-    `<mg-camera group="slow-push-in" mode="together" value="1">推近核心数字</mg-camera>。` +
+    `先<mg-effect group="scanline-annotate-focus" mode="together">扫描页面</mg-effect>，再` +
+    `确认核心数字。` +
     `</p></article></body></html>`;
-  assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 2, tagCount: 2});
+  assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 1, tagCount: 1});
   const instances = locateMgInstances(annotated, buildTimeline(source), source);
   const effectCall = resolveMgFunctionCall({
     id: "effect-call",
     name: "create_effect_cue",
     arguments: {group: "scanline-annotate-focus", order: null, at: 0.1, text: "扫描页面", items: [{text: "扫描页面", at: 0.1}]},
   });
-  const cameraCall = resolveMgFunctionCall({
-    id: "camera-call",
-    name: "create_camera_move",
-    arguments: {group: "slow-push-in", order: null, at: 0.8, text: "推近核心数字", items: [{text: "推近核心数字", at: 0.8}]},
-  });
   const scenes = compileMgScenes(
-    [effectCall, cameraCall],
+    [effectCall],
     instances,
     {...video, duration: 20, durationFrames: 500},
   );
-  assert.ok(scenes.some((scene) => scene.render.kind === "camera" && scene.layerRole === "scene"));
   assert.ok(scenes.some((scene) => scene.render.kind === "effect" && scene.layerRole === "overlay"));
 });
 

@@ -1,1 +1,1 @@
-Static camera, one natural blink.
+Fixed framing, one natural blink.

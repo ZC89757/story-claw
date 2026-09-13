@@ -361,11 +361,11 @@ export const CoffeeCostMG = ({engine}: {engine: AnimationEngine}) => {
   });
   const titleY = interpolate(titleProgress, [0, 1], [58, 0]);
 
-  const cameraScale = interpolate(frame, [122, 179], [1, 1.035], {
+  const viewportScale = interpolate(frame, [122, 179], [1, 1.035], {
     ...clamp,
     easing: Easing.inOut(Easing.cubic),
   });
-  const cameraX = interpolate(frame, [122, 179], [0, -18], clamp);
+  const viewportX = interpolate(frame, [122, 179], [0, -18], clamp);
 
   const conclusionProgress = spring({
     frame: frame - 122,
@@ -450,7 +450,7 @@ export const CoffeeCostMG = ({engine}: {engine: AnimationEngine}) => {
           position: "absolute",
           left: 108,
           top: 368,
-          transform: `translateX(${cameraX}px) scale(${cameraScale})`,
+          transform: `translateX(${viewportX}px) scale(${viewportScale})`,
           transformOrigin: "center center",
         }}
       >

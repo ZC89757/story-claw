@@ -78,6 +78,11 @@ def _cli_env() -> dict[str, str]:
 
 
 def _cli_path() -> str:
+    # Prefer Python310 version
+    py310_path = os.path.join(os.environ.get("APPDATA", ""), "Python", "Python310", "Scripts", "compshare.exe")
+    if os.path.isfile(py310_path):
+        return py310_path
+    
     found = shutil.which("compshare")
     if found:
         return found
@@ -216,3 +221,4 @@ def stop_instance() -> tuple[bool, str]:
     if result.get("ok") is True or state_after.lower() == "stopped":
         return True, f"instance state: {state_after or 'stop accepted'}"
     return False, f"{_message(result)}; current state: {state_after or 'unknown'}"
+
