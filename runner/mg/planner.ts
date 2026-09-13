@@ -33,8 +33,6 @@ import type {
 } from "./types.js";
 
 const AT_TOLERANCE_SECONDS = 0.35;
-const MIN_VISIBLE_SECONDS = 0.8;
-const TRAILING_VISIBLE_SECONDS = 0.4;
 const SCOPE_CONCURRENCY = 4;
 const SCOPE_MAX_ATTEMPTS = 3;
 const MEDIA_MAX_ATTEMPTS = 3;
@@ -148,9 +146,27 @@ type WindowCandidate = {
   order: number;
 };
 
+const nextMgStart = (
+  tag: MgInstanceInfo["tags"][number],
+  owner: MgInstanceInfo,
+  instances: Map<string, MgInstanceInfo>,
+): number | undefined => [...instances.values()]
+  .filter((candidate) => {
+    let parent = candidate.parentInstance;
+    while (parent) {
+      if (parent === owner.instanceKey) return false;
+      parent = instances.get(parent)?.parentInstance;
+    }
+    return candidate.instanceKey !== owner.instanceKey;
+  })
+  .flatMap((candidate) => candidate.tags)
+  .filter((candidate) => candidate.documentOrder > tag.documentOrder)
+  .sort((left, right) => left.documentOrder - right.documentOrder)[0]?.start;
+
 const instanceWindows = (
   call: ResolvedMgFunctionCall,
   instance: MgInstanceInfo,
+  instances: Map<string, MgInstanceInfo>,
   video: MgVideoInfo,
 ): WindowCandidate[] => {
   const frame = (seconds: number) => Math.max(0, Math.min(video.durationFrames, Math.round(seconds * video.fps)));
@@ -158,7 +174,7 @@ const instanceWindows = (
   const rootFrame = startFrameAt(call.at);
   if (instance.mode === "together") {
     const lastTag = instance.tags.at(-1)!;
-    const endSeconds = Math.max(lastTag.end + TRAILING_VISIBLE_SECONDS, call.at + MIN_VISIBLE_SECONDS);
+    const endSeconds = nextMgStart(lastTag, instance, instances) ?? video.duration;
     return [{
       key: `${instance.instanceKey}-together`, instance, call, rootFrame,
       startFrame: rootFrame,
@@ -169,16 +185,14 @@ const instanceWindows = (
   }
   return instance.tags.map((tag, index) => {
     const startFrame = startFrameAt(tag.start);
-    const nextStartFrame = instance.tags[index + 1]
-      ? startFrameAt(instance.tags[index + 1].start)
-      : video.durationFrames;
-    const desiredEnd = frame(Math.max(tag.end + TRAILING_VISIBLE_SECONDS, tag.start + MIN_VISIBLE_SECONDS));
+    const nextStart = nextMgStart(tag, instance, instances);
+    const nextStartFrame = nextStart === undefined ? video.durationFrames : frame(nextStart);
     return {
       key: `${instance.instanceKey}-split-${index + 1}`,
       instance, call, rootFrame, startFrame,
       endFrame: Math.min(
         video.durationFrames,
-        Math.max(startFrame + 1, Math.min(desiredEnd, Math.max(startFrame + 1, nextStartFrame - 1))),
+        Math.max(startFrame + 1, nextStartFrame),
       ),
       sourceText: tag.text,
       order: tag.documentOrder,
@@ -266,7 +280,7 @@ const buildScenes = (
   instances: Map<string, MgInstanceInfo>,
   video: MgVideoInfo,
 ): MgScenePlan[] => {
-  const allWindows = calls.flatMap((call) => instanceWindows(call, instances.get(call.instanceKey)!, video));
+  const allWindows = calls.flatMap((call) => instanceWindows(call, instances.get(call.instanceKey)!, instances, video));
   const sceneWindows = resolveSceneIntervals(allWindows.filter((candidate) => candidate.call.layerRole === "scene"));
   const overlayWindows = allWindows.filter((candidate) => candidate.call.layerRole === "overlay");
   const ordered = [
@@ -527,12 +541,19 @@ const runScope = async (
   throw lastError ?? new Error(`${root.instanceKey} Function Calling 失败`);
 };
 
-const ownTargetWindow = (instance: MgInstanceInfo, video: MgVideoInfo): {startFrame: number; endFrame: number} => {
+const ownTargetWindow = (
+  instance: MgInstanceInfo,
+  instances: Map<string, MgInstanceInfo>,
+  video: MgVideoInfo,
+): {startFrame: number; endFrame: number} => {
   const start = instance.tags[0].start;
   const last = instance.tags.at(-1)!;
-  const end = isGeneratedVideoTag(instance.tag)
+  const nextStart = isGeneratedVideoTag(instance.tag)
+    ? undefined
+    : nextMgStart(last, instance, instances);
+  const end = nextStart ?? (isGeneratedVideoTag(instance.tag)
     ? last.end
-    : Math.max(last.end + TRAILING_VISIBLE_SECONDS, start + MIN_VISIBLE_SECONDS);
+    : video.duration);
   const startFrame = Math.max(0, Math.min(video.durationFrames - 1, Math.round(start * video.fps)));
   const endFrame = Math.min(
     video.durationFrames,
@@ -549,7 +570,7 @@ const targetWindow = (
 ): {startFrame: number; endFrame: number} => {
   const existing = cache.get(instance.instanceKey);
   if (existing) return existing;
-  const own = ownTargetWindow(instance, video);
+  const own = ownTargetWindow(instance, instances, video);
   if (!instance.parentInstance) {
     cache.set(instance.instanceKey, own);
     return own;
@@ -583,19 +604,18 @@ const intersectWindows = (left: FrameWindow[], right: FrameWindow[]): FrameWindo
 
 const ownActiveWindows = (
   instance: MgInstanceInfo,
+  instances: Map<string, MgInstanceInfo>,
   video: MgVideoInfo,
   target: FrameWindow,
 ): FrameWindow[] => {
   if (instance.mode !== "split") return [target];
-  return instance.tags.flatMap((tag, index) => {
+  return instance.tags.flatMap((tag) => {
     const startFrame = Math.max(target.startFrame, Math.round(tag.start * video.fps));
-    const nextStartFrame = instance.tags[index + 1]
-      ? Math.round(instance.tags[index + 1].start * video.fps)
-      : target.endFrame;
-    const desiredEndFrame = Math.round(
-      Math.max(tag.end + TRAILING_VISIBLE_SECONDS, tag.start + MIN_VISIBLE_SECONDS) * video.fps,
+    const nextStart = nextMgStart(tag, instance, instances);
+    const endFrame = Math.min(
+      target.endFrame,
+      nextStart === undefined ? target.endFrame : Math.max(startFrame + 1, Math.round(nextStart * video.fps)),
     );
-    const endFrame = Math.min(target.endFrame, desiredEndFrame, Math.max(startFrame + 1, nextStartFrame - 1));
     if (endFrame <= startFrame) return [];
     return [{startFrame, endFrame}];
   });
@@ -611,7 +631,7 @@ const effectiveActiveWindows = (
   const existing = activeCache.get(instance.instanceKey);
   if (existing) return existing;
   const target = targetWindow(instance, instances, video, windowCache);
-  let windows = ownActiveWindows(instance, video, target);
+  let windows = ownActiveWindows(instance, instances, video, target);
   if (instance.parentInstance) {
     const parent = instances.get(instance.parentInstance);
     if (!parent) throw new Error(`${instance.instanceKey} 找不到父实例 ${instance.parentInstance}`);

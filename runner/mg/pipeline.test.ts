@@ -389,12 +389,12 @@ const progressCall = resolveMgFunctionCall({
   },
 });
 
-test("split renders separated windows and restores raw footage in the gap", () => {
+test("split windows meet at the next global MG cue", () => {
   const instance = makeInstance("split");
   const scenes = compileMgScenes([progressCall], new Map([[instance.instanceKey, instance]]), video);
   assert.equal(scenes.length, 2);
   assert.deepEqual(scenes.map((scene) => scene.startFrame), [25, 250]);
-  assert.ok(scenes[0].endFrame < scenes[1].startFrame);
+  assert.equal(scenes[0].endFrame, scenes[1].startFrame);
   assert.deepEqual(scenes.map((scene) => scene.timelineOffsetFrames), [0, 225]);
 });
 
