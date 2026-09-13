@@ -300,36 +300,39 @@ export async function renderVisualTagTemplateClip(
     transparentBackground: isAlpha,
   };
   const publicDir = await fs.mkdtemp(path.join(process.env.TEMP ?? process.env.TMP ?? ".", "story-claw-mg-clip-"));
-  await preparePublicAssets(input, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
-  const serveUrl = await bundle({entryPoint: REMOTION_ENTRY, publicDir});
-  const composition = await selectComposition({serveUrl, id: "StoryClawMgEpisode", inputProps: {episode: input}});
-  await fs.mkdir(path.dirname(outputPath), {recursive: true});
-  const nextPath = `${outputPath}.next${path.extname(outputPath)}`;
-  await fs.rm(nextPath, {force: true});
-  await renderMedia({
-    composition,
-    serveUrl,
-    codec: isAlpha ? "prores" : "h264",
-    muted: false,
-    outputLocation: nextPath,
-    inputProps: {episode: input},
-    ...(isAlpha
-      ? {
-        imageFormat: "png" as const,
-        pixelFormat: "yuva444p10le" as const,
-        proResProfile: "4444" as const,
-      }
-      : {
-        crf: 18,
-        x264Preset: "fast" as const,
-        pixelFormat: "yuv420p" as const,
-      }),
-    logLevel: "warn",
-  });
-  await assertMgVideoFrames(nextPath, durationFrames, fps);
-  await fs.rm(outputPath, {force: true});
-  await fs.rename(nextPath, outputPath);
-  await fs.rm(publicDir, {recursive: true, force: true});
+  try {
+    await preparePublicAssets(input, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
+    const serveUrl = await bundle({entryPoint: REMOTION_ENTRY, publicDir});
+    const composition = await selectComposition({serveUrl, id: "StoryClawMgEpisode", inputProps: {episode: input}});
+    await fs.mkdir(path.dirname(outputPath), {recursive: true});
+    const nextPath = `${outputPath}.next${path.extname(outputPath)}`;
+    await fs.rm(nextPath, {force: true});
+    await renderMedia({
+      composition,
+      serveUrl,
+      codec: isAlpha ? "prores" : "h264",
+      muted: false,
+      outputLocation: nextPath,
+      inputProps: {episode: input},
+      ...(isAlpha
+        ? {
+          imageFormat: "png" as const,
+          pixelFormat: "yuva444p10le" as const,
+          proResProfile: "4444" as const,
+        }
+        : {
+          crf: 18,
+          x264Preset: "fast" as const,
+          pixelFormat: "yuv420p" as const,
+        }),
+      logLevel: "warn",
+    });
+    await assertMgVideoFrames(nextPath, durationFrames, fps);
+    await fs.rm(outputPath, {force: true});
+    await fs.rename(nextPath, outputPath);
+  } finally {
+    await fs.rm(publicDir, {recursive: true, force: true});
+  }
 }
 
 const persistentNodeKeys = new Set([
@@ -410,39 +413,42 @@ export async function renderEssayMgEpisode(sel: NovelSelection): Promise<string>
   const nodeCount = runtimeInput.nodes?.length ?? 0;
 
   const publicDir = await fs.mkdtemp(path.join(process.env.TEMP ?? process.env.TMP ?? ".", "story-claw-mg-"));
-  await preparePublicAssets(runtimeInput, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
-  console.log("[MG渲染] 正在打包模板 Provider 运行时...");
-  const serveUrl = await bundle({
-    entryPoint: REMOTION_ENTRY,
-    publicDir,
-    onProgress: (progress) => {
-      if (progress === 1 || Math.round(progress * 100) % 20 === 0) console.log(`[MG渲染] 模板打包 ${Math.round(progress * 100)}%`);
-    },
-  });
-  const composition = await selectComposition({serveUrl, id: "StoryClawMgEpisode", inputProps: {episode: runtimeInput}});
-  const nextPath = `${outputPath}.next.mp4`;
-  await fs.rm(nextPath, {force: true});
-  console.log(
-    nodeCount === 0
-      ? `[MG渲染] 无视觉标签，输出 ${renderBundle.durationFrames} 帧黑底兜底视频`
-      : `[MG渲染] 整集合成 ${nodeCount} 个合成节点 / ${renderBundle.durationFrames} 帧`,
-  );
-  await renderMedia({
-    composition,
-    serveUrl,
-    codec: "h264",
-    muted: false,
-    outputLocation: nextPath,
-    inputProps: {episode: runtimeInput},
-    crf: 18,
-    x264Preset: "fast",
-    pixelFormat: "yuv420p",
-    logLevel: "warn",
-  });
-  await assertMgVideoFrames(nextPath, renderBundle.durationFrames, renderBundle.fps);
-  await fs.rm(outputPath, {force: true});
-  await fs.rename(nextPath, outputPath);
-  await fs.rm(publicDir, {recursive: true, force: true});
+  try {
+    await preparePublicAssets(runtimeInput, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
+    console.log("[MG渲染] 正在打包模板 Provider 运行时...");
+    const serveUrl = await bundle({
+      entryPoint: REMOTION_ENTRY,
+      publicDir,
+      onProgress: (progress) => {
+        if (progress === 1 || Math.round(progress * 100) % 20 === 0) console.log(`[MG渲染] 模板打包 ${Math.round(progress * 100)}%`);
+      },
+    });
+    const composition = await selectComposition({serveUrl, id: "StoryClawMgEpisode", inputProps: {episode: runtimeInput}});
+    const nextPath = `${outputPath}.next.mp4`;
+    await fs.rm(nextPath, {force: true});
+    console.log(
+      nodeCount === 0
+        ? `[MG渲染] 无视觉标签，输出 ${renderBundle.durationFrames} 帧黑底兜底视频`
+        : `[MG渲染] 整集合成 ${nodeCount} 个合成节点 / ${renderBundle.durationFrames} 帧`,
+    );
+    await renderMedia({
+      composition,
+      serveUrl,
+      codec: "h264",
+      muted: false,
+      outputLocation: nextPath,
+      inputProps: {episode: runtimeInput},
+      crf: 18,
+      x264Preset: "fast",
+      pixelFormat: "yuv420p",
+      logLevel: "warn",
+    });
+    await assertMgVideoFrames(nextPath, renderBundle.durationFrames, renderBundle.fps);
+    await fs.rm(outputPath, {force: true});
+    await fs.rename(nextPath, outputPath);
+  } finally {
+    await fs.rm(publicDir, {recursive: true, force: true});
+  }
   return outputPath;
 }
 

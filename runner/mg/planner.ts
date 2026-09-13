@@ -109,6 +109,19 @@ const readFunctionRecords = async (sel: NovelSelection): Promise<VisualFunctionR
   }
 };
 
+const cleanupUnreferencedClips = async (
+  sel: NovelSelection,
+  records: VisualFunctionRecord[],
+): Promise<void> => {
+  const clipsDir = novelPaths.mgClipsDir(sel.novelName, sel.episode);
+  const referenced = new Set(records.map((record) => record.videoPath).filter(Boolean).map((file) => path.resolve(file!)));
+  let entries: fsSync.Dirent[];
+  try { entries = await fs.readdir(clipsDir, {withFileTypes: true}); } catch { return; }
+  await Promise.all(entries
+    .filter((entry) => entry.isFile() && !referenced.has(path.resolve(clipsDir, entry.name)))
+    .map((entry) => fs.rm(path.join(clipsDir, entry.name), {force: true})));
+};
+
 const createRecordWriter = (sel: NovelSelection, records: VisualFunctionRecord[]) => {
   let pending = Promise.resolve();
   return (): Promise<void> => {
@@ -1144,6 +1157,7 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
   ]);
 
   const previousRecords = await readFunctionRecords(sel);
+  await cleanupUnreferencedClips(sel, previousRecords);
   const previousByInstance = new Map(previousRecords.map((record) => [record.instanceKey, record]));
   const windowCache = new Map<string, {startFrame: number; endFrame: number}>();
   const reusableCalls = new Map<string, ResolvedMgFunctionCall>();
@@ -1320,6 +1334,7 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
     fs.writeFile(novelPaths.mgFunctionCalls(sel.novelName, sel.episode), `${JSON.stringify(records, null, 2)}\n`, "utf-8"),
     fs.writeFile(novelPaths.mgRenderBundle(sel.novelName, sel.episode), `${JSON.stringify(bundle, null, 2)}\n`, "utf-8"),
   ]);
+  await cleanupUnreferencedClips(sel, records);
   console.log(`[视觉规划] ${scopesToRun.length}/${roots.length} 个 Agent scope / ${records.length} 个 Function Call / ${nodes.length} 个合成节点`);
   return novelPaths.mgFunctionCalls(sel.novelName, sel.episode);
 }
