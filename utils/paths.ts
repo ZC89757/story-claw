@@ -158,10 +158,6 @@ export const novelPaths = {
   mgFunctionCalls: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "function_calls.json"),
 
-  /** 经校验、可执行的 MG 计划 */
-  mgPlan: (novelName: string, episodeNum: number) =>
-    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "mg_plan.json"),
-
   /** Remotion 渲染所需的完整场景数据 */
   mgRenderBundle: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "render_bundle.json"),
@@ -171,9 +167,6 @@ export const novelPaths = {
 
   mgPropsDir: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "render-props"),
-
-  mgPublicDir: (novelName: string, episodeNum: number) =>
-    path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "public"),
 
   mgNormalizedDir: (novelName: string, episodeNum: number) =>
     path.join(PATHS.workspace, novelName, `ep${String(episodeNum).padStart(2, "0")}`, "mg", "normalized"),

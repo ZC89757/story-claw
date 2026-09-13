@@ -431,7 +431,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       p.start(progressIndex.mgPlan, title);
       if (!needsVisualPlanning) {
         await Promise.all([
-          fs.access(novelPaths.mgPlan(sel.novelName, ep)),
+          fs.access(novelPaths.mgFunctionCalls(sel.novelName, ep)),
           fs.access(novelPaths.mgRenderBundle(sel.novelName, ep)),
         ]);
         p.done(progressIndex.mgPlan, title, "已完成，跳过");
@@ -444,7 +444,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         await planEssayMg(sel);
         await markStage(sel.novelName, ep, "mgPlan", "done");
         epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
-        p.done(progressIndex.mgPlan, title, "function_calls.json / 视频片段 / mg_plan.json");
+        p.done(progressIndex.mgPlan, title, "function_calls.json / render_bundle.json / 视频片段");
       }
       // planEssayMg 只有在全部 Function Calling 视频片段落盘后才返回。
       stopGpu();

@@ -11,7 +11,7 @@ import {generateImage} from "../../utils/image-gen.js";
 import {removeSolidBackground as removeSolidBackgroundImage} from "../../utils/remove-solid-background.js";
 import {novelPaths} from "../../utils/paths.js";
 import {assertMgVideoFrames} from "./media.js";
-import type {MgPlan, MgRenderBundle} from "./types.js";
+import type {MgRenderBundle, VisualFunctionRecord} from "./types.js";
 import type {
   CompositionNode,
   MgRuntimeCompositionNode,
@@ -299,7 +299,7 @@ export async function renderVisualTagTemplateClip(
     nodes: [node],
     transparentBackground: isAlpha,
   };
-  const publicDir = path.join(novelPaths.mgPublicDir(sel.novelName, sel.episode), assetKey(instanceKey));
+  const publicDir = await fs.mkdtemp(path.join(process.env.TEMP ?? process.env.TMP ?? ".", "story-claw-mg-clip-"));
   await preparePublicAssets(input, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
   const serveUrl = await bundle({entryPoint: REMOTION_ENTRY, publicDir});
   const composition = await selectComposition({serveUrl, id: "StoryClawMgEpisode", inputProps: {episode: input}});
@@ -329,6 +329,7 @@ export async function renderVisualTagTemplateClip(
   await assertMgVideoFrames(nextPath, durationFrames, fps);
   await fs.rm(outputPath, {force: true});
   await fs.rename(nextPath, outputPath);
+  await fs.rm(publicDir, {recursive: true, force: true});
 }
 
 const persistentNodeKeys = new Set([
@@ -358,47 +359,14 @@ function assertPersistentNode(value: unknown, label: string): asserts value is C
   }
 }
 
-const assertPlanBundleConsistency = (plan: MgPlan, renderBundle: MgRenderBundle): void => {
-  if (plan.version !== 4 || renderBundle.version !== 4) throw new Error("mg_plan 与 render_bundle 必须使用 version=4");
-  const sourceShape = {
-    width: plan.source.width,
-    height: plan.source.height,
-    fps: plan.source.fps,
-    durationFrames: plan.source.durationFrames,
-  };
-  const bundleShape = {
-    width: renderBundle.width,
-    height: renderBundle.height,
-    fps: renderBundle.fps,
-    durationFrames: renderBundle.durationFrames,
-  };
-  if (JSON.stringify(sourceShape) !== JSON.stringify(bundleShape)) {
-    throw new Error("mg_plan 与 render_bundle 的画布、FPS 或总帧数不一致");
-  }
-  if (!Array.isArray(plan.nodes) || !Array.isArray(renderBundle.nodes)) {
-    throw new Error("mg_plan 或 render_bundle 缺少合成节点数组");
-  }
-  if (plan.nodes.length !== renderBundle.nodes.length) {
-    throw new Error("mg_plan 与 render_bundle 的合成节点数量不一致");
-  }
-  for (let index = 0; index < plan.nodes.length; index++) {
-    assertPersistentNode(plan.nodes[index], `mg_plan.nodes[${index}]`);
-    assertPersistentNode(renderBundle.nodes[index], `render_bundle.nodes[${index}]`);
-    if (JSON.stringify(plan.nodes[index]) !== JSON.stringify(renderBundle.nodes[index])) {
-      throw new Error(`mg_plan 与 render_bundle 的第 ${index + 1} 个合成节点不一致`);
-    }
-  }
-};
-
-const buildRuntimeInput = (plan: MgPlan, renderBundle: MgRenderBundle): MgRuntimeEpisodeInput => {
-  assertPlanBundleConsistency(plan, renderBundle);
-  if (!Array.isArray(plan.functionCalls)) throw new Error("mg_plan 缺少 Function Call 记录");
-  const calls = new Map(plan.functionCalls.map((record) => [record.instanceKey, record]));
-  if (calls.size !== plan.functionCalls.length) throw new Error("mg_plan 存在重复的 Function Call 实例");
+const buildRuntimeInput = (records: VisualFunctionRecord[], renderBundle: MgRenderBundle): MgRuntimeEpisodeInput => {
+  if (!Array.isArray(records)) throw new Error("function_calls.json 格式无效");
+  const calls = new Map(records.map((record) => [record.instanceKey, record]));
+  if (calls.size !== records.length) throw new Error("function_calls.json 存在重复实例");
   const nodes: MgRuntimeCompositionNode[] = renderBundle.nodes.map((node, index) => {
     const record = calls.get(node.nodeId);
     if (!record) throw new Error(`合成节点 ${node.nodeId} 缺少 Function Call 记录`);
-    if (plan.functionCalls[index]?.instanceKey !== node.nodeId) {
+    if (records[index]?.instanceKey !== node.nodeId) {
       throw new Error(`合成节点 ${node.nodeId} 与 Function Call 的持久化顺序不一致`);
     }
     if (record.status !== "completed" || !record.videoPath) {
@@ -417,7 +385,7 @@ const buildRuntimeInput = (plan: MgPlan, renderBundle: MgRenderBundle): MgRuntim
       ...(record.activeWindows?.length ? {activeWindows: record.activeWindows} : {}),
     };
   });
-  if (nodes.length !== plan.functionCalls.length) {
+  if (nodes.length !== records.length) {
     throw new Error("Function Call 数量与合成节点数量不一致");
   }
   return {
@@ -431,17 +399,17 @@ const buildRuntimeInput = (plan: MgPlan, renderBundle: MgRenderBundle): MgRuntim
 
 /** Render every completed visual-tag clip in one full-episode composition. */
 export async function renderEssayMgEpisode(sel: NovelSelection): Promise<string> {
-  const planPath = novelPaths.mgPlan(sel.novelName, sel.episode);
+  const callsPath = novelPaths.mgFunctionCalls(sel.novelName, sel.episode);
   const bundlePath = novelPaths.mgRenderBundle(sel.novelName, sel.episode);
   const outputPath = novelPaths.episodeMgRawVideo(sel.novelName, sel.episode);
-  const [plan, renderBundle] = await Promise.all([
-    fs.readFile(planPath, "utf-8").then((value) => JSON.parse(value) as MgPlan),
+  const [records, renderBundle] = await Promise.all([
+    fs.readFile(callsPath, "utf-8").then((value) => JSON.parse(value) as VisualFunctionRecord[]),
     fs.readFile(bundlePath, "utf-8").then((value) => JSON.parse(value) as MgRenderBundle),
   ]);
-  const runtimeInput = buildRuntimeInput(plan, renderBundle);
+  const runtimeInput = buildRuntimeInput(records, renderBundle);
   const nodeCount = runtimeInput.nodes?.length ?? 0;
 
-  const publicDir = novelPaths.mgPublicDir(sel.novelName, sel.episode);
+  const publicDir = await fs.mkdtemp(path.join(process.env.TEMP ?? process.env.TMP ?? ".", "story-claw-mg-"));
   await preparePublicAssets(runtimeInput, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
   console.log("[MG渲染] 正在打包模板 Provider 运行时...");
   const serveUrl = await bundle({
@@ -474,6 +442,7 @@ export async function renderEssayMgEpisode(sel: NovelSelection): Promise<string>
   await assertMgVideoFrames(nextPath, renderBundle.durationFrames, renderBundle.fps);
   await fs.rm(outputPath, {force: true});
   await fs.rename(nextPath, outputPath);
+  await fs.rm(publicDir, {recursive: true, force: true});
   return outputPath;
 }
 

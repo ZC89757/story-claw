@@ -23,7 +23,6 @@ import type {
   DirectedGraphAnnotation,
   MgCompositionNode,
   MgInstanceInfo,
-  MgPlan,
   MgRenderBundle,
   MgScenePlan,
   MgVideoInfo,
@@ -960,17 +959,6 @@ const renderTemplateTask = async (
   return outputPath;
 };
 
-const planInstancesFor = (instances: Map<string, MgInstanceInfo>): MgPlan["instances"] =>
-  [...instances.values()].map((instance) => ({
-    instanceKey: instance.instanceKey,
-    group: instance.group,
-    tag: instance.tag,
-    ...(instance.order === undefined ? {} : {order: instance.order}),
-    mode: instance.mode,
-    tagCount: instance.tags.length,
-    starts: instance.tags.map((tag) => tag.start),
-  }));
-
 const compositionNodesFor = (
   records: VisualFunctionRecord[],
   callsByInstance: Map<string, ResolvedMgFunctionCall>,
@@ -1014,7 +1002,6 @@ export async function isEssayMgPlanCurrent(sel: NovelSelection): Promise<boolean
       audioDuration,
       referenceImages,
       recordsRaw,
-      planRaw,
       bundleRaw,
     ] = await Promise.all([
       fs.readFile(htmlPath, "utf-8"),
@@ -1023,13 +1010,11 @@ export async function isEssayMgPlanCurrent(sel: NovelSelection): Promise<boolean
       getMediaDuration(audioPath),
       listReferenceImages(sel),
       fs.readFile(novelPaths.mgFunctionCalls(sel.novelName, sel.episode), "utf-8"),
-      fs.readFile(novelPaths.mgPlan(sel.novelName, sel.episode), "utf-8"),
       fs.readFile(novelPaths.mgRenderBundle(sel.novelName, sel.episode), "utf-8"),
     ]);
     validateMgAnnotationHtml(html, article);
     const timeline = JSON.parse(timelineRaw) as ArticleTimelineEntry[];
     const records = JSON.parse(recordsRaw) as VisualFunctionRecord[];
-    const plan = JSON.parse(planRaw) as MgPlan;
     const bundle = JSON.parse(bundleRaw) as MgRenderBundle;
     if (!Array.isArray(records)) return false;
 
@@ -1091,18 +1076,7 @@ export async function isEssayMgPlanCurrent(sel: NovelSelection): Promise<boolean
       durationFrames: video.durationFrames,
       nodes,
     };
-    const expectedSource: MgPlan["source"] = {
-      ...video,
-      html: htmlPath,
-      timeline: timelinePath,
-      audio: audioPath,
-    };
-    return plan.version === 4
-      && sameJson(plan.source, expectedSource)
-      && sameJson(plan.instances, planInstancesFor(instances))
-      && sameJson(plan.functionCalls, records)
-      && sameJson(plan.nodes, nodes)
-      && sameJson(bundle, expectedBundle);
+    return sameJson(bundle, expectedBundle);
   } catch {
     return false;
   }
@@ -1322,17 +1296,10 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
     durationFrames: video.durationFrames,
     nodes,
   };
-  const plan: MgPlan = {
-    version: 4,
-    source: {...video, html: htmlPath, timeline: timelinePath, audio: audioPath},
-    instances: planInstancesFor(instances),
-    functionCalls: records,
-    nodes,
-  };
   await Promise.all([
-    fs.writeFile(novelPaths.mgPlan(sel.novelName, sel.episode), `${JSON.stringify(plan, null, 2)}\n`, "utf-8"),
+    fs.writeFile(novelPaths.mgFunctionCalls(sel.novelName, sel.episode), `${JSON.stringify(records, null, 2)}\n`, "utf-8"),
     fs.writeFile(novelPaths.mgRenderBundle(sel.novelName, sel.episode), `${JSON.stringify(bundle, null, 2)}\n`, "utf-8"),
   ]);
   console.log(`[视觉规划] ${scopesToRun.length}/${roots.length} 个 Agent scope / ${records.length} 个 Function Call / ${nodes.length} 个合成节点`);
-  return novelPaths.mgPlan(sel.novelName, sel.episode);
+  return novelPaths.mgFunctionCalls(sel.novelName, sel.episode);
 }

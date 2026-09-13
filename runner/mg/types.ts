@@ -115,24 +115,4 @@ export type VisualFunctionRecord = {
   error?: string;
 };
 
-export type MgPlan = {
-  version: 4;
-  source: MgVideoInfo & {
-    html: string;
-    timeline: string;
-    audio: string;
-  };
-  instances: Array<{
-    instanceKey: string;
-    group: string;
-    tag: string;
-    order?: number;
-    mode: MgMode;
-    tagCount: number;
-    starts: number[];
-  }>;
-  functionCalls: VisualFunctionRecord[];
-  nodes: CompositionNode[];
-};
-
 export type MgCompositionNode = CompositionNode;

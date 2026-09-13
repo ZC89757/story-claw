@@ -7,7 +7,7 @@ import type {NovelSelection} from "../../ui/select.js";
 import {PATHS, novelPaths} from "../../utils/paths.js";
 import {assembleEssayMg} from "./assembler.js";
 import {probeMgVideo, runMediaCommand, sha256File} from "./media.js";
-import type {MgPlan} from "./types.js";
+import type {MgRenderBundle, VisualFunctionRecord} from "./types.js";
 
 test("MG assembly changes the output without modifying the raw master", async () => {
   const originalWorkspace = PATHS.workspace;
@@ -51,24 +51,15 @@ test("MG assembly changes the output without modifying the raw master", async ()
 
     const source = await probeMgVideo(rawVideo);
     const rawHash = await sha256File(rawVideo);
-    const plan: MgPlan = {
-      version: 4,
-      source: {
-        ...source,
-        html: "mg_annotation.html",
-        timeline: "article_timeline.json",
-        audio: "ep01_aligned_audio.wav",
-      },
-      instances: [],
-      functionCalls: [],
-      nodes: [],
-    };
+    const records: VisualFunctionRecord[] = [];
+    const bundle: MgRenderBundle = {version: 4, ...source, nodes: []};
     await fs.mkdir(novelPaths.mgDir(novelName, episode), {recursive: true});
     await fs.writeFile(
-      novelPaths.mgPlan(novelName, episode),
-      `${JSON.stringify(plan, null, 2)}\n`,
+      novelPaths.mgFunctionCalls(novelName, episode),
+      `${JSON.stringify(records, null, 2)}\n`,
       "utf-8",
     );
+    await fs.writeFile(novelPaths.mgRenderBundle(novelName, episode), `${JSON.stringify(bundle, null, 2)}\n`, "utf-8");
 
     const output = await assembleEssayMg({novelName, episode} as NovelSelection);
     const assembled = await probeMgVideo(output);

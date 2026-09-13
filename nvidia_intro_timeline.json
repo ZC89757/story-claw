@@ -1,0 +1,7787 @@
+{
+  "words": [
+    {
+      "confidence": 0.9263299,
+      "endTime": 0.405,
+      "startTime": 0.225,
+      "word": "今"
+    },
+    {
+      "confidence": 0.95296085,
+      "endTime": 0.685,
+      "startTime": 0.405,
+      "word": "年，"
+    },
+    {
+      "confidence": 0.80487937,
+      "endTime": 1.285,
+      "startTime": 1.105,
+      "word": "英"
+    },
+    {
+      "confidence": 0.66992676,
+      "endTime": 1.435,
+      "startTime": 1.285,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.9036576,
+      "endTime": 1.635,
+      "startTime": 1.435,
+      "word": "达"
+    },
+    {
+      "confidence": 0.958405,
+      "endTime": 1.775,
+      "startTime": 1.635,
+      "word": "开"
+    },
+    {
+      "confidence": 0.9305883,
+      "endTime": 1.925,
+      "startTime": 1.775,
+      "word": "始"
+    },
+    {
+      "confidence": 0.89200205,
+      "endTime": 2.145,
+      "startTime": 1.925,
+      "word": "量"
+    },
+    {
+      "confidence": 0.9291492,
+      "endTime": 2.345,
+      "startTime": 2.145,
+      "word": "产"
+    },
+    {
+      "confidence": 0.9321808,
+      "endTime": 2.575,
+      "startTime": 2.345,
+      "word": "最"
+    },
+    {
+      "confidence": 0.96466285,
+      "endTime": 2.795,
+      "startTime": 2.575,
+      "word": "新"
+    },
+    {
+      "confidence": 0.9075981,
+      "endTime": 2.895,
+      "startTime": 2.795,
+      "word": "一"
+    },
+    {
+      "confidence": 0.92771375,
+      "endTime": 3.015,
+      "startTime": 2.895,
+      "word": "代"
+    },
+    {
+      "confidence": 0.97056586,
+      "endTime": 3.245,
+      "startTime": 3.015,
+      "word": "数"
+    },
+    {
+      "confidence": 0.9598174,
+      "endTime": 3.355,
+      "startTime": 3.245,
+      "word": "据"
+    },
+    {
+      "confidence": 0.96840614,
+      "endTime": 3.495,
+      "startTime": 3.355,
+      "word": "中"
+    },
+    {
+      "confidence": 0.9854826,
+      "endTime": 3.775,
+      "startTime": 3.495,
+      "word": "心"
+    },
+    {
+      "confidence": 0.8227601,
+      "endTime": 4.415,
+      "startTime": 4.295,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.6229224,
+      "endTime": 4.685,
+      "startTime": 4.525,
+      "word": "算"
+    },
+    {
+      "confidence": 0.8381908,
+      "endTime": 4.795,
+      "startTime": 4.685,
+      "word": "力"
+    },
+    {
+      "confidence": 0.9002637,
+      "endTime": 4.995,
+      "startTime": 4.795,
+      "word": "芯"
+    },
+    {
+      "confidence": 0.96426934,
+      "endTime": 5.265,
+      "startTime": 4.995,
+      "word": "片"
+    },
+    {
+      "confidence": 0.11740588,
+      "endTime": 5.895,
+      "startTime": 5.865,
+      "word": "—"
+    },
+    {
+      "confidence": 0.17299274,
+      "endTime": 5.925,
+      "startTime": 5.895,
+      "word": "—"
+    },
+    {
+      "confidence": 0.7332448,
+      "endTime": 6.485,
+      "startTime": 5.925,
+      "word": "NVIDIA"
+    },
+    {
+      "confidence": 0.83109593,
+      "endTime": 6.925,
+      "startTime": 6.485,
+      "word": "Rubin"
+    },
+    {
+      "confidence": 0.90977514,
+      "endTime": 7.115,
+      "startTime": 6.925,
+      "word": "g"
+    },
+    {
+      "confidence": 0.8313755,
+      "endTime": 7.285,
+      "startTime": 7.115,
+      "word": "p"
+    },
+    {
+      "confidence": 0.77796894,
+      "endTime": 7.515,
+      "startTime": 7.285,
+      "word": "u。"
+    },
+    {
+      "confidence": 0.8125543,
+      "endTime": 8.180541,
+      "startTime": 8.050542,
+      "word": "因"
+    },
+    {
+      "confidence": 0.9559832,
+      "endTime": 8.280541,
+      "startTime": 8.180541,
+      "word": "为"
+    },
+    {
+      "confidence": 0.9731004,
+      "endTime": 8.470541,
+      "startTime": 8.280541,
+      "word": "它"
+    },
+    {
+      "confidence": 0.9114526,
+      "endTime": 8.600541,
+      "startTime": 8.470541,
+      "word": "将"
+    },
+    {
+      "confidence": 0.9548252,
+      "endTime": 8.760542,
+      "startTime": 8.600541,
+      "word": "成"
+    },
+    {
+      "confidence": 0.88861656,
+      "endTime": 8.880542,
+      "startTime": 8.760542,
+      "word": "为"
+    },
+    {
+      "confidence": 0.77358115,
+      "endTime": 9.240541,
+      "startTime": 8.880542,
+      "word": "下"
+    },
+    {
+      "confidence": 0.83516824,
+      "endTime": 9.340542,
+      "startTime": 9.240541,
+      "word": "一"
+    },
+    {
+      "confidence": 0.81603414,
+      "endTime": 9.510542,
+      "startTime": 9.340542,
+      "word": "轮"
+    },
+    {
+      "confidence": 0.88321,
+      "endTime": 9.740541,
+      "startTime": 9.510542,
+      "word": "大"
+    },
+    {
+      "confidence": 0.95838195,
+      "endTime": 9.870542,
+      "startTime": 9.740541,
+      "word": "模"
+    },
+    {
+      "confidence": 0.94421476,
+      "endTime": 10.080542,
+      "startTime": 9.870542,
+      "word": "型"
+    },
+    {
+      "confidence": 0.9111562,
+      "endTime": 10.350542,
+      "startTime": 10.080542,
+      "word": "竞"
+    },
+    {
+      "confidence": 0.94507223,
+      "endTime": 10.500542,
+      "startTime": 10.350542,
+      "word": "争"
+    },
+    {
+      "confidence": 0.96303725,
+      "endTime": 10.650541,
+      "startTime": 10.500542,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9641527,
+      "endTime": 10.920542,
+      "startTime": 10.680542,
+      "word": "关"
+    },
+    {
+      "confidence": 0.93558824,
+      "endTime": 11.130542,
+      "startTime": 10.920542,
+      "word": "键"
+    },
+    {
+      "confidence": 0.907725,
+      "endTime": 11.420542,
+      "startTime": 11.130542,
+      "word": "算"
+    },
+    {
+      "confidence": 0.8496705,
+      "endTime": 11.570541,
+      "startTime": 11.420542,
+      "word": "力"
+    },
+    {
+      "confidence": 0.9273556,
+      "endTime": 11.760542,
+      "startTime": 11.570541,
+      "word": "底"
+    },
+    {
+      "confidence": 0.9353948,
+      "endTime": 12.040542,
+      "startTime": 11.760542,
+      "word": "座。"
+    },
+    {
+      "confidence": 0.6653401,
+      "endTime": 12.615083,
+      "startTime": 12.495083,
+      "word": "以"
+    },
+    {
+      "confidence": 0.21474516,
+      "endTime": 12.645083,
+      "startTime": 12.615083,
+      "word": "OpenAI、"
+    },
+    {
+      "confidence": 0.20504707,
+      "endTime": 13.895082,
+      "startTime": 13.865083,
+      "word": "Anthropic、"
+    },
+    {
+      "confidence": 0.6398591,
+      "endTime": 15.175083,
+      "startTime": 14.735083,
+      "word": "Meta"
+    },
+    {
+      "confidence": 0.8474848,
+      "endTime": 15.565083,
+      "startTime": 15.405083,
+      "word": "和"
+    },
+    {
+      "confidence": 0.8753665,
+      "endTime": 16.015083,
+      "startTime": 15.565083,
+      "word": "Mistral"
+    },
+    {
+      "confidence": 0.7223729,
+      "endTime": 16.305082,
+      "startTime": 16.185083,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.48575276,
+      "endTime": 16.445084,
+      "startTime": 16.375084,
+      "word": "为"
+    },
+    {
+      "confidence": 0.74743223,
+      "endTime": 16.615082,
+      "startTime": 16.445084,
+      "word": "代"
+    },
+    {
+      "confidence": 0.95674276,
+      "endTime": 16.735083,
+      "startTime": 16.615082,
+      "word": "表"
+    },
+    {
+      "confidence": 0.95965135,
+      "endTime": 16.835083,
+      "startTime": 16.735083,
+      "word": "的"
+    },
+    {
+      "confidence": 0.66260844,
+      "endTime": 17.095083,
+      "startTime": 17.025084,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.8480835,
+      "endTime": 17.225082,
+      "startTime": 17.095083,
+      "word": "公"
+    },
+    {
+      "confidence": 0.9673785,
+      "endTime": 17.465084,
+      "startTime": 17.225082,
+      "word": "司，"
+    },
+    {
+      "confidence": 0.9347133,
+      "endTime": 18.195084,
+      "startTime": 17.975082,
+      "word": "正"
+    },
+    {
+      "confidence": 0.8575184,
+      "endTime": 18.355083,
+      "startTime": 18.195084,
+      "word": "计"
+    },
+    {
+      "confidence": 0.9391329,
+      "endTime": 18.535084,
+      "startTime": 18.355083,
+      "word": "划"
+    },
+    {
+      "confidence": 0.9158851,
+      "endTime": 18.695084,
+      "startTime": 18.535084,
+      "word": "将"
+    },
+    {
+      "confidence": 0.6388884,
+      "endTime": 18.845083,
+      "startTime": 18.695084,
+      "word": "以"
+    },
+    {
+      "confidence": 0.6362212,
+      "endTime": 19.285084,
+      "startTime": 18.845083,
+      "word": "Rubin"
+    },
+    {
+      "confidence": 0.83089405,
+      "endTime": 19.455082,
+      "startTime": 19.285084,
+      "word": "g"
+    },
+    {
+      "confidence": 0.8957846,
+      "endTime": 19.615082,
+      "startTime": 19.455082,
+      "word": "p"
+    },
+    {
+      "confidence": 0.78954065,
+      "endTime": 19.845083,
+      "startTime": 19.615082,
+      "word": "u"
+    },
+    {
+      "confidence": 0.7896739,
+      "endTime": 19.905083,
+      "startTime": 19.845083,
+      "word": "为"
+    },
+    {
+      "confidence": 0.9599781,
+      "endTime": 20.085083,
+      "startTime": 19.905083,
+      "word": "核"
+    },
+    {
+      "confidence": 0.9582724,
+      "endTime": 20.235083,
+      "startTime": 20.085083,
+      "word": "心"
+    },
+    {
+      "confidence": 0.9807117,
+      "endTime": 20.455082,
+      "startTime": 20.235083,
+      "word": "的"
+    },
+    {
+      "confidence": 0.78618634,
+      "endTime": 21.215084,
+      "startTime": 20.705082,
+      "word": "NVIDIA"
+    },
+    {
+      "confidence": 0.5315826,
+      "endTime": 21.335083,
+      "startTime": 21.215084,
+      "word": "系"
+    },
+    {
+      "confidence": 0.90586895,
+      "endTime": 21.575083,
+      "startTime": 21.335083,
+      "word": "统"
+    },
+    {
+      "confidence": 0.9680999,
+      "endTime": 21.975082,
+      "startTime": 21.775082,
+      "word": "用"
+    },
+    {
+      "confidence": 0.9257028,
+      "endTime": 22.115082,
+      "startTime": 21.975082,
+      "word": "于"
+    },
+    {
+      "confidence": 0.8049234,
+      "endTime": 22.435083,
+      "startTime": 22.115082,
+      "word": "下"
+    },
+    {
+      "confidence": 0.85550475,
+      "endTime": 22.515083,
+      "startTime": 22.435083,
+      "word": "一"
+    },
+    {
+      "confidence": 0.928912,
+      "endTime": 22.695084,
+      "startTime": 22.515083,
+      "word": "代"
+    },
+    {
+      "confidence": 0.8394165,
+      "endTime": 22.895084,
+      "startTime": 22.695084,
+      "word": "大"
+    },
+    {
+      "confidence": 0.9627732,
+      "endTime": 23.025082,
+      "startTime": 22.895084,
+      "word": "模"
+    },
+    {
+      "confidence": 0.94730806,
+      "endTime": 23.185083,
+      "startTime": 23.025082,
+      "word": "型"
+    },
+    {
+      "confidence": 0.8496718,
+      "endTime": 23.375084,
+      "startTime": 23.185083,
+      "word": "训"
+    },
+    {
+      "confidence": 0.85464513,
+      "endTime": 23.535084,
+      "startTime": 23.375084,
+      "word": "练"
+    },
+    {
+      "confidence": 0.897342,
+      "endTime": 23.655083,
+      "startTime": 23.535084,
+      "word": "和"
+    },
+    {
+      "confidence": 0.9522155,
+      "endTime": 23.885082,
+      "startTime": 23.655083,
+      "word": "推"
+    },
+    {
+      "confidence": 0.96497947,
+      "endTime": 24.095083,
+      "startTime": 23.885082,
+      "word": "理。"
+    },
+    {
+      "confidence": 0.8161982,
+      "endTime": 24.775082,
+      "startTime": 24.565083,
+      "word": "一"
+    },
+    {
+      "confidence": 0.7576368,
+      "endTime": 24.955082,
+      "startTime": 24.775082,
+      "word": "家"
+    },
+    {
+      "confidence": 0.8751319,
+      "endTime": 25.135082,
+      "startTime": 24.955082,
+      "word": "从"
+    },
+    {
+      "confidence": 0.91035885,
+      "endTime": 25.345083,
+      "startTime": 25.135082,
+      "word": "游"
+    },
+    {
+      "confidence": 0.9783555,
+      "endTime": 25.555084,
+      "startTime": 25.345083,
+      "word": "戏"
+    },
+    {
+      "confidence": 0.82675815,
+      "endTime": 25.775082,
+      "startTime": 25.555084,
+      "word": "显"
+    },
+    {
+      "confidence": 0.952486,
+      "endTime": 25.985083,
+      "startTime": 25.775082,
+      "word": "卡"
+    },
+    {
+      "confidence": 0.93828565,
+      "endTime": 26.175083,
+      "startTime": 25.985083,
+      "word": "起"
+    },
+    {
+      "confidence": 0.97258145,
+      "endTime": 26.295082,
+      "startTime": 26.175083,
+      "word": "家"
+    },
+    {
+      "confidence": 0.9830372,
+      "endTime": 26.375084,
+      "startTime": 26.295082,
+      "word": "的"
+    },
+    {
+      "confidence": 0.97640944,
+      "endTime": 26.515083,
+      "startTime": 26.375084,
+      "word": "公"
+    },
+    {
+      "confidence": 0.9876492,
+      "endTime": 26.795082,
+      "startTime": 26.515083,
+      "word": "司，"
+    },
+    {
+      "confidence": 0.9577382,
+      "endTime": 27.295082,
+      "startTime": 27.055084,
+      "word": "为"
+    },
+    {
+      "confidence": 0.9259038,
+      "endTime": 27.445084,
+      "startTime": 27.295082,
+      "word": "何"
+    },
+    {
+      "confidence": 0.9708115,
+      "endTime": 27.585083,
+      "startTime": 27.445084,
+      "word": "会"
+    },
+    {
+      "confidence": 0.9655457,
+      "endTime": 27.755083,
+      "startTime": 27.585083,
+      "word": "转"
+    },
+    {
+      "confidence": 0.9128163,
+      "endTime": 27.935083,
+      "startTime": 27.755083,
+      "word": "向"
+    },
+    {
+      "confidence": 0.89097434,
+      "endTime": 28.195084,
+      "startTime": 27.935083,
+      "word": "大"
+    },
+    {
+      "confidence": 0.9699689,
+      "endTime": 28.345081,
+      "startTime": 28.195084,
+      "word": "模"
+    },
+    {
+      "confidence": 0.95521355,
+      "endTime": 28.685081,
+      "startTime": 28.345081,
+      "word": "型"
+    },
+    {
+      "confidence": 0.932012,
+      "endTime": 28.975082,
+      "startTime": 28.715084,
+      "word": "和"
+    },
+    {
+      "confidence": 0.6810872,
+      "endTime": 29.335083,
+      "startTime": 29.255081,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.6549753,
+      "endTime": 29.505081,
+      "startTime": 29.335083,
+      "word": "基"
+    },
+    {
+      "confidence": 0.8461272,
+      "endTime": 29.645084,
+      "startTime": 29.505081,
+      "word": "础"
+    },
+    {
+      "confidence": 0.97177666,
+      "endTime": 29.825085,
+      "startTime": 29.645084,
+      "word": "设"
+    },
+    {
+      "confidence": 0.9079971,
+      "endTime": 30.065083,
+      "startTime": 29.825085,
+      "word": "施？"
+    },
+    {
+      "confidence": 0.7745494,
+      "endTime": 30.79925,
+      "startTime": 30.689249,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.7183453,
+      "endTime": 30.999249,
+      "startTime": 30.849249,
+      "word": "巨"
+    },
+    {
+      "confidence": 0.9228709,
+      "endTime": 31.12925,
+      "startTime": 30.999249,
+      "word": "头"
+    },
+    {
+      "confidence": 0.88155466,
+      "endTime": 31.31925,
+      "startTime": 31.12925,
+      "word": "们，"
+    },
+    {
+      "confidence": 0.900133,
+      "endTime": 31.759249,
+      "startTime": 31.55925,
+      "word": "为"
+    },
+    {
+      "confidence": 0.9789176,
+      "endTime": 31.909248,
+      "startTime": 31.759249,
+      "word": "什"
+    },
+    {
+      "confidence": 0.9815245,
+      "endTime": 32.01925,
+      "startTime": 31.909248,
+      "word": "么"
+    },
+    {
+      "confidence": 0.94137305,
+      "endTime": 32.229248,
+      "startTime": 32.01925,
+      "word": "都"
+    },
+    {
+      "confidence": 0.82161176,
+      "endTime": 32.31925,
+      "startTime": 32.229248,
+      "word": "要"
+    },
+    {
+      "confidence": 0.8222503,
+      "endTime": 32.52925,
+      "startTime": 32.31925,
+      "word": "使"
+    },
+    {
+      "confidence": 0.9871323,
+      "endTime": 32.65925,
+      "startTime": 32.52925,
+      "word": "用"
+    },
+    {
+      "confidence": 0.97970426,
+      "endTime": 32.78925,
+      "startTime": 32.65925,
+      "word": "他"
+    },
+    {
+      "confidence": 0.9759038,
+      "endTime": 32.87925,
+      "startTime": 32.78925,
+      "word": "的"
+    },
+    {
+      "confidence": 0.96359956,
+      "endTime": 33.09925,
+      "startTime": 32.87925,
+      "word": "芯"
+    },
+    {
+      "confidence": 0.9170921,
+      "endTime": 33.26925,
+      "startTime": 33.09925,
+      "word": "片"
+    },
+    {
+      "confidence": 0.9000501,
+      "endTime": 33.43925,
+      "startTime": 33.26925,
+      "word": "训"
+    },
+    {
+      "confidence": 0.83302647,
+      "endTime": 33.55925,
+      "startTime": 33.43925,
+      "word": "练"
+    },
+    {
+      "confidence": 0.9558668,
+      "endTime": 33.69925,
+      "startTime": 33.55925,
+      "word": "模"
+    },
+    {
+      "confidence": 0.9511399,
+      "endTime": 33.94925,
+      "startTime": 33.69925,
+      "word": "型？"
+    },
+    {
+      "confidence": 0.8781924,
+      "endTime": 34.70925,
+      "startTime": 34.53925,
+      "word": "要"
+    },
+    {
+      "confidence": 0.92701244,
+      "endTime": 34.92925,
+      "startTime": 34.70925,
+      "word": "回"
+    },
+    {
+      "confidence": 0.88624483,
+      "endTime": 35.06925,
+      "startTime": 34.92925,
+      "word": "答"
+    },
+    {
+      "confidence": 0.8907666,
+      "endTime": 35.25925,
+      "startTime": 35.06925,
+      "word": "这"
+    },
+    {
+      "confidence": 0.669024,
+      "endTime": 35.33925,
+      "startTime": 35.25925,
+      "word": "个"
+    },
+    {
+      "confidence": 0.9341876,
+      "endTime": 35.44925,
+      "startTime": 35.33925,
+      "word": "问"
+    },
+    {
+      "confidence": 0.9827598,
+      "endTime": 35.74925,
+      "startTime": 35.44925,
+      "word": "题，"
+    },
+    {
+      "confidence": 0.9298671,
+      "endTime": 36.10925,
+      "startTime": 35.979248,
+      "word": "我"
+    },
+    {
+      "confidence": 0.96920145,
+      "endTime": 36.20925,
+      "startTime": 36.10925,
+      "word": "们"
+    },
+    {
+      "confidence": 0.7885048,
+      "endTime": 36.32925,
+      "startTime": 36.20925,
+      "word": "得"
+    },
+    {
+      "confidence": 0.9327037,
+      "endTime": 36.439247,
+      "startTime": 36.32925,
+      "word": "把"
+    },
+    {
+      "confidence": 0.9580938,
+      "endTime": 36.639248,
+      "startTime": 36.439247,
+      "word": "时"
+    },
+    {
+      "confidence": 0.96273947,
+      "endTime": 36.82925,
+      "startTime": 36.639248,
+      "word": "间"
+    },
+    {
+      "confidence": 0.93551576,
+      "endTime": 37.05925,
+      "startTime": 36.82925,
+      "word": "拨"
+    },
+    {
+      "confidence": 0.9196168,
+      "endTime": 37.27925,
+      "startTime": 37.05925,
+      "word": "回"
+    },
+    {
+      "confidence": 0.7769947,
+      "endTime": 37.46925,
+      "startTime": 37.27925,
+      "word": "英"
+    },
+    {
+      "confidence": 0.5887897,
+      "endTime": 37.58925,
+      "startTime": 37.46925,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.93146634,
+      "endTime": 37.78925,
+      "startTime": 37.58925,
+      "word": "达"
+    },
+    {
+      "confidence": 0.8802069,
+      "endTime": 38.01925,
+      "startTime": 37.78925,
+      "word": "成"
+    },
+    {
+      "confidence": 0.9175531,
+      "endTime": 38.16925,
+      "startTime": 38.01925,
+      "word": "立"
+    },
+    {
+      "confidence": 0.9604847,
+      "endTime": 38.28925,
+      "startTime": 38.16925,
+      "word": "之"
+    },
+    {
+      "confidence": 0.9688964,
+      "endTime": 38.52925,
+      "startTime": 38.28925,
+      "word": "初。"
+    },
+    {
+      "confidence": 0.8521369,
+      "endTime": 39.237747,
+      "startTime": 39.01775,
+      "word": "一"
+    },
+    {
+      "confidence": 0.9737114,
+      "endTime": 39.38775,
+      "startTime": 39.237747,
+      "word": "九"
+    },
+    {
+      "confidence": 0.9703442,
+      "endTime": 39.577747,
+      "startTime": 39.38775,
+      "word": "九"
+    },
+    {
+      "confidence": 0.95692533,
+      "endTime": 39.737747,
+      "startTime": 39.577747,
+      "word": "三"
+    },
+    {
+      "confidence": 0.98177737,
+      "endTime": 40.007748,
+      "startTime": 39.737747,
+      "word": "年，"
+    },
+    {
+      "confidence": 0.82393765,
+      "endTime": 40.49775,
+      "startTime": 40.27775,
+      "word": "黄"
+    },
+    {
+      "confidence": 0.7250008,
+      "endTime": 40.627747,
+      "startTime": 40.49775,
+      "word": "仁"
+    },
+    {
+      "confidence": 0.266667,
+      "endTime": 40.92775,
+      "startTime": 40.897747,
+      "word": "勋、"
+    },
+    {
+      "confidence": 0.9093171,
+      "endTime": 41.347748,
+      "startTime": 41.077747,
+      "word": "克"
+    },
+    {
+      "confidence": 0.77832246,
+      "endTime": 41.447746,
+      "startTime": 41.347748,
+      "word": "里"
+    },
+    {
+      "confidence": 0.339225,
+      "endTime": 41.74775,
+      "startTime": 41.717747,
+      "word": "斯·"
+    },
+    {
+      "confidence": 0.8825838,
+      "endTime": 42.17775,
+      "startTime": 41.937748,
+      "word": "马"
+    },
+    {
+      "confidence": 0.830069,
+      "endTime": 42.33775,
+      "startTime": 42.17775,
+      "word": "拉"
+    },
+    {
+      "confidence": 0.892371,
+      "endTime": 42.52775,
+      "startTime": 42.33775,
+      "word": "科"
+    },
+    {
+      "confidence": 0.83932155,
+      "endTime": 42.65775,
+      "startTime": 42.52775,
+      "word": "夫"
+    },
+    {
+      "confidence": 0.73113334,
+      "endTime": 42.79775,
+      "startTime": 42.65775,
+      "word": "斯"
+    },
+    {
+      "confidence": 0.92670465,
+      "endTime": 43.077747,
+      "startTime": 42.79775,
+      "word": "基"
+    },
+    {
+      "confidence": 0.88025767,
+      "endTime": 43.35775,
+      "startTime": 43.187748,
+      "word": "和"
+    },
+    {
+      "confidence": 0.93222904,
+      "endTime": 43.63775,
+      "startTime": 43.35775,
+      "word": "柯"
+    },
+    {
+      "confidence": 0.81530046,
+      "endTime": 43.757748,
+      "startTime": 43.63775,
+      "word": "蒂"
+    },
+    {
+      "confidence": 0.20966166,
+      "endTime": 43.967747,
+      "startTime": 43.937748,
+      "word": "斯·"
+    },
+    {
+      "confidence": 0.8405599,
+      "endTime": 44.15775,
+      "startTime": 43.967747,
+      "word": "普"
+    },
+    {
+      "confidence": 0.8194056,
+      "endTime": 44.31775,
+      "startTime": 44.15775,
+      "word": "里"
+    },
+    {
+      "confidence": 0.8195657,
+      "endTime": 44.557747,
+      "startTime": 44.31775,
+      "word": "姆"
+    },
+    {
+      "confidence": 0.92743576,
+      "endTime": 44.987747,
+      "startTime": 44.72775,
+      "word": "共"
+    },
+    {
+      "confidence": 0.96846217,
+      "endTime": 45.197746,
+      "startTime": 44.987747,
+      "word": "同"
+    },
+    {
+      "confidence": 0.939374,
+      "endTime": 45.40775,
+      "startTime": 45.197746,
+      "word": "创"
+    },
+    {
+      "confidence": 0.8502939,
+      "endTime": 45.58775,
+      "startTime": 45.40775,
+      "word": "办"
+    },
+    {
+      "confidence": 0.77693224,
+      "endTime": 45.72775,
+      "startTime": 45.58775,
+      "word": "英"
+    },
+    {
+      "confidence": 0.5552917,
+      "endTime": 45.86775,
+      "startTime": 45.72775,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.64036804,
+      "endTime": 46.13775,
+      "startTime": 45.86775,
+      "word": "达。"
+    },
+    {
+      "confidence": 0.95187086,
+      "endTime": 46.675537,
+      "startTime": 46.54554,
+      "word": "当"
+    },
+    {
+      "confidence": 0.9630822,
+      "endTime": 46.97554,
+      "startTime": 46.675537,
+      "word": "时，"
+    },
+    {
+      "confidence": 0.8951167,
+      "endTime": 47.38554,
+      "startTime": 47.20554,
+      "word": "电"
+    },
+    {
+      "confidence": 0.9238976,
+      "endTime": 47.585537,
+      "startTime": 47.38554,
+      "word": "脑"
+    },
+    {
+      "confidence": 0.96921253,
+      "endTime": 47.695538,
+      "startTime": 47.585537,
+      "word": "里"
+    },
+    {
+      "confidence": 0.90903705,
+      "endTime": 47.81554,
+      "startTime": 47.695538,
+      "word": "的"
+    },
+    {
+      "confidence": 0.8143255,
+      "endTime": 47.98554,
+      "startTime": 47.81554,
+      "word": "c"
+    },
+    {
+      "confidence": 0.8594767,
+      "endTime": 48.11554,
+      "startTime": 47.98554,
+      "word": "p"
+    },
+    {
+      "confidence": 0.57417595,
+      "endTime": 48.31554,
+      "startTime": 48.11554,
+      "word": "u"
+    },
+    {
+      "confidence": 0.7985914,
+      "endTime": 48.45554,
+      "startTime": 48.31554,
+      "word": "主"
+    },
+    {
+      "confidence": 0.94138384,
+      "endTime": 48.54554,
+      "startTime": 48.45554,
+      "word": "要"
+    },
+    {
+      "confidence": 0.91703296,
+      "endTime": 48.70554,
+      "startTime": 48.54554,
+      "word": "负"
+    },
+    {
+      "confidence": 0.96643656,
+      "endTime": 48.84554,
+      "startTime": 48.70554,
+      "word": "责"
+    },
+    {
+      "confidence": 0.8468513,
+      "endTime": 49.02554,
+      "startTime": 48.84554,
+      "word": "处"
+    },
+    {
+      "confidence": 0.84588754,
+      "endTime": 49.15554,
+      "startTime": 49.02554,
+      "word": "理"
+    },
+    {
+      "confidence": 0.9002802,
+      "endTime": 49.375538,
+      "startTime": 49.15554,
+      "word": "文"
+    },
+    {
+      "confidence": 0.20714389,
+      "endTime": 49.40554,
+      "startTime": 49.375538,
+      "word": "字、"
+    },
+    {
+      "confidence": 0.9410271,
+      "endTime": 50.035538,
+      "startTime": 49.79554,
+      "word": "表"
+    },
+    {
+      "confidence": 0.9333207,
+      "endTime": 50.30554,
+      "startTime": 50.035538,
+      "word": "格"
+    },
+    {
+      "confidence": 0.86901003,
+      "endTime": 50.50554,
+      "startTime": 50.335537,
+      "word": "和"
+    },
+    {
+      "confidence": 0.8480605,
+      "endTime": 50.695538,
+      "startTime": 50.50554,
+      "word": "各"
+    },
+    {
+      "confidence": 0.9470362,
+      "endTime": 50.855537,
+      "startTime": 50.695538,
+      "word": "种"
+    },
+    {
+      "confidence": 0.9671773,
+      "endTime": 51.065536,
+      "startTime": 50.855537,
+      "word": "通"
+    },
+    {
+      "confidence": 0.90695703,
+      "endTime": 51.195538,
+      "startTime": 51.065536,
+      "word": "用"
+    },
+    {
+      "confidence": 0.8772035,
+      "endTime": 51.355537,
+      "startTime": 51.195538,
+      "word": "任"
+    },
+    {
+      "confidence": 0.79525346,
+      "endTime": 51.495537,
+      "startTime": 51.355537,
+      "word": "务，"
+    },
+    {
+      "confidence": 0.85884416,
+      "endTime": 52.20554,
+      "startTime": 52.035538,
+      "word": "但"
+    },
+    {
+      "confidence": 0.9269859,
+      "endTime": 52.425537,
+      "startTime": 52.20554,
+      "word": "越"
+    },
+    {
+      "confidence": 0.9569831,
+      "endTime": 52.57554,
+      "startTime": 52.425537,
+      "word": "来"
+    },
+    {
+      "confidence": 0.9844925,
+      "endTime": 52.695538,
+      "startTime": 52.57554,
+      "word": "越"
+    },
+    {
+      "confidence": 0.96148634,
+      "endTime": 52.97554,
+      "startTime": 52.695538,
+      "word": "复"
+    },
+    {
+      "confidence": 0.9038605,
+      "endTime": 53.085537,
+      "startTime": 52.97554,
+      "word": "杂"
+    },
+    {
+      "confidence": 0.929705,
+      "endTime": 53.215538,
+      "startTime": 53.085537,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9465672,
+      "endTime": 53.355537,
+      "startTime": 53.215538,
+      "word": "游"
+    },
+    {
+      "confidence": 0.9760917,
+      "endTime": 53.515537,
+      "startTime": 53.355537,
+      "word": "戏"
+    },
+    {
+      "confidence": 0.8804338,
+      "endTime": 53.68554,
+      "startTime": 53.515537,
+      "word": "画"
+    },
+    {
+      "confidence": 0.95229447,
+      "endTime": 53.90554,
+      "startTime": 53.68554,
+      "word": "面"
+    },
+    {
+      "confidence": 0.94315624,
+      "endTime": 54.22554,
+      "startTime": 54.015537,
+      "word": "需"
+    },
+    {
+      "confidence": 0.88336444,
+      "endTime": 54.335537,
+      "startTime": 54.22554,
+      "word": "要"
+    },
+    {
+      "confidence": 0.95684147,
+      "endTime": 54.55554,
+      "startTime": 54.335537,
+      "word": "另"
+    },
+    {
+      "confidence": 0.906101,
+      "endTime": 54.64554,
+      "startTime": 54.55554,
+      "word": "一"
+    },
+    {
+      "confidence": 0.8689311,
+      "endTime": 54.855537,
+      "startTime": 54.64554,
+      "word": "种"
+    },
+    {
+      "confidence": 0.96597016,
+      "endTime": 55.07554,
+      "startTime": 54.855537,
+      "word": "更"
+    },
+    {
+      "confidence": 0.9035649,
+      "endTime": 55.265537,
+      "startTime": 55.07554,
+      "word": "擅"
+    },
+    {
+      "confidence": 0.92615986,
+      "endTime": 55.465538,
+      "startTime": 55.265537,
+      "word": "长"
+    },
+    {
+      "confidence": 0.91572213,
+      "endTime": 55.715538,
+      "startTime": 55.465538,
+      "word": "并"
+    },
+    {
+      "confidence": 0.93695325,
+      "endTime": 55.93554,
+      "startTime": 55.715538,
+      "word": "行"
+    },
+    {
+      "confidence": 0.8906096,
+      "endTime": 56.11554,
+      "startTime": 55.93554,
+      "word": "计"
+    },
+    {
+      "confidence": 0.8376688,
+      "endTime": 56.22554,
+      "startTime": 56.11554,
+      "word": "算"
+    },
+    {
+      "confidence": 0.8674185,
+      "endTime": 56.30554,
+      "startTime": 56.22554,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9587748,
+      "endTime": 56.48554,
+      "startTime": 56.30554,
+      "word": "芯"
+    },
+    {
+      "confidence": 0.943866,
+      "endTime": 56.72554,
+      "startTime": 56.48554,
+      "word": "片。"
+    },
+    {
+      "confidence": 0.83622545,
+      "endTime": 57.66554,
+      "startTime": 57.45554,
+      "word": "三"
+    },
+    {
+      "confidence": 0.9102681,
+      "endTime": 57.80554,
+      "startTime": 57.66554,
+      "word": "位"
+    },
+    {
+      "confidence": 0.9304975,
+      "endTime": 58.015537,
+      "startTime": 57.80554,
+      "word": "创"
+    },
+    {
+      "confidence": 0.8072085,
+      "endTime": 58.18554,
+      "startTime": 58.015537,
+      "word": "始"
+    },
+    {
+      "confidence": 0.7857383,
+      "endTime": 58.30554,
+      "startTime": 58.18554,
+      "word": "人"
+    },
+    {
+      "confidence": 0.96594405,
+      "endTime": 58.47554,
+      "startTime": 58.30554,
+      "word": "判"
+    },
+    {
+      "confidence": 0.966233,
+      "endTime": 58.72554,
+      "startTime": 58.47554,
+      "word": "断，"
+    },
+    {
+      "confidence": 0.8990414,
+      "endTime": 59.29554,
+      "startTime": 58.98554,
+      "word": "三"
+    },
+    {
+      "confidence": 0.8829521,
+      "endTime": 59.445538,
+      "startTime": 59.29554,
+      "word": "D"
+    },
+    {
+      "confidence": 0.97617936,
+      "endTime": 59.61554,
+      "startTime": 59.445538,
+      "word": "图"
+    },
+    {
+      "confidence": 0.96034175,
+      "endTime": 59.83554,
+      "startTime": 59.61554,
+      "word": "形"
+    },
+    {
+      "confidence": 0.9643941,
+      "endTime": 60.00554,
+      "startTime": 59.83554,
+      "word": "会"
+    },
+    {
+      "confidence": 0.98118675,
+      "endTime": 60.15554,
+      "startTime": 60.00554,
+      "word": "成"
+    },
+    {
+      "confidence": 0.90054387,
+      "endTime": 60.285538,
+      "startTime": 60.15554,
+      "word": "为"
+    },
+    {
+      "confidence": 0.9625417,
+      "endTime": 60.465538,
+      "startTime": 60.285538,
+      "word": "电"
+    },
+    {
+      "confidence": 0.9294514,
+      "endTime": 60.605537,
+      "startTime": 60.465538,
+      "word": "脑"
+    },
+    {
+      "confidence": 0.9597028,
+      "endTime": 60.82554,
+      "startTime": 60.605537,
+      "word": "发"
+    },
+    {
+      "confidence": 0.88133186,
+      "endTime": 60.93554,
+      "startTime": 60.82554,
+      "word": "展"
+    },
+    {
+      "confidence": 0.8705698,
+      "endTime": 61.05554,
+      "startTime": 60.93554,
+      "word": "的"
+    },
+    {
+      "confidence": 0.96527815,
+      "endTime": 61.27554,
+      "startTime": 61.05554,
+      "word": "重"
+    },
+    {
+      "confidence": 0.96303195,
+      "endTime": 61.355537,
+      "startTime": 61.27554,
+      "word": "要"
+    },
+    {
+      "confidence": 0.93563825,
+      "endTime": 61.50554,
+      "startTime": 61.355537,
+      "word": "方"
+    },
+    {
+      "confidence": 0.8942514,
+      "endTime": 61.745537,
+      "startTime": 61.50554,
+      "word": "向，"
+    },
+    {
+      "confidence": 0.7603945,
+      "endTime": 62.36554,
+      "startTime": 62.27554,
+      "word": "于"
+    },
+    {
+      "confidence": 0.9670308,
+      "endTime": 62.52554,
+      "startTime": 62.36554,
+      "word": "是"
+    },
+    {
+      "confidence": 0.9703884,
+      "endTime": 62.675537,
+      "startTime": 62.52554,
+      "word": "决"
+    },
+    {
+      "confidence": 0.94708186,
+      "endTime": 62.885536,
+      "startTime": 62.675537,
+      "word": "定"
+    },
+    {
+      "confidence": 0.9526281,
+      "endTime": 63.05554,
+      "startTime": 62.885536,
+      "word": "专"
+    },
+    {
+      "confidence": 0.95885575,
+      "endTime": 63.245537,
+      "startTime": 63.05554,
+      "word": "门"
+    },
+    {
+      "confidence": 0.9677785,
+      "endTime": 63.39554,
+      "startTime": 63.245537,
+      "word": "做"
+    },
+    {
+      "confidence": 0.9813608,
+      "endTime": 63.61554,
+      "startTime": 63.39554,
+      "word": "图"
+    },
+    {
+      "confidence": 0.9616863,
+      "endTime": 63.82554,
+      "startTime": 63.61554,
+      "word": "形"
+    },
+    {
+      "confidence": 0.91920495,
+      "endTime": 64.04554,
+      "startTime": 63.82554,
+      "word": "加"
+    },
+    {
+      "confidence": 0.95793456,
+      "endTime": 64.19554,
+      "startTime": 64.04554,
+      "word": "速"
+    },
+    {
+      "confidence": 0.8507951,
+      "endTime": 64.345535,
+      "startTime": 64.19554,
+      "word": "芯"
+    },
+    {
+      "confidence": 0.9388675,
+      "endTime": 64.595535,
+      "startTime": 64.345535,
+      "word": "片。"
+    },
+    {
+      "confidence": 0.9554236,
+      "endTime": 65.41554,
+      "startTime": 65.16554,
+      "word": "创"
+    },
+    {
+      "confidence": 0.9705384,
+      "endTime": 65.595535,
+      "startTime": 65.41554,
+      "word": "业"
+    },
+    {
+      "confidence": 0.8681023,
+      "endTime": 65.69554,
+      "startTime": 65.595535,
+      "word": "一"
+    },
+    {
+      "confidence": 0.9267135,
+      "endTime": 65.83554,
+      "startTime": 65.69554,
+      "word": "开"
+    },
+    {
+      "confidence": 0.95204747,
+      "endTime": 66.05554,
+      "startTime": 65.83554,
+      "word": "始"
+    },
+    {
+      "confidence": 0.9156255,
+      "endTime": 66.27554,
+      "startTime": 66.05554,
+      "word": "并"
+    },
+    {
+      "confidence": 0.7953003,
+      "endTime": 66.36554,
+      "startTime": 66.27554,
+      "word": "不"
+    },
+    {
+      "confidence": 0.8928022,
+      "endTime": 66.53554,
+      "startTime": 66.36554,
+      "word": "顺"
+    },
+    {
+      "confidence": 0.8105097,
+      "endTime": 66.75554,
+      "startTime": 66.53554,
+      "word": "利。"
+    },
+    {
+      "confidence": 0.65868026,
+      "endTime": 67.29512,
+      "startTime": 67.14512,
+      "word": "英"
+    },
+    {
+      "confidence": 0.5420928,
+      "endTime": 67.445114,
+      "startTime": 67.29512,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.90094507,
+      "endTime": 67.57512,
+      "startTime": 67.445114,
+      "word": "达"
+    },
+    {
+      "confidence": 0.92487097,
+      "endTime": 67.67512,
+      "startTime": 67.57512,
+      "word": "的"
+    },
+    {
+      "confidence": 0.86725485,
+      "endTime": 67.775116,
+      "startTime": 67.67512,
+      "word": "第"
+    },
+    {
+      "confidence": 0.86452776,
+      "endTime": 67.90512,
+      "startTime": 67.775116,
+      "word": "一"
+    },
+    {
+      "confidence": 0.9732029,
+      "endTime": 68.06512,
+      "startTime": 67.90512,
+      "word": "款"
+    },
+    {
+      "confidence": 0.866476,
+      "endTime": 68.235115,
+      "startTime": 68.06512,
+      "word": "产"
+    },
+    {
+      "confidence": 0.97673273,
+      "endTime": 68.49512,
+      "startTime": 68.235115,
+      "word": "品"
+    },
+    {
+      "confidence": 0.68357766,
+      "endTime": 68.90512,
+      "startTime": 68.74512,
+      "word": "N"
+    },
+    {
+      "confidence": 0.67855096,
+      "endTime": 69.00512,
+      "startTime": 68.90512,
+      "word": "V"
+    },
+    {
+      "confidence": 0.40748343,
+      "endTime": 69.03512,
+      "startTime": 69.00512,
+      "word": "一，"
+    },
+    {
+      "confidence": 0.93071955,
+      "endTime": 69.945114,
+      "startTime": 69.735115,
+      "word": "老"
+    },
+    {
+      "confidence": 0.93122435,
+      "endTime": 70.17512,
+      "startTime": 69.945114,
+      "word": "黄"
+    },
+    {
+      "confidence": 0.68946445,
+      "endTime": 70.33512,
+      "startTime": 70.17512,
+      "word": "押"
+    },
+    {
+      "confidence": 0.8299518,
+      "endTime": 70.47512,
+      "startTime": 70.33512,
+      "word": "注"
+    },
+    {
+      "confidence": 0.9045951,
+      "endTime": 70.63512,
+      "startTime": 70.47512,
+      "word": "了"
+    },
+    {
+      "confidence": 0.96319467,
+      "endTime": 70.79512,
+      "startTime": 70.63512,
+      "word": "二"
+    },
+    {
+      "confidence": 0.9219628,
+      "endTime": 70.945114,
+      "startTime": 70.79512,
+      "word": "次"
+    },
+    {
+      "confidence": 0.90546197,
+      "endTime": 71.11512,
+      "startTime": 70.945114,
+      "word": "曲"
+    },
+    {
+      "confidence": 0.92310256,
+      "endTime": 71.235115,
+      "startTime": 71.11512,
+      "word": "面"
+    },
+    {
+      "confidence": 0.91189075,
+      "endTime": 71.42512,
+      "startTime": 71.235115,
+      "word": "渲"
+    },
+    {
+      "confidence": 0.82634246,
+      "endTime": 71.60512,
+      "startTime": 71.42512,
+      "word": "染"
+    },
+    {
+      "confidence": 0.9705386,
+      "endTime": 71.775116,
+      "startTime": 71.60512,
+      "word": "和"
+    },
+    {
+      "confidence": 0.9043153,
+      "endTime": 71.97512,
+      "startTime": 71.775116,
+      "word": "专"
+    },
+    {
+      "confidence": 0.95779175,
+      "endTime": 72.18512,
+      "startTime": 71.97512,
+      "word": "用"
+    },
+    {
+      "confidence": 0.9064163,
+      "endTime": 72.375114,
+      "startTime": 72.18512,
+      "word": "s"
+    },
+    {
+      "confidence": 0.658399,
+      "endTime": 72.485115,
+      "startTime": 72.375114,
+      "word": "d"
+    },
+    {
+      "confidence": 0.86379963,
+      "endTime": 72.64512,
+      "startTime": 72.485115,
+      "word": "k"
+    },
+    {
+      "confidence": 0.8009527,
+      "endTime": 72.72512,
+      "startTime": 72.64512,
+      "word": "的"
+    },
+    {
+      "confidence": 0.8483871,
+      "endTime": 72.92512,
+      "startTime": 72.72512,
+      "word": "方"
+    },
+    {
+      "confidence": 0.7206578,
+      "endTime": 73.03512,
+      "startTime": 72.92512,
+      "word": "案。"
+    },
+    {
+      "confidence": 0.82589245,
+      "endTime": 73.88212,
+      "startTime": 73.652115,
+      "word": "这"
+    },
+    {
+      "confidence": 0.777047,
+      "endTime": 74.012115,
+      "startTime": 73.88212,
+      "word": "套"
+    },
+    {
+      "confidence": 0.9397979,
+      "endTime": 74.222115,
+      "startTime": 74.012115,
+      "word": "方"
+    },
+    {
+      "confidence": 0.8428824,
+      "endTime": 74.372116,
+      "startTime": 74.222115,
+      "word": "案"
+    },
+    {
+      "confidence": 0.9105064,
+      "endTime": 74.60211,
+      "startTime": 74.372116,
+      "word": "极"
+    },
+    {
+      "confidence": 0.8580839,
+      "endTime": 74.74211,
+      "startTime": 74.60211,
+      "word": "具"
+    },
+    {
+      "confidence": 0.929538,
+      "endTime": 74.93211,
+      "startTime": 74.74211,
+      "word": "创"
+    },
+    {
+      "confidence": 0.97674775,
+      "endTime": 75.122116,
+      "startTime": 74.93211,
+      "word": "新"
+    },
+    {
+      "confidence": 0.9065933,
+      "endTime": 75.35211,
+      "startTime": 75.122116,
+      "word": "性，"
+    },
+    {
+      "confidence": 0.85650456,
+      "endTime": 76.03211,
+      "startTime": 75.75211,
+      "word": "且"
+    },
+    {
+      "confidence": 0.90720993,
+      "endTime": 76.17211,
+      "startTime": 76.03211,
+      "word": "要"
+    },
+    {
+      "confidence": 0.9649296,
+      "endTime": 76.34212,
+      "startTime": 76.17211,
+      "word": "求"
+    },
+    {
+      "confidence": 0.9522652,
+      "endTime": 76.53211,
+      "startTime": 76.34212,
+      "word": "开"
+    },
+    {
+      "confidence": 0.8922876,
+      "endTime": 76.66212,
+      "startTime": 76.53211,
+      "word": "发"
+    },
+    {
+      "confidence": 0.849429,
+      "endTime": 76.85211,
+      "startTime": 76.66212,
+      "word": "者"
+    },
+    {
+      "confidence": 0.91202825,
+      "endTime": 77.02212,
+      "startTime": 76.85211,
+      "word": "采"
+    },
+    {
+      "confidence": 0.96943974,
+      "endTime": 77.152115,
+      "startTime": 77.02212,
+      "word": "用"
+    },
+    {
+      "confidence": 0.9664365,
+      "endTime": 77.402115,
+      "startTime": 77.152115,
+      "word": "新"
+    },
+    {
+      "confidence": 0.8242411,
+      "endTime": 77.57211,
+      "startTime": 77.402115,
+      "word": "的"
+    },
+    {
+      "confidence": 0.8488587,
+      "endTime": 77.74211,
+      "startTime": 77.57211,
+      "word": "s"
+    },
+    {
+      "confidence": 0.78833175,
+      "endTime": 77.872116,
+      "startTime": 77.74211,
+      "word": "d"
+    },
+    {
+      "confidence": 0.8509197,
+      "endTime": 78.02212,
+      "startTime": 77.872116,
+      "word": "k"
+    },
+    {
+      "confidence": 0.90307343,
+      "endTime": 78.16212,
+      "startTime": 78.02212,
+      "word": "和"
+    },
+    {
+      "confidence": 0.9351613,
+      "endTime": 78.332115,
+      "startTime": 78.16212,
+      "word": "开"
+    },
+    {
+      "confidence": 0.8961097,
+      "endTime": 78.46211,
+      "startTime": 78.332115,
+      "word": "发"
+    },
+    {
+      "confidence": 0.9588866,
+      "endTime": 78.622116,
+      "startTime": 78.46211,
+      "word": "流"
+    },
+    {
+      "confidence": 0.90031517,
+      "endTime": 78.832115,
+      "startTime": 78.622116,
+      "word": "程，"
+    },
+    {
+      "confidence": 0.9810346,
+      "endTime": 79.45212,
+      "startTime": 79.32211,
+      "word": "但"
+    },
+    {
+      "confidence": 0.97670984,
+      "endTime": 79.60211,
+      "startTime": 79.45212,
+      "word": "是"
+    },
+    {
+      "confidence": 0.9275946,
+      "endTime": 79.81212,
+      "startTime": 79.60211,
+      "word": "开"
+    },
+    {
+      "confidence": 0.8613318,
+      "endTime": 79.98212,
+      "startTime": 79.81212,
+      "word": "发"
+    },
+    {
+      "confidence": 0.784396,
+      "endTime": 80.17211,
+      "startTime": 79.98212,
+      "word": "者"
+    },
+    {
+      "confidence": 0.9509477,
+      "endTime": 80.362114,
+      "startTime": 80.17211,
+      "word": "对"
+    },
+    {
+      "confidence": 0.7640672,
+      "endTime": 80.56212,
+      "startTime": 80.362114,
+      "word": "此"
+    },
+    {
+      "confidence": 0.9375505,
+      "endTime": 80.792114,
+      "startTime": 80.56212,
+      "word": "并"
+    },
+    {
+      "confidence": 0.96226275,
+      "endTime": 80.91212,
+      "startTime": 80.792114,
+      "word": "不"
+    },
+    {
+      "confidence": 0.9554221,
+      "endTime": 81.06212,
+      "startTime": 80.91212,
+      "word": "买"
+    },
+    {
+      "confidence": 0.96054804,
+      "endTime": 81.292114,
+      "startTime": 81.06212,
+      "word": "账，"
+    },
+    {
+      "confidence": 0.9506033,
+      "endTime": 81.88211,
+      "startTime": 81.692116,
+      "word": "就"
+    },
+    {
+      "confidence": 0.98428214,
+      "endTime": 82.02212,
+      "startTime": 81.88211,
+      "word": "这"
+    },
+    {
+      "confidence": 0.9316278,
+      "endTime": 82.13211,
+      "startTime": 82.02212,
+      "word": "样"
+    },
+    {
+      "confidence": 0.92063653,
+      "endTime": 82.39211,
+      "startTime": 82.13211,
+      "word": "第"
+    },
+    {
+      "confidence": 0.8881905,
+      "endTime": 82.46211,
+      "startTime": 82.39211,
+      "word": "一"
+    },
+    {
+      "confidence": 0.97000307,
+      "endTime": 82.64211,
+      "startTime": 82.46211,
+      "word": "款"
+    },
+    {
+      "confidence": 0.8381312,
+      "endTime": 82.81212,
+      "startTime": 82.64211,
+      "word": "产"
+    },
+    {
+      "confidence": 0.98389924,
+      "endTime": 83.012115,
+      "startTime": 82.81212,
+      "word": "品"
+    },
+    {
+      "confidence": 0.8554004,
+      "endTime": 83.222115,
+      "startTime": 83.012115,
+      "word": "宣"
+    },
+    {
+      "confidence": 0.83681655,
+      "endTime": 83.35211,
+      "startTime": 83.222115,
+      "word": "告"
+    },
+    {
+      "confidence": 0.756167,
+      "endTime": 83.542114,
+      "startTime": 83.35211,
+      "word": "失"
+    },
+    {
+      "confidence": 0.9201039,
+      "endTime": 83.75211,
+      "startTime": 83.542114,
+      "word": "败，"
+    },
+    {
+      "confidence": 0.9807735,
+      "endTime": 84.222115,
+      "startTime": 84.042114,
+      "word": "公"
+    },
+    {
+      "confidence": 0.9693275,
+      "endTime": 84.43211,
+      "startTime": 84.222115,
+      "word": "司"
+    },
+    {
+      "confidence": 0.8508009,
+      "endTime": 84.652115,
+      "startTime": 84.43211,
+      "word": "一"
+    },
+    {
+      "confidence": 0.97578067,
+      "endTime": 84.832115,
+      "startTime": 84.652115,
+      "word": "度"
+    },
+    {
+      "confidence": 0.9274835,
+      "endTime": 84.99211,
+      "startTime": 84.832115,
+      "word": "接"
+    },
+    {
+      "confidence": 0.8780081,
+      "endTime": 85.13211,
+      "startTime": 84.99211,
+      "word": "近"
+    },
+    {
+      "confidence": 0.84296435,
+      "endTime": 85.31212,
+      "startTime": 85.13211,
+      "word": "倒"
+    },
+    {
+      "confidence": 0.9374618,
+      "endTime": 85.542114,
+      "startTime": 85.31212,
+      "word": "闭。"
+    },
+    {
+      "confidence": 0.7230689,
+      "endTime": 86.3784,
+      "startTime": 86.208405,
+      "word": "N"
+    },
+    {
+      "confidence": 0.739434,
+      "endTime": 86.608406,
+      "startTime": 86.3784,
+      "word": "V"
+    },
+    {
+      "confidence": 0.56423277,
+      "endTime": 86.6684,
+      "startTime": 86.608406,
+      "word": "一"
+    },
+    {
+      "confidence": 0.7985474,
+      "endTime": 86.7684,
+      "startTime": 86.6684,
+      "word": "的"
+    },
+    {
+      "confidence": 0.66901755,
+      "endTime": 86.928406,
+      "startTime": 86.7684,
+      "word": "失"
+    },
+    {
+      "confidence": 0.86548585,
+      "endTime": 87.108406,
+      "startTime": 86.928406,
+      "word": "败"
+    },
+    {
+      "confidence": 0.92164385,
+      "endTime": 87.3384,
+      "startTime": 87.108406,
+      "word": "迫"
+    },
+    {
+      "confidence": 0.84564537,
+      "endTime": 87.4784,
+      "startTime": 87.3384,
+      "word": "使"
+    },
+    {
+      "confidence": 0.77807635,
+      "endTime": 87.71841,
+      "startTime": 87.4784,
+      "word": "英"
+    },
+    {
+      "confidence": 0.52409214,
+      "endTime": 87.778404,
+      "startTime": 87.71841,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.9323643,
+      "endTime": 87.958405,
+      "startTime": 87.778404,
+      "word": "达"
+    },
+    {
+      "confidence": 0.9484743,
+      "endTime": 88.1984,
+      "startTime": 87.958405,
+      "word": "重"
+    },
+    {
+      "confidence": 0.9640122,
+      "endTime": 88.388405,
+      "startTime": 88.1984,
+      "word": "新"
+    },
+    {
+      "confidence": 0.9642471,
+      "endTime": 88.598404,
+      "startTime": 88.388405,
+      "word": "回"
+    },
+    {
+      "confidence": 0.9805182,
+      "endTime": 88.71841,
+      "startTime": 88.598404,
+      "word": "到"
+    },
+    {
+      "confidence": 0.96898466,
+      "endTime": 88.8384,
+      "startTime": 88.71841,
+      "word": "了"
+    },
+    {
+      "confidence": 0.9512347,
+      "endTime": 89.0584,
+      "startTime": 88.8384,
+      "word": "三"
+    },
+    {
+      "confidence": 0.9400953,
+      "endTime": 89.21841,
+      "startTime": 89.0584,
+      "word": "角"
+    },
+    {
+      "confidence": 0.9485712,
+      "endTime": 89.4184,
+      "startTime": 89.21841,
+      "word": "形"
+    },
+    {
+      "confidence": 0.90772325,
+      "endTime": 89.64841,
+      "startTime": 89.4184,
+      "word": "渲"
+    },
+    {
+      "confidence": 0.80641603,
+      "endTime": 89.7684,
+      "startTime": 89.64841,
+      "word": "染"
+    },
+    {
+      "confidence": 0.892017,
+      "endTime": 89.89841,
+      "startTime": 89.7684,
+      "word": "这"
+    },
+    {
+      "confidence": 0.97650254,
+      "endTime": 90.0484,
+      "startTime": 89.89841,
+      "word": "条"
+    },
+    {
+      "confidence": 0.9533956,
+      "endTime": 90.25841,
+      "startTime": 90.0484,
+      "word": "主"
+    },
+    {
+      "confidence": 0.977891,
+      "endTime": 90.4184,
+      "startTime": 90.25841,
+      "word": "流"
+    },
+    {
+      "confidence": 0.97731215,
+      "endTime": 90.53841,
+      "startTime": 90.4184,
+      "word": "路"
+    },
+    {
+      "confidence": 0.9599411,
+      "endTime": 90.678406,
+      "startTime": 90.53841,
+      "word": "线"
+    },
+    {
+      "confidence": 0.9617445,
+      "endTime": 90.89841,
+      "startTime": 90.678406,
+      "word": "上。"
+    },
+    {
+      "confidence": 0.87082237,
+      "endTime": 91.5484,
+      "startTime": 91.39841,
+      "word": "直"
+    },
+    {
+      "confidence": 0.8914427,
+      "endTime": 91.6984,
+      "startTime": 91.5484,
+      "word": "到"
+    },
+    {
+      "confidence": 0.9123138,
+      "endTime": 91.858406,
+      "startTime": 91.6984,
+      "word": "一"
+    },
+    {
+      "confidence": 0.97135496,
+      "endTime": 92.0184,
+      "startTime": 91.858406,
+      "word": "九"
+    },
+    {
+      "confidence": 0.9315909,
+      "endTime": 92.178406,
+      "startTime": 92.0184,
+      "word": "九"
+    },
+    {
+      "confidence": 0.94452864,
+      "endTime": 92.3384,
+      "startTime": 92.178406,
+      "word": "九"
+    },
+    {
+      "confidence": 0.97521746,
+      "endTime": 92.5884,
+      "startTime": 92.3384,
+      "word": "年，"
+    },
+    {
+      "confidence": 0.75648206,
+      "endTime": 93.0584,
+      "startTime": 92.9084,
+      "word": "英"
+    },
+    {
+      "confidence": 0.5513637,
+      "endTime": 93.1984,
+      "startTime": 93.0584,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.87752944,
+      "endTime": 93.3784,
+      "startTime": 93.1984,
+      "word": "达"
+    },
+    {
+      "confidence": 0.96333915,
+      "endTime": 93.568405,
+      "startTime": 93.3784,
+      "word": "推"
+    },
+    {
+      "confidence": 0.8876329,
+      "endTime": 93.7684,
+      "startTime": 93.568405,
+      "word": "出"
+    },
+    {
+      "confidence": 0.24083334,
+      "endTime": 93.7984,
+      "startTime": 93.7684,
+      "word": "GeForce"
+    },
+    {
+      "confidence": 0.65005916,
+      "endTime": 94.53841,
+      "startTime": 94.43841,
+      "word": "二"
+    },
+    {
+      "confidence": 0.92482495,
+      "endTime": 94.6984,
+      "startTime": 94.53841,
+      "word": "五"
+    },
+    {
+      "confidence": 0.95705783,
+      "endTime": 94.9184,
+      "startTime": 94.6984,
+      "word": "六，"
+    },
+    {
+      "confidence": 0.96035755,
+      "endTime": 95.46841,
+      "startTime": 95.318405,
+      "word": "并"
+    },
+    {
+      "confidence": 0.93372226,
+      "endTime": 95.72841,
+      "startTime": 95.46841,
+      "word": "首"
+    },
+    {
+      "confidence": 0.8666093,
+      "endTime": 95.928406,
+      "startTime": 95.72841,
+      "word": "次"
+    },
+    {
+      "confidence": 0.96706486,
+      "endTime": 96.138405,
+      "startTime": 95.928406,
+      "word": "正"
+    },
+    {
+      "confidence": 0.95631593,
+      "endTime": 96.28841,
+      "startTime": 96.138405,
+      "word": "式"
+    },
+    {
+      "confidence": 0.73470205,
+      "endTime": 96.50841,
+      "startTime": 96.28841,
+      "word": "使"
+    },
+    {
+      "confidence": 0.13882488,
+      "endTime": 96.53841,
+      "startTime": 96.50841,
+      "word": "用“"
+    },
+    {
+      "confidence": 0.8478743,
+      "endTime": 96.82841,
+      "startTime": 96.6284,
+      "word": "g"
+    },
+    {
+      "confidence": 0.76348877,
+      "endTime": 96.96841,
+      "startTime": 96.82841,
+      "word": "p"
+    },
+    {
+      "confidence": 0.29348028,
+      "endTime": 96.998405,
+      "startTime": 96.96841,
+      "word": "u”"
+    },
+    {
+      "confidence": 0.7254173,
+      "endTime": 97.248405,
+      "startTime": 97.1584,
+      "word": "这"
+    },
+    {
+      "confidence": 0.6267398,
+      "endTime": 97.318405,
+      "startTime": 97.248405,
+      "word": "个"
+    },
+    {
+      "confidence": 0.88278025,
+      "endTime": 97.46841,
+      "startTime": 97.318405,
+      "word": "名"
+    },
+    {
+      "confidence": 0.95287436,
+      "endTime": 97.6984,
+      "startTime": 97.46841,
+      "word": "称。"
+    },
+    {
+      "confidence": 0.9343906,
+      "endTime": 98.31303,
+      "startTime": 98.16303,
+      "word": "它"
+    },
+    {
+      "confidence": 0.9447364,
+      "endTime": 98.42303,
+      "startTime": 98.31303,
+      "word": "让"
+    },
+    {
+      "confidence": 0.92536515,
+      "endTime": 98.633026,
+      "startTime": 98.42303,
+      "word": "消"
+    },
+    {
+      "confidence": 0.99075866,
+      "endTime": 98.79303,
+      "startTime": 98.633026,
+      "word": "费"
+    },
+    {
+      "confidence": 0.9399602,
+      "endTime": 98.92303,
+      "startTime": 98.79303,
+      "word": "级"
+    },
+    {
+      "confidence": 0.940773,
+      "endTime": 99.06303,
+      "startTime": 98.92303,
+      "word": "电"
+    },
+    {
+      "confidence": 0.9610512,
+      "endTime": 99.27303,
+      "startTime": 99.06303,
+      "word": "脑"
+    },
+    {
+      "confidence": 0.9276636,
+      "endTime": 99.41303,
+      "startTime": 99.27303,
+      "word": "能"
+    },
+    {
+      "confidence": 0.96391416,
+      "endTime": 99.56303,
+      "startTime": 99.41303,
+      "word": "够"
+    },
+    {
+      "confidence": 0.9505837,
+      "endTime": 99.79303,
+      "startTime": 99.56303,
+      "word": "更"
+    },
+    {
+      "confidence": 0.9753434,
+      "endTime": 99.96303,
+      "startTime": 99.79303,
+      "word": "流"
+    },
+    {
+      "confidence": 0.9642854,
+      "endTime": 100.12303,
+      "startTime": 99.96303,
+      "word": "畅"
+    },
+    {
+      "confidence": 0.9810169,
+      "endTime": 100.23303,
+      "startTime": 100.12303,
+      "word": "地"
+    },
+    {
+      "confidence": 0.84278136,
+      "endTime": 100.41303,
+      "startTime": 100.23303,
+      "word": "处"
+    },
+    {
+      "confidence": 0.95967805,
+      "endTime": 100.60303,
+      "startTime": 100.41303,
+      "word": "理"
+    },
+    {
+      "confidence": 0.96471125,
+      "endTime": 100.82303,
+      "startTime": 100.633026,
+      "word": "高"
+    },
+    {
+      "confidence": 0.9744111,
+      "endTime": 101.01303,
+      "startTime": 100.82303,
+      "word": "分"
+    },
+    {
+      "confidence": 0.6409643,
+      "endTime": 101.29303,
+      "startTime": 101.01303,
+      "word": "辨"
+    },
+    {
+      "confidence": 0.10805381,
+      "endTime": 101.32303,
+      "startTime": 101.29303,
+      "word": "率、"
+    },
+    {
+      "confidence": 0.77525455,
+      "endTime": 101.64303,
+      "startTime": 101.32303,
+      "word": "复"
+    },
+    {
+      "confidence": 0.9250052,
+      "endTime": 101.77303,
+      "startTime": 101.64303,
+      "word": "杂"
+    },
+    {
+      "confidence": 0.94380546,
+      "endTime": 101.90303,
+      "startTime": 101.77303,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9230447,
+      "endTime": 102.133026,
+      "startTime": 101.90303,
+      "word": "三"
+    },
+    {
+      "confidence": 0.814904,
+      "endTime": 102.26303,
+      "startTime": 102.133026,
+      "word": "D"
+    },
+    {
+      "confidence": 0.96305317,
+      "endTime": 102.46303,
+      "startTime": 102.26303,
+      "word": "场"
+    },
+    {
+      "confidence": 0.8648017,
+      "endTime": 102.65303,
+      "startTime": 102.46303,
+      "word": "景，"
+    },
+    {
+      "confidence": 0.8803375,
+      "endTime": 103.17303,
+      "startTime": 103.03303,
+      "word": "也"
+    },
+    {
+      "confidence": 0.9310056,
+      "endTime": 103.34303,
+      "startTime": 103.17303,
+      "word": "让"
+    },
+    {
+      "confidence": 0.8553204,
+      "endTime": 103.50303,
+      "startTime": 103.34303,
+      "word": "游"
+    },
+    {
+      "confidence": 0.9639663,
+      "endTime": 103.69303,
+      "startTime": 103.50303,
+      "word": "戏"
+    },
+    {
+      "confidence": 0.9665399,
+      "endTime": 103.87303,
+      "startTime": 103.69303,
+      "word": "开"
+    },
+    {
+      "confidence": 0.9314303,
+      "endTime": 104.03303,
+      "startTime": 103.87303,
+      "word": "发"
+    },
+    {
+      "confidence": 0.92657065,
+      "endTime": 104.24303,
+      "startTime": 104.03303,
+      "word": "者"
+    },
+    {
+      "confidence": 0.9094581,
+      "endTime": 104.42303,
+      "startTime": 104.24303,
+      "word": "有"
+    },
+    {
+      "confidence": 0.8868209,
+      "endTime": 104.70303,
+      "startTime": 104.42303,
+      "word": "条"
+    },
+    {
+      "confidence": 0.96953887,
+      "endTime": 104.89303,
+      "startTime": 104.70303,
+      "word": "件"
+    },
+    {
+      "confidence": 0.8639063,
+      "endTime": 105.03303,
+      "startTime": 104.89303,
+      "word": "制"
+    },
+    {
+      "confidence": 0.9769028,
+      "endTime": 105.15303,
+      "startTime": 105.03303,
+      "word": "作"
+    },
+    {
+      "confidence": 0.9770032,
+      "endTime": 105.37303,
+      "startTime": 105.15303,
+      "word": "细"
+    },
+    {
+      "confidence": 0.9355057,
+      "endTime": 105.56303,
+      "startTime": 105.37303,
+      "word": "节"
+    },
+    {
+      "confidence": 0.85255325,
+      "endTime": 105.73303,
+      "startTime": 105.56303,
+      "word": "更"
+    },
+    {
+      "confidence": 0.97223896,
+      "endTime": 105.98303,
+      "startTime": 105.73303,
+      "word": "丰"
+    },
+    {
+      "confidence": 0.93613315,
+      "endTime": 106.11303,
+      "startTime": 105.98303,
+      "word": "富"
+    },
+    {
+      "confidence": 0.9707517,
+      "endTime": 106.19303,
+      "startTime": 106.11303,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9604883,
+      "endTime": 106.383026,
+      "startTime": 106.19303,
+      "word": "画"
+    },
+    {
+      "confidence": 0.9609832,
+      "endTime": 106.59303,
+      "startTime": 106.383026,
+      "word": "面。"
+    },
+    {
+      "confidence": 0.95856696,
+      "endTime": 107.13762,
+      "startTime": 106.94762,
+      "word": "当"
+    },
+    {
+      "confidence": 0.94217885,
+      "endTime": 107.327614,
+      "startTime": 107.13762,
+      "word": "时"
+    },
+    {
+      "confidence": 0.93505144,
+      "endTime": 107.51762,
+      "startTime": 107.327614,
+      "word": "媒"
+    },
+    {
+      "confidence": 0.9624383,
+      "endTime": 107.66762,
+      "startTime": 107.51762,
+      "word": "体"
+    },
+    {
+      "confidence": 0.8057229,
+      "endTime": 107.84762,
+      "startTime": 107.66762,
+      "word": "评"
+    },
+    {
+      "confidence": 0.8766428,
+      "endTime": 108.05762,
+      "startTime": 107.84762,
+      "word": "测"
+    },
+    {
+      "confidence": 0.95387524,
+      "endTime": 108.187614,
+      "startTime": 108.05762,
+      "word": "是"
+    },
+    {
+      "confidence": 0.9018772,
+      "endTime": 108.337616,
+      "startTime": 108.187614,
+      "word": "这"
+    },
+    {
+      "confidence": 0.9768958,
+      "endTime": 108.45762,
+      "startTime": 108.337616,
+      "word": "么"
+    },
+    {
+      "confidence": 0.87948936,
+      "endTime": 108.62762,
+      "startTime": 108.45762,
+      "word": "报"
+    },
+    {
+      "confidence": 0.96274316,
+      "endTime": 108.78761,
+      "startTime": 108.62762,
+      "word": "道"
+    },
+    {
+      "confidence": 0.96071476,
+      "endTime": 108.95762,
+      "startTime": 108.78761,
+      "word": "的，"
+    },
+    {
+      "confidence": 0.19079417,
+      "endTime": 110.047615,
+      "startTime": 110.01762,
+      "word": "GeForce"
+    },
+    {
+      "confidence": 0.66576725,
+      "endTime": 110.28761,
+      "startTime": 110.14761,
+      "word": "二"
+    },
+    {
+      "confidence": 0.9039084,
+      "endTime": 110.44762,
+      "startTime": 110.28761,
+      "word": "五"
+    },
+    {
+      "confidence": 0.92980254,
+      "endTime": 110.64761,
+      "startTime": 110.44762,
+      "word": "六"
+    },
+    {
+      "confidence": 0.9660035,
+      "endTime": 110.80762,
+      "startTime": 110.64761,
+      "word": "在"
+    },
+    {
+      "confidence": 0.87681514,
+      "endTime": 111.06762,
+      "startTime": 110.80762,
+      "word": "绝"
+    },
+    {
+      "confidence": 0.8840691,
+      "endTime": 111.21761,
+      "startTime": 111.06762,
+      "word": "大"
+    },
+    {
+      "confidence": 0.9437129,
+      "endTime": 111.34762,
+      "startTime": 111.21761,
+      "word": "多"
+    },
+    {
+      "confidence": 0.93031985,
+      "endTime": 111.51762,
+      "startTime": 111.34762,
+      "word": "数"
+    },
+    {
+      "confidence": 0.9736484,
+      "endTime": 111.727615,
+      "startTime": 111.51762,
+      "word": "测"
+    },
+    {
+      "confidence": 0.9641455,
+      "endTime": 111.85762,
+      "startTime": 111.727615,
+      "word": "试"
+    },
+    {
+      "confidence": 0.95247585,
+      "endTime": 112.05762,
+      "startTime": 111.85762,
+      "word": "中"
+    },
+    {
+      "confidence": 0.842094,
+      "endTime": 112.257614,
+      "startTime": 112.05762,
+      "word": "领"
+    },
+    {
+      "confidence": 0.8772876,
+      "endTime": 112.507614,
+      "startTime": 112.257614,
+      "word": "先"
+    },
+    {
+      "confidence": 0.9246409,
+      "endTime": 112.67762,
+      "startTime": 112.507614,
+      "word": "竞"
+    },
+    {
+      "confidence": 0.9162684,
+      "endTime": 112.81762,
+      "startTime": 112.67762,
+      "word": "争"
+    },
+    {
+      "confidence": 0.9627376,
+      "endTime": 112.937614,
+      "startTime": 112.81762,
+      "word": "对"
+    },
+    {
+      "confidence": 0.9466305,
+      "endTime": 113.19762,
+      "startTime": 112.937614,
+      "word": "手，"
+    },
+    {
+      "confidence": 0.8899071,
+      "endTime": 113.81762,
+      "startTime": 113.60762,
+      "word": "尤"
+    },
+    {
+      "confidence": 0.95885307,
+      "endTime": 113.95762,
+      "startTime": 113.81762,
+      "word": "其"
+    },
+    {
+      "confidence": 0.93566996,
+      "endTime": 114.09762,
+      "startTime": 113.95762,
+      "word": "是"
+    },
+    {
+      "confidence": 0.969297,
+      "endTime": 114.257614,
+      "startTime": 114.09762,
+      "word": "在"
+    },
+    {
+      "confidence": 0.9535045,
+      "endTime": 114.44762,
+      "startTime": 114.257614,
+      "word": "高"
+    },
+    {
+      "confidence": 0.9670798,
+      "endTime": 114.63762,
+      "startTime": 114.44762,
+      "word": "分"
+    },
+    {
+      "confidence": 0.89970046,
+      "endTime": 114.78761,
+      "startTime": 114.63762,
+      "word": "辨"
+    },
+    {
+      "confidence": 0.86919886,
+      "endTime": 114.94762,
+      "startTime": 114.78761,
+      "word": "率"
+    },
+    {
+      "confidence": 0.9317681,
+      "endTime": 115.117615,
+      "startTime": 114.94762,
+      "word": "和"
+    },
+    {
+      "confidence": 0.9322677,
+      "endTime": 115.34762,
+      "startTime": 115.117615,
+      "word": "复"
+    },
+    {
+      "confidence": 0.79851437,
+      "endTime": 115.477615,
+      "startTime": 115.34762,
+      "word": "杂"
+    },
+    {
+      "confidence": 0.84731495,
+      "endTime": 115.66762,
+      "startTime": 115.477615,
+      "word": "画"
+    },
+    {
+      "confidence": 0.92892694,
+      "endTime": 115.78761,
+      "startTime": 115.66762,
+      "word": "面"
+    },
+    {
+      "confidence": 0.8512126,
+      "endTime": 116.007614,
+      "startTime": 115.78761,
+      "word": "下"
+    },
+    {
+      "confidence": 0.94128865,
+      "endTime": 116.227615,
+      "startTime": 116.03761,
+      "word": "表"
+    },
+    {
+      "confidence": 0.97430116,
+      "endTime": 116.407616,
+      "startTime": 116.227615,
+      "word": "现"
+    },
+    {
+      "confidence": 0.93625957,
+      "endTime": 116.56762,
+      "startTime": 116.407616,
+      "word": "突"
+    },
+    {
+      "confidence": 0.96795446,
+      "endTime": 116.81762,
+      "startTime": 116.56762,
+      "word": "出，"
+    },
+    {
+      "confidence": 0.8978926,
+      "endTime": 117.337616,
+      "startTime": 117.12762,
+      "word": "是"
+    },
+    {
+      "confidence": 0.9730327,
+      "endTime": 117.51762,
+      "startTime": 117.337616,
+      "word": "当"
+    },
+    {
+      "confidence": 0.975447,
+      "endTime": 117.71762,
+      "startTime": 117.51762,
+      "word": "时"
+    },
+    {
+      "confidence": 0.818224,
+      "endTime": 117.977615,
+      "startTime": 117.71762,
+      "word": "最"
+    },
+    {
+      "confidence": 0.1689109,
+      "endTime": 118.14761,
+      "startTime": 118.117615,
+      "word": "快、"
+    },
+    {
+      "confidence": 0.93157667,
+      "endTime": 118.51762,
+      "startTime": 118.337616,
+      "word": "最"
+    },
+    {
+      "confidence": 0.92353195,
+      "endTime": 118.84762,
+      "startTime": 118.51762,
+      "word": "先"
+    },
+    {
+      "confidence": 0.9154205,
+      "endTime": 119.007614,
+      "startTime": 118.84762,
+      "word": "进"
+    },
+    {
+      "confidence": 0.95219797,
+      "endTime": 119.12762,
+      "startTime": 119.007614,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9398664,
+      "endTime": 119.407616,
+      "startTime": 119.12762,
+      "word": "三"
+    },
+    {
+      "confidence": 0.86635363,
+      "endTime": 119.547615,
+      "startTime": 119.407616,
+      "word": "D"
+    },
+    {
+      "confidence": 0.8100031,
+      "endTime": 119.727615,
+      "startTime": 119.547615,
+      "word": "芯"
+    },
+    {
+      "confidence": 0.9459563,
+      "endTime": 119.96762,
+      "startTime": 119.727615,
+      "word": "片。"
+    },
+    {
+      "confidence": 0.9503812,
+      "endTime": 120.544075,
+      "startTime": 120.434074,
+      "word": "不"
+    },
+    {
+      "confidence": 0.9395576,
+      "endTime": 120.99408,
+      "startTime": 120.544075,
+      "word": "过，"
+    },
+    {
+      "confidence": 0.8363815,
+      "endTime": 121.334076,
+      "startTime": 121.184074,
+      "word": "由"
+    },
+    {
+      "confidence": 0.7528644,
+      "endTime": 121.404076,
+      "startTime": 121.334076,
+      "word": "于"
+    },
+    {
+      "confidence": 0.92627054,
+      "endTime": 121.56408,
+      "startTime": 121.404076,
+      "word": "当"
+    },
+    {
+      "confidence": 0.97570705,
+      "endTime": 121.754074,
+      "startTime": 121.56408,
+      "word": "时"
+    },
+    {
+      "confidence": 0.83614504,
+      "endTime": 122.01408,
+      "startTime": 121.754074,
+      "word": "许"
+    },
+    {
+      "confidence": 0.96880984,
+      "endTime": 122.184074,
+      "startTime": 122.01408,
+      "word": "多"
+    },
+    {
+      "confidence": 0.9157411,
+      "endTime": 122.30408,
+      "startTime": 122.184074,
+      "word": "游"
+    },
+    {
+      "confidence": 0.9653977,
+      "endTime": 122.51408,
+      "startTime": 122.30408,
+      "word": "戏"
+    },
+    {
+      "confidence": 0.91566,
+      "endTime": 122.69408,
+      "startTime": 122.51408,
+      "word": "还"
+    },
+    {
+      "confidence": 0.98490953,
+      "endTime": 122.87408,
+      "startTime": 122.69408,
+      "word": "没"
+    },
+    {
+      "confidence": 0.8937085,
+      "endTime": 122.92408,
+      "startTime": 122.87408,
+      "word": "有"
+    },
+    {
+      "confidence": 0.96548903,
+      "endTime": 123.14407,
+      "startTime": 122.92408,
+      "word": "针"
+    },
+    {
+      "confidence": 0.9617587,
+      "endTime": 123.27408,
+      "startTime": 123.14407,
+      "word": "对"
+    },
+    {
+      "confidence": 0.8536564,
+      "endTime": 123.37408,
+      "startTime": 123.27408,
+      "word": "这"
+    },
+    {
+      "confidence": 0.8785574,
+      "endTime": 123.51408,
+      "startTime": 123.37408,
+      "word": "项"
+    },
+    {
+      "confidence": 0.9715039,
+      "endTime": 123.754074,
+      "startTime": 123.51408,
+      "word": "新"
+    },
+    {
+      "confidence": 0.9758221,
+      "endTime": 123.92408,
+      "startTime": 123.754074,
+      "word": "能"
+    },
+    {
+      "confidence": 0.93308234,
+      "endTime": 124.06408,
+      "startTime": 123.92408,
+      "word": "力"
+    },
+    {
+      "confidence": 0.95125693,
+      "endTime": 124.20408,
+      "startTime": 124.06408,
+      "word": "进"
+    },
+    {
+      "confidence": 0.93717957,
+      "endTime": 124.38408,
+      "startTime": 124.20408,
+      "word": "行"
+    },
+    {
+      "confidence": 0.8864696,
+      "endTime": 124.53407,
+      "startTime": 124.38408,
+      "word": "优"
+    },
+    {
+      "confidence": 0.94116604,
+      "endTime": 124.80408,
+      "startTime": 124.53407,
+      "word": "化，"
+    },
+    {
+      "confidence": 0.9855208,
+      "endTime": 125.434074,
+      "startTime": 125.294075,
+      "word": "它"
+    },
+    {
+      "confidence": 0.96930224,
+      "endTime": 125.52408,
+      "startTime": 125.434074,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9575842,
+      "endTime": 125.81408,
+      "startTime": 125.52408,
+      "word": "全"
+    },
+    {
+      "confidence": 0.9792731,
+      "endTime": 126.02408,
+      "startTime": 125.81408,
+      "word": "部"
+    },
+    {
+      "confidence": 0.9304125,
+      "endTime": 126.14407,
+      "startTime": 126.02408,
+      "word": "优"
+    },
+    {
+      "confidence": 0.9126418,
+      "endTime": 126.35408,
+      "startTime": 126.14407,
+      "word": "势"
+    },
+    {
+      "confidence": 0.9032843,
+      "endTime": 126.614075,
+      "startTime": 126.35408,
+      "word": "并"
+    },
+    {
+      "confidence": 0.9844935,
+      "endTime": 126.78407,
+      "startTime": 126.614075,
+      "word": "没"
+    },
+    {
+      "confidence": 0.97237486,
+      "endTime": 126.84408,
+      "startTime": 126.78407,
+      "word": "有"
+    },
+    {
+      "confidence": 0.96137166,
+      "endTime": 126.98408,
+      "startTime": 126.84408,
+      "word": "立"
+    },
+    {
+      "confidence": 0.9435699,
+      "endTime": 127.13408,
+      "startTime": 126.98408,
+      "word": "刻"
+    },
+    {
+      "confidence": 0.95295525,
+      "endTime": 127.34408,
+      "startTime": 127.13408,
+      "word": "展"
+    },
+    {
+      "confidence": 0.94645065,
+      "endTime": 127.55408,
+      "startTime": 127.34408,
+      "word": "现"
+    },
+    {
+      "confidence": 0.97562397,
+      "endTime": 127.70408,
+      "startTime": 127.55408,
+      "word": "出"
+    },
+    {
+      "confidence": 0.9770503,
+      "endTime": 127.864075,
+      "startTime": 127.70408,
+      "word": "来。"
+    },
+    {
+      "confidence": 0.20102961,
+      "endTime": 128.9365,
+      "startTime": 128.9065,
+      "word": "GeForce"
+    },
+    {
+      "confidence": 0.42050597,
+      "endTime": 129.1865,
+      "startTime": 129.0465,
+      "word": "二"
+    },
+    {
+      "confidence": 0.70096457,
+      "endTime": 129.41649,
+      "startTime": 129.1865,
+      "word": "五"
+    },
+    {
+      "confidence": 0.9402233,
+      "endTime": 129.59648,
+      "startTime": 129.41649,
+      "word": "六"
+    },
+    {
+      "confidence": 0.9662498,
+      "endTime": 129.6865,
+      "startTime": 129.59648,
+      "word": "的"
+    },
+    {
+      "confidence": 0.972558,
+      "endTime": 129.84648,
+      "startTime": 129.6865,
+      "word": "成"
+    },
+    {
+      "confidence": 0.97536784,
+      "endTime": 130.06648,
+      "startTime": 129.84648,
+      "word": "功，"
+    },
+    {
+      "confidence": 0.900446,
+      "endTime": 130.52649,
+      "startTime": 130.30649,
+      "word": "也"
+    },
+    {
+      "confidence": 0.80349123,
+      "endTime": 130.6865,
+      "startTime": 130.52649,
+      "word": "让"
+    },
+    {
+      "confidence": 0.816127,
+      "endTime": 130.9365,
+      "startTime": 130.78648,
+      "word": "英"
+    },
+    {
+      "confidence": 0.5215834,
+      "endTime": 131.05649,
+      "startTime": 130.9365,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.9229047,
+      "endTime": 131.28648,
+      "startTime": 131.05649,
+      "word": "达"
+    },
+    {
+      "confidence": 0.94351816,
+      "endTime": 131.52649,
+      "startTime": 131.28648,
+      "word": "看"
+    },
+    {
+      "confidence": 0.98266834,
+      "endTime": 131.66649,
+      "startTime": 131.52649,
+      "word": "到"
+    },
+    {
+      "confidence": 0.93428427,
+      "endTime": 131.9065,
+      "startTime": 131.66649,
+      "word": "了"
+    },
+    {
+      "confidence": 0.74727035,
+      "endTime": 132.25648,
+      "startTime": 131.99649,
+      "word": "g"
+    },
+    {
+      "confidence": 0.82778263,
+      "endTime": 132.48648,
+      "startTime": 132.25648,
+      "word": "p"
+    },
+    {
+      "confidence": 0.6498665,
+      "endTime": 132.6865,
+      "startTime": 132.48648,
+      "word": "u"
+    },
+    {
+      "confidence": 0.94080704,
+      "endTime": 132.94649,
+      "startTime": 132.6865,
+      "word": "并"
+    },
+    {
+      "confidence": 0.93955976,
+      "endTime": 133.1565,
+      "startTime": 132.94649,
+      "word": "行"
+    },
+    {
+      "confidence": 0.87368524,
+      "endTime": 133.34648,
+      "startTime": 133.1565,
+      "word": "处"
+    },
+    {
+      "confidence": 0.9565426,
+      "endTime": 133.50648,
+      "startTime": 133.34648,
+      "word": "理"
+    },
+    {
+      "confidence": 0.94311166,
+      "endTime": 133.67648,
+      "startTime": 133.50648,
+      "word": "能"
+    },
+    {
+      "confidence": 0.95117754,
+      "endTime": 133.7965,
+      "startTime": 133.67648,
+      "word": "力"
+    },
+    {
+      "confidence": 0.96788687,
+      "endTime": 133.95648,
+      "startTime": 133.7965,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9398278,
+      "endTime": 134.1865,
+      "startTime": 133.95648,
+      "word": "更"
+    },
+    {
+      "confidence": 0.9017032,
+      "endTime": 134.35649,
+      "startTime": 134.1865,
+      "word": "大"
+    },
+    {
+      "confidence": 0.9196959,
+      "endTime": 134.57649,
+      "startTime": 134.35649,
+      "word": "潜"
+    },
+    {
+      "confidence": 0.97178817,
+      "endTime": 134.78648,
+      "startTime": 134.57649,
+      "word": "力。"
+    },
+    {
+      "confidence": 0.76500666,
+      "endTime": 135.76816,
+      "startTime": 135.51816,
+      "word": "转"
+    },
+    {
+      "confidence": 0.8651509,
+      "endTime": 135.99815,
+      "startTime": 135.76816,
+      "word": "折"
+    },
+    {
+      "confidence": 0.8504643,
+      "endTime": 136.17816,
+      "startTime": 135.99815,
+      "word": "发"
+    },
+    {
+      "confidence": 0.9350079,
+      "endTime": 136.34816,
+      "startTime": 136.17816,
+      "word": "生"
+    },
+    {
+      "confidence": 0.873811,
+      "endTime": 136.49815,
+      "startTime": 136.34816,
+      "word": "在"
+    },
+    {
+      "confidence": 0.8824903,
+      "endTime": 136.67816,
+      "startTime": 136.56816,
+      "word": "二"
+    },
+    {
+      "confidence": 0.984463,
+      "endTime": 136.87816,
+      "startTime": 136.67816,
+      "word": "十"
+    },
+    {
+      "confidence": 0.8814552,
+      "endTime": 136.95816,
+      "startTime": 136.87816,
+      "word": "一"
+    },
+    {
+      "confidence": 0.8916651,
+      "endTime": 137.11816,
+      "startTime": 136.95816,
+      "word": "世"
+    },
+    {
+      "confidence": 0.8766363,
+      "endTime": 137.23816,
+      "startTime": 137.11816,
+      "word": "纪"
+    },
+    {
+      "confidence": 0.9453704,
+      "endTime": 137.48816,
+      "startTime": 137.23816,
+      "word": "后，"
+    },
+    {
+      "confidence": 0.755364,
+      "endTime": 138.19817,
+      "startTime": 137.97816,
+      "word": "g"
+    },
+    {
+      "confidence": 0.9405679,
+      "endTime": 138.41817,
+      "startTime": 138.19817,
+      "word": "p"
+    },
+    {
+      "confidence": 0.8173683,
+      "endTime": 138.63815,
+      "startTime": 138.41817,
+      "word": "u"
+    },
+    {
+      "confidence": 0.6892243,
+      "endTime": 138.81816,
+      "startTime": 138.63815,
+      "word": "一"
+    },
+    {
+      "confidence": 0.88472223,
+      "endTime": 139.03816,
+      "startTime": 138.81816,
+      "word": "项"
+    },
+    {
+      "confidence": 0.8881037,
+      "endTime": 139.37816,
+      "startTime": 139.03816,
+      "word": "最"
+    },
+    {
+      "confidence": 0.97144955,
+      "endTime": 139.58817,
+      "startTime": 139.37816,
+      "word": "关"
+    },
+    {
+      "confidence": 0.9403864,
+      "endTime": 139.72816,
+      "startTime": 139.58817,
+      "word": "键"
+    },
+    {
+      "confidence": 0.8797422,
+      "endTime": 139.81816,
+      "startTime": 139.72816,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9620967,
+      "endTime": 139.96815,
+      "startTime": 139.81816,
+      "word": "用"
+    },
+    {
+      "confidence": 0.92873645,
+      "endTime": 140.14816,
+      "startTime": 139.96815,
+      "word": "途"
+    },
+    {
+      "confidence": 0.9574992,
+      "endTime": 140.26816,
+      "startTime": 140.14816,
+      "word": "被"
+    },
+    {
+      "confidence": 0.9704298,
+      "endTime": 140.54816,
+      "startTime": 140.26816,
+      "word": "发"
+    },
+    {
+      "confidence": 0.8915019,
+      "endTime": 140.65816,
+      "startTime": 140.54816,
+      "word": "掘"
+    },
+    {
+      "confidence": 0.7914365,
+      "endTime": 140.80817,
+      "startTime": 140.65816,
+      "word": "出"
+    },
+    {
+      "confidence": 0.20553182,
+      "endTime": 140.83817,
+      "startTime": 140.80817,
+      "word": "来："
+    },
+    {
+      "confidence": 0.8338309,
+      "endTime": 141.87816,
+      "startTime": 141.61816,
+      "word": "斯"
+    },
+    {
+      "confidence": 0.7485266,
+      "endTime": 142.06816,
+      "startTime": 141.87816,
+      "word": "坦"
+    },
+    {
+      "confidence": 0.9374564,
+      "endTime": 142.29816,
+      "startTime": 142.06816,
+      "word": "福"
+    },
+    {
+      "confidence": 0.85562617,
+      "endTime": 142.46815,
+      "startTime": 142.29816,
+      "word": "等"
+    },
+    {
+      "confidence": 0.91782856,
+      "endTime": 142.61816,
+      "startTime": 142.46815,
+      "word": "研"
+    },
+    {
+      "confidence": 0.9164529,
+      "endTime": 142.76816,
+      "startTime": 142.61816,
+      "word": "究"
+    },
+    {
+      "confidence": 0.85234946,
+      "endTime": 142.91817,
+      "startTime": 142.76816,
+      "word": "机"
+    },
+    {
+      "confidence": 0.9523565,
+      "endTime": 143.25816,
+      "startTime": 142.91817,
+      "word": "构"
+    },
+    {
+      "confidence": 0.9685781,
+      "endTime": 143.49815,
+      "startTime": 143.30817,
+      "word": "开"
+    },
+    {
+      "confidence": 0.98028934,
+      "endTime": 143.65816,
+      "startTime": 143.49815,
+      "word": "始"
+    },
+    {
+      "confidence": 0.9463969,
+      "endTime": 143.84816,
+      "startTime": 143.65816,
+      "word": "尝"
+    },
+    {
+      "confidence": 0.9080796,
+      "endTime": 143.99815,
+      "startTime": 143.84816,
+      "word": "试"
+    },
+    {
+      "confidence": 0.97616804,
+      "endTime": 144.13815,
+      "startTime": 143.99815,
+      "word": "用"
+    },
+    {
+      "confidence": 0.7901567,
+      "endTime": 144.41815,
+      "startTime": 144.13815,
+      "word": "显"
+    },
+    {
+      "confidence": 0.9334854,
+      "endTime": 144.68816,
+      "startTime": 144.41815,
+      "word": "卡"
+    },
+    {
+      "confidence": 0.8598563,
+      "endTime": 144.82816,
+      "startTime": 144.68816,
+      "word": "完"
+    },
+    {
+      "confidence": 0.9698455,
+      "endTime": 144.99815,
+      "startTime": 144.82816,
+      "word": "成"
+    },
+    {
+      "confidence": 0.93875915,
+      "endTime": 145.21815,
+      "startTime": 144.99815,
+      "word": "科"
+    },
+    {
+      "confidence": 0.9536144,
+      "endTime": 145.34816,
+      "startTime": 145.21815,
+      "word": "学"
+    },
+    {
+      "confidence": 0.833618,
+      "endTime": 145.49815,
+      "startTime": 145.34816,
+      "word": "计"
+    },
+    {
+      "confidence": 0.8732639,
+      "endTime": 145.71815,
+      "startTime": 145.49815,
+      "word": "算，"
+    },
+    {
+      "confidence": 0.9464788,
+      "endTime": 146.32816,
+      "startTime": 146.14816,
+      "word": "同"
+    },
+    {
+      "confidence": 0.89675045,
+      "endTime": 146.52817,
+      "startTime": 146.32816,
+      "word": "时"
+    },
+    {
+      "confidence": 0.8038014,
+      "endTime": 146.68816,
+      "startTime": 146.52817,
+      "word": "还"
+    },
+    {
+      "confidence": 0.9245956,
+      "endTime": 146.91815,
+      "startTime": 146.68816,
+      "word": "开"
+    },
+    {
+      "confidence": 0.8516334,
+      "endTime": 147.08817,
+      "startTime": 146.91815,
+      "word": "发"
+    },
+    {
+      "confidence": 0.8817505,
+      "endTime": 147.19817,
+      "startTime": 147.08817,
+      "word": "了"
+    },
+    {
+      "confidence": 0.90689325,
+      "endTime": 147.36816,
+      "startTime": 147.19817,
+      "word": "专"
+    },
+    {
+      "confidence": 0.9292229,
+      "endTime": 147.50816,
+      "startTime": 147.36816,
+      "word": "门"
+    },
+    {
+      "confidence": 0.89840966,
+      "endTime": 147.60815,
+      "startTime": 147.50816,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9646591,
+      "endTime": 147.79816,
+      "startTime": 147.60815,
+      "word": "工"
+    },
+    {
+      "confidence": 0.98304105,
+      "endTime": 148.02817,
+      "startTime": 147.79816,
+      "word": "具，"
+    },
+    {
+      "confidence": 0.91558456,
+      "endTime": 148.61816,
+      "startTime": 148.38815,
+      "word": "让"
+    },
+    {
+      "confidence": 0.69792604,
+      "endTime": 148.81816,
+      "startTime": 148.61816,
+      "word": "g"
+    },
+    {
+      "confidence": 0.75293833,
+      "endTime": 149.00816,
+      "startTime": 148.81816,
+      "word": "p"
+    },
+    {
+      "confidence": 0.577399,
+      "endTime": 149.21815,
+      "startTime": 149.00816,
+      "word": "u"
+    },
+    {
+      "confidence": 0.9004115,
+      "endTime": 149.35815,
+      "startTime": 149.21815,
+      "word": "能"
+    },
+    {
+      "confidence": 0.9767339,
+      "endTime": 149.51816,
+      "startTime": 149.35815,
+      "word": "够"
+    },
+    {
+      "confidence": 0.88070184,
+      "endTime": 149.68816,
+      "startTime": 149.51816,
+      "word": "处"
+    },
+    {
+      "confidence": 0.90793395,
+      "endTime": 149.88815,
+      "startTime": 149.68816,
+      "word": "理"
+    },
+    {
+      "confidence": 0.8608156,
+      "endTime": 150.16815,
+      "startTime": 149.88815,
+      "word": "矩"
+    },
+    {
+      "confidence": 0.8316749,
+      "endTime": 150.35815,
+      "startTime": 150.16815,
+      "word": "阵"
+    },
+    {
+      "confidence": 0.8423925,
+      "endTime": 150.52817,
+      "startTime": 150.35815,
+      "word": "运"
+    },
+    {
+      "confidence": 0.22647938,
+      "endTime": 150.68816,
+      "startTime": 150.65816,
+      "word": "算、"
+    },
+    {
+      "confidence": 0.9477645,
+      "endTime": 151.26816,
+      "startTime": 150.97816,
+      "word": "流"
+    },
+    {
+      "confidence": 0.87566245,
+      "endTime": 151.46815,
+      "startTime": 151.26816,
+      "word": "体"
+    },
+    {
+      "confidence": 0.928836,
+      "endTime": 151.68816,
+      "startTime": 151.46815,
+      "word": "模"
+    },
+    {
+      "confidence": 0.91683155,
+      "endTime": 151.85815,
+      "startTime": 151.68816,
+      "word": "拟"
+    },
+    {
+      "confidence": 0.91601694,
+      "endTime": 151.98816,
+      "startTime": 151.85815,
+      "word": "等"
+    },
+    {
+      "confidence": 0.8976635,
+      "endTime": 152.19817,
+      "startTime": 151.98816,
+      "word": "任"
+    },
+    {
+      "confidence": 0.8139961,
+      "endTime": 152.33817,
+      "startTime": 152.19817,
+      "word": "务。"
+    },
+    {
+      "confidence": 0.7589122,
+      "endTime": 153.00153,
+      "startTime": 152.81154,
+      "word": "英"
+    },
+    {
+      "confidence": 0.5666013,
+      "endTime": 153.16153,
+      "startTime": 153.00153,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.9237176,
+      "endTime": 153.38153,
+      "startTime": 153.16153,
+      "word": "达"
+    },
+    {
+      "confidence": 0.80531937,
+      "endTime": 153.64153,
+      "startTime": 153.38153,
+      "word": "敏"
+    },
+    {
+      "confidence": 0.824519,
+      "endTime": 153.77153,
+      "startTime": 153.64153,
+      "word": "锐"
+    },
+    {
+      "confidence": 0.9428751,
+      "endTime": 153.89153,
+      "startTime": 153.77153,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9654612,
+      "endTime": 154.10153,
+      "startTime": 153.89153,
+      "word": "注"
+    },
+    {
+      "confidence": 0.9559573,
+      "endTime": 154.19153,
+      "startTime": 154.10153,
+      "word": "意"
+    },
+    {
+      "confidence": 0.96025294,
+      "endTime": 154.33153,
+      "startTime": 154.19153,
+      "word": "到"
+    },
+    {
+      "confidence": 0.9594986,
+      "endTime": 154.43153,
+      "startTime": 154.33153,
+      "word": "了"
+    },
+    {
+      "confidence": 0.97392625,
+      "endTime": 154.64153,
+      "startTime": 154.43153,
+      "word": "他"
+    },
+    {
+      "confidence": 0.9215649,
+      "endTime": 154.71153,
+      "startTime": 154.64153,
+      "word": "们"
+    },
+    {
+      "confidence": 0.9222979,
+      "endTime": 154.82153,
+      "startTime": 154.71153,
+      "word": "的"
+    },
+    {
+      "confidence": 0.8835248,
+      "endTime": 155.01154,
+      "startTime": 154.82153,
+      "word": "探"
+    },
+    {
+      "confidence": 0.94297373,
+      "endTime": 155.27153,
+      "startTime": 155.01154,
+      "word": "索，"
+    },
+    {
+      "confidence": 0.85113865,
+      "endTime": 155.77153,
+      "startTime": 155.66153,
+      "word": "于"
+    },
+    {
+      "confidence": 0.9457308,
+      "endTime": 155.96153,
+      "startTime": 155.77153,
+      "word": "是"
+    },
+    {
+      "confidence": 0.92673784,
+      "endTime": 156.12154,
+      "startTime": 155.96153,
+      "word": "在"
+    },
+    {
+      "confidence": 0.9685337,
+      "endTime": 156.33153,
+      "startTime": 156.17152,
+      "word": "二"
+    },
+    {
+      "confidence": 0.960793,
+      "endTime": 156.47153,
+      "startTime": 156.33153,
+      "word": "零"
+    },
+    {
+      "confidence": 0.94467777,
+      "endTime": 156.61153,
+      "startTime": 156.47153,
+      "word": "零"
+    },
+    {
+      "confidence": 0.9279484,
+      "endTime": 156.80153,
+      "startTime": 156.61153,
+      "word": "四"
+    },
+    {
+      "confidence": 0.90326226,
+      "endTime": 157.05153,
+      "startTime": 156.80153,
+      "word": "年"
+    },
+    {
+      "confidence": 0.935482,
+      "endTime": 157.26154,
+      "startTime": 157.05153,
+      "word": "邀"
+    },
+    {
+      "confidence": 0.90879655,
+      "endTime": 157.43153,
+      "startTime": 157.26154,
+      "word": "请"
+    },
+    {
+      "confidence": 0.9371683,
+      "endTime": 157.74153,
+      "startTime": 157.43153,
+      "word": "相"
+    },
+    {
+      "confidence": 0.9658587,
+      "endTime": 157.93153,
+      "startTime": 157.74153,
+      "word": "关"
+    },
+    {
+      "confidence": 0.9107765,
+      "endTime": 158.12154,
+      "startTime": 157.93153,
+      "word": "研"
+    },
+    {
+      "confidence": 0.8987392,
+      "endTime": 158.30153,
+      "startTime": 158.12154,
+      "word": "究"
+    },
+    {
+      "confidence": 0.9499268,
+      "endTime": 158.53152,
+      "startTime": 158.30153,
+      "word": "者"
+    },
+    {
+      "confidence": 0.66241795,
+      "endTime": 159.20154,
+      "startTime": 158.73154,
+      "word": "Ian"
+    },
+    {
+      "confidence": 0.8766161,
+      "endTime": 159.55153,
+      "startTime": 159.20154,
+      "word": "Buck"
+    },
+    {
+      "confidence": 0.942942,
+      "endTime": 159.77153,
+      "startTime": 159.59154,
+      "word": "加"
+    },
+    {
+      "confidence": 0.94984424,
+      "endTime": 159.91153,
+      "startTime": 159.77153,
+      "word": "入"
+    },
+    {
+      "confidence": 0.97341526,
+      "endTime": 160.07153,
+      "startTime": 159.91153,
+      "word": "公"
+    },
+    {
+      "confidence": 0.9887317,
+      "endTime": 160.31154,
+      "startTime": 160.07153,
+      "word": "司，"
+    },
+    {
+      "confidence": 0.9216303,
+      "endTime": 160.99153,
+      "startTime": 160.81152,
+      "word": "并"
+    },
+    {
+      "confidence": 0.90820765,
+      "endTime": 161.18153,
+      "startTime": 160.99153,
+      "word": "着"
+    },
+    {
+      "confidence": 0.95871437,
+      "endTime": 161.39153,
+      "startTime": 161.18153,
+      "word": "手"
+    },
+    {
+      "confidence": 0.9362159,
+      "endTime": 161.52153,
+      "startTime": 161.39153,
+      "word": "把"
+    },
+    {
+      "confidence": 0.95254403,
+      "endTime": 161.62154,
+      "startTime": 161.52153,
+      "word": "这"
+    },
+    {
+      "confidence": 0.96866626,
+      "endTime": 161.76154,
+      "startTime": 161.62154,
+      "word": "些"
+    },
+    {
+      "confidence": 0.9390388,
+      "endTime": 161.98154,
+      "startTime": 161.76154,
+      "word": "实"
+    },
+    {
+      "confidence": 0.9755789,
+      "endTime": 162.10153,
+      "startTime": 161.98154,
+      "word": "验"
+    },
+    {
+      "confidence": 0.9463773,
+      "endTime": 162.30153,
+      "startTime": 162.10153,
+      "word": "成"
+    },
+    {
+      "confidence": 0.87452525,
+      "endTime": 162.51154,
+      "startTime": 162.30153,
+      "word": "果"
+    },
+    {
+      "confidence": 0.9431195,
+      "endTime": 162.71153,
+      "startTime": 162.51154,
+      "word": "变"
+    },
+    {
+      "confidence": 0.9758676,
+      "endTime": 162.88153,
+      "startTime": 162.71153,
+      "word": "成"
+    },
+    {
+      "confidence": 0.8998354,
+      "endTime": 163.09154,
+      "startTime": 162.88153,
+      "word": "一"
+    },
+    {
+      "confidence": 0.9675541,
+      "endTime": 163.25153,
+      "startTime": 163.09154,
+      "word": "般"
+    },
+    {
+      "confidence": 0.96270275,
+      "endTime": 163.48154,
+      "startTime": 163.25153,
+      "word": "开"
+    },
+    {
+      "confidence": 0.95233184,
+      "endTime": 163.66153,
+      "startTime": 163.48154,
+      "word": "发"
+    },
+    {
+      "confidence": 0.93172187,
+      "endTime": 163.86153,
+      "startTime": 163.66153,
+      "word": "者"
+    },
+    {
+      "confidence": 0.8327916,
+      "endTime": 164.01154,
+      "startTime": 163.86153,
+      "word": "可"
+    },
+    {
+      "confidence": 0.74781305,
+      "endTime": 164.09154,
+      "startTime": 164.01154,
+      "word": "以"
+    },
+    {
+      "confidence": 0.89359576,
+      "endTime": 164.37154,
+      "startTime": 164.09154,
+      "word": "使"
+    },
+    {
+      "confidence": 0.98103553,
+      "endTime": 164.51154,
+      "startTime": 164.37154,
+      "word": "用"
+    },
+    {
+      "confidence": 0.95594394,
+      "endTime": 164.60153,
+      "startTime": 164.51154,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9648312,
+      "endTime": 164.80153,
+      "startTime": 164.60153,
+      "word": "平"
+    },
+    {
+      "confidence": 0.97852224,
+      "endTime": 165.11153,
+      "startTime": 164.80153,
+      "word": "台。"
+    },
+    {
+      "confidence": 0.8905976,
+      "endTime": 165.81152,
+      "startTime": 165.62154,
+      "word": "二"
+    },
+    {
+      "confidence": 0.97326285,
+      "endTime": 165.97153,
+      "startTime": 165.81152,
+      "word": "零"
+    },
+    {
+      "confidence": 0.9753113,
+      "endTime": 166.14153,
+      "startTime": 165.97153,
+      "word": "零"
+    },
+    {
+      "confidence": 0.9556741,
+      "endTime": 166.31152,
+      "startTime": 166.14153,
+      "word": "六"
+    },
+    {
+      "confidence": 0.98070234,
+      "endTime": 166.60153,
+      "startTime": 166.31152,
+      "word": "年，"
+    },
+    {
+      "confidence": 0.21500224,
+      "endTime": 167.35153,
+      "startTime": 167.32153,
+      "word": "CUDA"
+    },
+    {
+      "confidence": 0.7058152,
+      "endTime": 167.50153,
+      "startTime": 167.35153,
+      "word": "横"
+    },
+    {
+      "confidence": 0.92881393,
+      "endTime": 167.68153,
+      "startTime": 167.50153,
+      "word": "空"
+    },
+    {
+      "confidence": 0.9752289,
+      "endTime": 167.84154,
+      "startTime": 167.68153,
+      "word": "出"
+    },
+    {
+      "confidence": 0.97940236,
+      "endTime": 168.11153,
+      "startTime": 167.84154,
+      "word": "世。"
+    },
+    {
+      "confidence": 0.3628249,
+      "endTime": 169.00891,
+      "startTime": 168.97891,
+      "word": "CUDA"
+    },
+    {
+      "confidence": 0.8028134,
+      "endTime": 169.1889,
+      "startTime": 169.00891,
+      "word": "让"
+    },
+    {
+      "confidence": 0.655472,
+      "endTime": 169.3789,
+      "startTime": 169.1889,
+      "word": "g"
+    },
+    {
+      "confidence": 0.745552,
+      "endTime": 169.53891,
+      "startTime": 169.3789,
+      "word": "p"
+    },
+    {
+      "confidence": 0.6355937,
+      "endTime": 169.7689,
+      "startTime": 169.53891,
+      "word": "u"
+    },
+    {
+      "confidence": 0.8350569,
+      "endTime": 169.9889,
+      "startTime": 169.80891,
+      "word": "不"
+    },
+    {
+      "confidence": 0.9820566,
+      "endTime": 170.1589,
+      "startTime": 169.9889,
+      "word": "再"
+    },
+    {
+      "confidence": 0.889958,
+      "endTime": 170.28891,
+      "startTime": 170.1589,
+      "word": "只"
+    },
+    {
+      "confidence": 0.97049904,
+      "endTime": 170.4389,
+      "startTime": 170.28891,
+      "word": "能"
+    },
+    {
+      "confidence": 0.89229316,
+      "endTime": 170.6089,
+      "startTime": 170.4389,
+      "word": "处"
+    },
+    {
+      "confidence": 0.93271244,
+      "endTime": 170.77892,
+      "startTime": 170.6089,
+      "word": "理"
+    },
+    {
+      "confidence": 0.9358469,
+      "endTime": 170.9089,
+      "startTime": 170.77892,
+      "word": "游"
+    },
+    {
+      "confidence": 0.96022993,
+      "endTime": 171.05891,
+      "startTime": 170.9089,
+      "word": "戏"
+    },
+    {
+      "confidence": 0.8866377,
+      "endTime": 171.2389,
+      "startTime": 171.05891,
+      "word": "画"
+    },
+    {
+      "confidence": 0.9745953,
+      "endTime": 171.4689,
+      "startTime": 171.2389,
+      "word": "面，"
+    },
+    {
+      "confidence": 0.84191334,
+      "endTime": 172.03891,
+      "startTime": 171.7989,
+      "word": "也"
+    },
+    {
+      "confidence": 0.9304589,
+      "endTime": 172.19891,
+      "startTime": 172.03891,
+      "word": "能"
+    },
+    {
+      "confidence": 0.9526543,
+      "endTime": 172.33891,
+      "startTime": 172.19891,
+      "word": "被"
+    },
+    {
+      "confidence": 0.9540894,
+      "endTime": 172.5789,
+      "startTime": 172.33891,
+      "word": "科"
+    },
+    {
+      "confidence": 0.96814716,
+      "endTime": 172.7189,
+      "startTime": 172.5789,
+      "word": "学"
+    },
+    {
+      "confidence": 0.91495097,
+      "endTime": 172.88892,
+      "startTime": 172.7189,
+      "word": "家"
+    },
+    {
+      "confidence": 0.92837083,
+      "endTime": 173.02892,
+      "startTime": 172.88892,
+      "word": "和"
+    },
+    {
+      "confidence": 0.97219557,
+      "endTime": 173.20891,
+      "startTime": 173.02892,
+      "word": "工"
+    },
+    {
+      "confidence": 0.98025936,
+      "endTime": 173.3489,
+      "startTime": 173.20891,
+      "word": "程"
+    },
+    {
+      "confidence": 0.6737561,
+      "endTime": 173.5789,
+      "startTime": 173.3489,
+      "word": "师"
+    },
+    {
+      "confidence": 0.7891179,
+      "endTime": 173.74892,
+      "startTime": 173.5789,
+      "word": "拿"
+    },
+    {
+      "confidence": 0.86139613,
+      "endTime": 173.8589,
+      "startTime": 173.74892,
+      "word": "来"
+    },
+    {
+      "confidence": 0.87502205,
+      "endTime": 174.0489,
+      "startTime": 173.8589,
+      "word": "处"
+    },
+    {
+      "confidence": 0.9605219,
+      "endTime": 174.19891,
+      "startTime": 174.0489,
+      "word": "理"
+    },
+    {
+      "confidence": 0.9234869,
+      "endTime": 174.45891,
+      "startTime": 174.19891,
+      "word": "复"
+    },
+    {
+      "confidence": 0.941962,
+      "endTime": 174.61891,
+      "startTime": 174.45891,
+      "word": "杂"
+    },
+    {
+      "confidence": 0.8464197,
+      "endTime": 174.7689,
+      "startTime": 174.61891,
+      "word": "计"
+    },
+    {
+      "confidence": 0.9342392,
+      "endTime": 174.99892,
+      "startTime": 174.7689,
+      "word": "算。"
+    },
+    {
+      "confidence": 0.8517175,
+      "endTime": 175.64891,
+      "startTime": 175.42891,
+      "word": "天"
+    },
+    {
+      "confidence": 0.95884985,
+      "endTime": 175.8289,
+      "startTime": 175.64891,
+      "word": "气"
+    },
+    {
+      "confidence": 0.8668046,
+      "endTime": 176.02892,
+      "startTime": 175.8289,
+      "word": "模"
+    },
+    {
+      "confidence": 0.16945502,
+      "endTime": 176.05891,
+      "startTime": 176.02892,
+      "word": "拟、"
+    },
+    {
+      "confidence": 0.9278132,
+      "endTime": 176.64891,
+      "startTime": 176.35892,
+      "word": "石"
+    },
+    {
+      "confidence": 0.83280134,
+      "endTime": 176.77892,
+      "startTime": 176.64891,
+      "word": "油"
+    },
+    {
+      "confidence": 0.7239543,
+      "endTime": 176.94891,
+      "startTime": 176.77892,
+      "word": "勘"
+    },
+    {
+      "confidence": 0.39473596,
+      "endTime": 177.13892,
+      "startTime": 176.94891,
+      "word": "探、"
+    },
+    {
+      "confidence": 0.72326624,
+      "endTime": 177.6589,
+      "startTime": 177.47891,
+      "word": "医"
+    },
+    {
+      "confidence": 0.9021431,
+      "endTime": 177.86891,
+      "startTime": 177.6589,
+      "word": "学"
+    },
+    {
+      "confidence": 0.9450485,
+      "endTime": 178.0789,
+      "startTime": 177.86891,
+      "word": "研"
+    },
+    {
+      "confidence": 0.9122327,
+      "endTime": 178.25891,
+      "startTime": 178.0789,
+      "word": "究"
+    },
+    {
+      "confidence": 0.81637967,
+      "endTime": 178.3789,
+      "startTime": 178.25891,
+      "word": "等"
+    },
+    {
+      "confidence": 0.87982106,
+      "endTime": 178.53891,
+      "startTime": 178.3789,
+      "word": "任"
+    },
+    {
+      "confidence": 0.70852965,
+      "endTime": 178.7489,
+      "startTime": 178.53891,
+      "word": "务，"
+    },
+    {
+      "confidence": 0.9735983,
+      "endTime": 179.1889,
+      "startTime": 178.97891,
+      "word": "都"
+    },
+    {
+      "confidence": 0.72021157,
+      "endTime": 179.31891,
+      "startTime": 179.1889,
+      "word": "可"
+    },
+    {
+      "confidence": 0.65432626,
+      "endTime": 179.42891,
+      "startTime": 179.31891,
+      "word": "以"
+    },
+    {
+      "confidence": 0.9532003,
+      "endTime": 179.5989,
+      "startTime": 179.42891,
+      "word": "借"
+    },
+    {
+      "confidence": 0.9149826,
+      "endTime": 179.7689,
+      "startTime": 179.5989,
+      "word": "助"
+    },
+    {
+      "confidence": 0.6819276,
+      "endTime": 179.97891,
+      "startTime": 179.7689,
+      "word": "g"
+    },
+    {
+      "confidence": 0.7373012,
+      "endTime": 180.1589,
+      "startTime": 179.97891,
+      "word": "p"
+    },
+    {
+      "confidence": 0.48744133,
+      "endTime": 180.3489,
+      "startTime": 180.1589,
+      "word": "u"
+    },
+    {
+      "confidence": 0.89356357,
+      "endTime": 180.58891,
+      "startTime": 180.3489,
+      "word": "加"
+    },
+    {
+      "confidence": 0.8872564,
+      "endTime": 180.75891,
+      "startTime": 180.58891,
+      "word": "速"
+    },
+    {
+      "confidence": 0.8328046,
+      "endTime": 180.86891,
+      "startTime": 180.75891,
+      "word": "完"
+    },
+    {
+      "confidence": 0.97957414,
+      "endTime": 181.11891,
+      "startTime": 180.86891,
+      "word": "成。"
+    },
+    {
+      "confidence": 0.9004331,
+      "endTime": 181.90146,
+      "startTime": 181.68146,
+      "word": "这"
+    },
+    {
+      "confidence": 0.7501622,
+      "endTime": 182.03146,
+      "startTime": 181.90146,
+      "word": "次"
+    },
+    {
+      "confidence": 0.88045,
+      "endTime": 182.21146,
+      "startTime": 182.03146,
+      "word": "转"
+    },
+    {
+      "confidence": 0.95721596,
+      "endTime": 182.45146,
+      "startTime": 182.21146,
+      "word": "向"
+    },
+    {
+      "confidence": 0.9218123,
+      "endTime": 182.60146,
+      "startTime": 182.45146,
+      "word": "虽"
+    },
+    {
+      "confidence": 0.9275395,
+      "endTime": 182.69145,
+      "startTime": 182.60146,
+      "word": "然"
+    },
+    {
+      "confidence": 0.9586465,
+      "endTime": 182.84146,
+      "startTime": 182.69145,
+      "word": "在"
+    },
+    {
+      "confidence": 0.96900123,
+      "endTime": 183.03146,
+      "startTime": 182.84146,
+      "word": "短"
+    },
+    {
+      "confidence": 0.869344,
+      "endTime": 183.21146,
+      "startTime": 183.03146,
+      "word": "期"
+    },
+    {
+      "confidence": 0.8421803,
+      "endTime": 183.36145,
+      "startTime": 183.21146,
+      "word": "内"
+    },
+    {
+      "confidence": 0.8941033,
+      "endTime": 183.57146,
+      "startTime": 183.36145,
+      "word": "增"
+    },
+    {
+      "confidence": 0.9308216,
+      "endTime": 183.70146,
+      "startTime": 183.57146,
+      "word": "加"
+    },
+    {
+      "confidence": 0.88532275,
+      "endTime": 183.79146,
+      "startTime": 183.70146,
+      "word": "了"
+    },
+    {
+      "confidence": 0.9667246,
+      "endTime": 184.04146,
+      "startTime": 183.79146,
+      "word": "成"
+    },
+    {
+      "confidence": 0.9540826,
+      "endTime": 184.24146,
+      "startTime": 184.04146,
+      "word": "本。"
+    },
+    {
+      "confidence": 0.72642654,
+      "endTime": 184.89146,
+      "startTime": 184.75146,
+      "word": "但"
+    },
+    {
+      "confidence": 0.49768308,
+      "endTime": 185.30145,
+      "startTime": 185.25146,
+      "word": "CUDA"
+    },
+    {
+      "confidence": 0.85337657,
+      "endTime": 185.48146,
+      "startTime": 185.30145,
+      "word": "让"
+    },
+    {
+      "confidence": 0.9486212,
+      "endTime": 185.68146,
+      "startTime": 185.48146,
+      "word": "越"
+    },
+    {
+      "confidence": 0.9676261,
+      "endTime": 185.84146,
+      "startTime": 185.68146,
+      "word": "来"
+    },
+    {
+      "confidence": 0.9735188,
+      "endTime": 185.97145,
+      "startTime": 185.84146,
+      "word": "越"
+    },
+    {
+      "confidence": 0.9801984,
+      "endTime": 186.10146,
+      "startTime": 185.97145,
+      "word": "多"
+    },
+    {
+      "confidence": 0.9784302,
+      "endTime": 186.19145,
+      "startTime": 186.10146,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9848892,
+      "endTime": 186.37146,
+      "startTime": 186.19145,
+      "word": "开"
+    },
+    {
+      "confidence": 0.97228205,
+      "endTime": 186.53146,
+      "startTime": 186.37146,
+      "word": "发"
+    },
+    {
+      "confidence": 0.92143714,
+      "endTime": 186.71146,
+      "startTime": 186.53146,
+      "word": "者"
+    },
+    {
+      "confidence": 0.9715833,
+      "endTime": 186.86145,
+      "startTime": 186.71146,
+      "word": "开"
+    },
+    {
+      "confidence": 0.98292977,
+      "endTime": 187.00146,
+      "startTime": 186.86145,
+      "word": "始"
+    },
+    {
+      "confidence": 0.9725355,
+      "endTime": 187.17146,
+      "startTime": 187.00146,
+      "word": "学"
+    },
+    {
+      "confidence": 0.9488266,
+      "endTime": 187.36145,
+      "startTime": 187.17146,
+      "word": "习"
+    },
+    {
+      "confidence": 0.9661017,
+      "endTime": 187.63145,
+      "startTime": 187.36145,
+      "word": "如"
+    },
+    {
+      "confidence": 0.9781503,
+      "endTime": 187.81146,
+      "startTime": 187.63145,
+      "word": "何"
+    },
+    {
+      "confidence": 0.8778595,
+      "endTime": 187.98146,
+      "startTime": 187.81146,
+      "word": "使"
+    },
+    {
+      "confidence": 0.8965443,
+      "endTime": 188.14146,
+      "startTime": 187.98146,
+      "word": "用"
+    },
+    {
+      "confidence": 0.8580141,
+      "endTime": 188.40146,
+      "startTime": 188.14146,
+      "word": "英"
+    },
+    {
+      "confidence": 0.6888382,
+      "endTime": 188.53146,
+      "startTime": 188.40146,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.90763324,
+      "endTime": 188.71146,
+      "startTime": 188.53146,
+      "word": "达"
+    },
+    {
+      "confidence": 0.8963077,
+      "endTime": 188.85146,
+      "startTime": 188.71146,
+      "word": "的"
+    },
+    {
+      "confidence": 0.62356466,
+      "endTime": 189.04146,
+      "startTime": 188.85146,
+      "word": "g"
+    },
+    {
+      "confidence": 0.68909305,
+      "endTime": 189.21146,
+      "startTime": 189.04146,
+      "word": "p"
+    },
+    {
+      "confidence": 0.5150616,
+      "endTime": 189.41145,
+      "startTime": 189.21146,
+      "word": "u。"
+    },
+    {
+      "confidence": 0.8987236,
+      "endTime": 190.097,
+      "startTime": 189.927,
+      "word": "在"
+    },
+    {
+      "confidence": 0.96284175,
+      "endTime": 190.287,
+      "startTime": 190.097,
+      "word": "人"
+    },
+    {
+      "confidence": 0.96774703,
+      "endTime": 190.457,
+      "startTime": 190.287,
+      "word": "工"
+    },
+    {
+      "confidence": 0.8724435,
+      "endTime": 190.587,
+      "startTime": 190.457,
+      "word": "智"
+    },
+    {
+      "confidence": 0.92844754,
+      "endTime": 190.757,
+      "startTime": 190.587,
+      "word": "能"
+    },
+    {
+      "confidence": 0.9176531,
+      "endTime": 190.957,
+      "startTime": 190.757,
+      "word": "真"
+    },
+    {
+      "confidence": 0.9714245,
+      "endTime": 191.13701,
+      "startTime": 190.957,
+      "word": "正"
+    },
+    {
+      "confidence": 0.9004442,
+      "endTime": 191.27701,
+      "startTime": 191.13701,
+      "word": "爆"
+    },
+    {
+      "confidence": 0.94841087,
+      "endTime": 191.447,
+      "startTime": 191.27701,
+      "word": "发"
+    },
+    {
+      "confidence": 0.9432323,
+      "endTime": 191.74701,
+      "startTime": 191.447,
+      "word": "时，"
+    },
+    {
+      "confidence": 0.9078364,
+      "endTime": 192.18701,
+      "startTime": 191.99701,
+      "word": "研"
+    },
+    {
+      "confidence": 0.918879,
+      "endTime": 192.377,
+      "startTime": 192.18701,
+      "word": "究"
+    },
+    {
+      "confidence": 0.92023915,
+      "endTime": 192.52701,
+      "startTime": 192.377,
+      "word": "人"
+    },
+    {
+      "confidence": 0.96946204,
+      "endTime": 192.71701,
+      "startTime": 192.52701,
+      "word": "员"
+    },
+    {
+      "confidence": 0.8834788,
+      "endTime": 192.867,
+      "startTime": 192.71701,
+      "word": "已"
+    },
+    {
+      "confidence": 0.97387385,
+      "endTime": 193.037,
+      "startTime": 192.867,
+      "word": "经"
+    },
+    {
+      "confidence": 0.9733449,
+      "endTime": 193.167,
+      "startTime": 193.037,
+      "word": "有"
+    },
+    {
+      "confidence": 0.9175894,
+      "endTime": 193.257,
+      "startTime": 193.167,
+      "word": "了"
+    },
+    {
+      "confidence": 0.879633,
+      "endTime": 193.32701,
+      "startTime": 193.257,
+      "word": "一"
+    },
+    {
+      "confidence": 0.97519493,
+      "endTime": 193.517,
+      "startTime": 193.32701,
+      "word": "套"
+    },
+    {
+      "confidence": 0.94510216,
+      "endTime": 193.807,
+      "startTime": 193.517,
+      "word": "成"
+    },
+    {
+      "confidence": 0.93204284,
+      "endTime": 193.977,
+      "startTime": 193.807,
+      "word": "熟"
+    },
+    {
+      "confidence": 0.9238945,
+      "endTime": 194.10701,
+      "startTime": 193.977,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9237442,
+      "endTime": 194.287,
+      "startTime": 194.10701,
+      "word": "硬"
+    },
+    {
+      "confidence": 0.9506748,
+      "endTime": 194.457,
+      "startTime": 194.287,
+      "word": "件"
+    },
+    {
+      "confidence": 0.92913294,
+      "endTime": 194.617,
+      "startTime": 194.457,
+      "word": "和"
+    },
+    {
+      "confidence": 0.9347956,
+      "endTime": 194.79701,
+      "startTime": 194.617,
+      "word": "软"
+    },
+    {
+      "confidence": 0.972548,
+      "endTime": 194.957,
+      "startTime": 194.79701,
+      "word": "件"
+    },
+    {
+      "confidence": 0.9715167,
+      "endTime": 195.147,
+      "startTime": 194.957,
+      "word": "工"
+    },
+    {
+      "confidence": 0.98168004,
+      "endTime": 195.35701,
+      "startTime": 195.147,
+      "word": "具，"
+    },
+    {
+      "confidence": 0.89367306,
+      "endTime": 196.07701,
+      "startTime": 195.867,
+      "word": "这"
+    },
+    {
+      "confidence": 0.9218816,
+      "endTime": 196.24701,
+      "startTime": 196.07701,
+      "word": "成"
+    },
+    {
+      "confidence": 0.94668174,
+      "endTime": 196.38701,
+      "startTime": 196.24701,
+      "word": "了"
+    },
+    {
+      "confidence": 0.84466004,
+      "endTime": 196.60701,
+      "startTime": 196.38701,
+      "word": "英"
+    },
+    {
+      "confidence": 0.54512,
+      "endTime": 196.71701,
+      "startTime": 196.60701,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.81007725,
+      "endTime": 196.88701,
+      "startTime": 196.71701,
+      "word": "达"
+    },
+    {
+      "confidence": 0.9446613,
+      "endTime": 197.067,
+      "startTime": 196.88701,
+      "word": "后"
+    },
+    {
+      "confidence": 0.9693739,
+      "endTime": 197.21701,
+      "startTime": 197.067,
+      "word": "来"
+    },
+    {
+      "confidence": 0.8835256,
+      "endTime": 197.517,
+      "startTime": 197.21701,
+      "word": "最"
+    },
+    {
+      "confidence": 0.96697944,
+      "endTime": 197.727,
+      "startTime": 197.517,
+      "word": "重"
+    },
+    {
+      "confidence": 0.9859771,
+      "endTime": 197.807,
+      "startTime": 197.727,
+      "word": "要"
+    },
+    {
+      "confidence": 0.7111106,
+      "endTime": 197.93701,
+      "startTime": 197.807,
+      "word": "的"
+    },
+    {
+      "confidence": 0.95568514,
+      "endTime": 198.10701,
+      "startTime": 197.93701,
+      "word": "优"
+    },
+    {
+      "confidence": 0.88745505,
+      "endTime": 198.29701,
+      "startTime": 198.10701,
+      "word": "势"
+    },
+    {
+      "confidence": 0.8918184,
+      "endTime": 198.43701,
+      "startTime": 198.29701,
+      "word": "之"
+    },
+    {
+      "confidence": 0.92144936,
+      "endTime": 198.65701,
+      "startTime": 198.43701,
+      "word": "一。"
+    },
+    {
+      "confidence": 0.6911292,
+      "endTime": 199.60701,
+      "startTime": 199.477,
+      "word": "二"
+    },
+    {
+      "confidence": 0.94456524,
+      "endTime": 199.817,
+      "startTime": 199.60701,
+      "word": "零"
+    },
+    {
+      "confidence": 0.7751587,
+      "endTime": 199.927,
+      "startTime": 199.817,
+      "word": "一"
+    },
+    {
+      "confidence": 0.87626237,
+      "endTime": 200.04701,
+      "startTime": 199.927,
+      "word": "二"
+    },
+    {
+      "confidence": 0.93609256,
+      "endTime": 200.207,
+      "startTime": 200.04701,
+      "word": "年"
+    },
+    {
+      "confidence": 0.9069129,
+      "endTime": 200.287,
+      "startTime": 200.207,
+      "word": "以"
+    },
+    {
+      "confidence": 0.9883193,
+      "endTime": 200.57701,
+      "startTime": 200.287,
+      "word": "后，"
+    },
+    {
+      "confidence": 0.9509592,
+      "endTime": 201.087,
+      "startTime": 200.837,
+      "word": "人"
+    },
+    {
+      "confidence": 0.97152615,
+      "endTime": 201.287,
+      "startTime": 201.087,
+      "word": "工"
+    },
+    {
+      "confidence": 0.89691633,
+      "endTime": 201.457,
+      "startTime": 201.287,
+      "word": "智"
+    },
+    {
+      "confidence": 0.98309565,
+      "endTime": 201.587,
+      "startTime": 201.457,
+      "word": "能"
+    },
+    {
+      "confidence": 0.9274319,
+      "endTime": 201.68701,
+      "startTime": 201.587,
+      "word": "的"
+    },
+    {
+      "confidence": 0.97798735,
+      "endTime": 201.917,
+      "startTime": 201.68701,
+      "word": "发"
+    },
+    {
+      "confidence": 0.9344674,
+      "endTime": 202.067,
+      "startTime": 201.917,
+      "word": "展"
+    },
+    {
+      "confidence": 0.9553126,
+      "endTime": 202.237,
+      "startTime": 202.067,
+      "word": "开"
+    },
+    {
+      "confidence": 0.98812175,
+      "endTime": 202.38701,
+      "startTime": 202.237,
+      "word": "始"
+    },
+    {
+      "confidence": 0.8935508,
+      "endTime": 202.617,
+      "startTime": 202.38701,
+      "word": "明"
+    },
+    {
+      "confidence": 0.9521093,
+      "endTime": 202.807,
+      "startTime": 202.617,
+      "word": "显"
+    },
+    {
+      "confidence": 0.94946206,
+      "endTime": 203.017,
+      "startTime": 202.807,
+      "word": "加"
+    },
+    {
+      "confidence": 0.95569795,
+      "endTime": 203.257,
+      "startTime": 203.017,
+      "word": "速。"
+    },
+    {
+      "confidence": 0.89558405,
+      "endTime": 204.08134,
+      "startTime": 203.71135,
+      "word": "深"
+    },
+    {
+      "confidence": 0.9457883,
+      "endTime": 204.26134,
+      "startTime": 204.08134,
+      "word": "度"
+    },
+    {
+      "confidence": 0.9746088,
+      "endTime": 204.45134,
+      "startTime": 204.26134,
+      "word": "学"
+    },
+    {
+      "confidence": 0.9655062,
+      "endTime": 204.63135,
+      "startTime": 204.45134,
+      "word": "习"
+    },
+    {
+      "confidence": 0.94229394,
+      "endTime": 204.79134,
+      "startTime": 204.63135,
+      "word": "模"
+    },
+    {
+      "confidence": 0.9535128,
+      "endTime": 205.00134,
+      "startTime": 204.79134,
+      "word": "型"
+    },
+    {
+      "confidence": 0.93778044,
+      "endTime": 205.17134,
+      "startTime": 205.00134,
+      "word": "需"
+    },
+    {
+      "confidence": 0.98383206,
+      "endTime": 205.28134,
+      "startTime": 205.17134,
+      "word": "要"
+    },
+    {
+      "confidence": 0.9590967,
+      "endTime": 205.49135,
+      "startTime": 205.28134,
+      "word": "同"
+    },
+    {
+      "confidence": 0.98268634,
+      "endTime": 205.70134,
+      "startTime": 205.49135,
+      "word": "时"
+    },
+    {
+      "confidence": 0.8944296,
+      "endTime": 205.87134,
+      "startTime": 205.70134,
+      "word": "处"
+    },
+    {
+      "confidence": 0.96666926,
+      "endTime": 206.03134,
+      "startTime": 205.87134,
+      "word": "理"
+    },
+    {
+      "confidence": 0.92002356,
+      "endTime": 206.27135,
+      "startTime": 206.03134,
+      "word": "大"
+    },
+    {
+      "confidence": 0.9660926,
+      "endTime": 206.39134,
+      "startTime": 206.27135,
+      "word": "量"
+    },
+    {
+      "confidence": 0.96397996,
+      "endTime": 206.65134,
+      "startTime": 206.39134,
+      "word": "数"
+    },
+    {
+      "confidence": 0.9213763,
+      "endTime": 206.78134,
+      "startTime": 206.65134,
+      "word": "据"
+    },
+    {
+      "confidence": 0.94107133,
+      "endTime": 206.91135,
+      "startTime": 206.78134,
+      "word": "和"
+    },
+    {
+      "confidence": 0.93796223,
+      "endTime": 207.09134,
+      "startTime": 206.91135,
+      "word": "计"
+    },
+    {
+      "confidence": 0.90023404,
+      "endTime": 207.31134,
+      "startTime": 207.09134,
+      "word": "算，"
+    },
+    {
+      "confidence": 0.6416071,
+      "endTime": 208.03134,
+      "startTime": 207.88135,
+      "word": "g"
+    },
+    {
+      "confidence": 0.70188147,
+      "endTime": 208.23134,
+      "startTime": 208.03134,
+      "word": "p"
+    },
+    {
+      "confidence": 0.49661645,
+      "endTime": 208.43134,
+      "startTime": 208.23134,
+      "word": "u"
+    },
+    {
+      "confidence": 0.7255954,
+      "endTime": 208.77135,
+      "startTime": 208.43134,
+      "word": "恰"
+    },
+    {
+      "confidence": 0.8955636,
+      "endTime": 209.00134,
+      "startTime": 208.77135,
+      "word": "好"
+    },
+    {
+      "confidence": 0.97239983,
+      "endTime": 209.11134,
+      "startTime": 209.00134,
+      "word": "就"
+    },
+    {
+      "confidence": 0.9028898,
+      "endTime": 209.37134,
+      "startTime": 209.11134,
+      "word": "擅"
+    },
+    {
+      "confidence": 0.9427979,
+      "endTime": 209.56134,
+      "startTime": 209.37134,
+      "word": "长"
+    },
+    {
+      "confidence": 0.89638186,
+      "endTime": 209.71135,
+      "startTime": 209.56134,
+      "word": "这"
+    },
+    {
+      "confidence": 0.79370576,
+      "endTime": 209.81134,
+      "startTime": 209.71135,
+      "word": "类"
+    },
+    {
+      "confidence": 0.9522178,
+      "endTime": 210.03134,
+      "startTime": 209.81134,
+      "word": "任"
+    },
+    {
+      "confidence": 0.8325977,
+      "endTime": 210.15134,
+      "startTime": 210.03134,
+      "word": "务。"
+    },
+    {
+      "confidence": 0.8790195,
+      "endTime": 210.95671,
+      "startTime": 210.81671,
+      "word": "二"
+    },
+    {
+      "confidence": 0.93516314,
+      "endTime": 211.10672,
+      "startTime": 210.95671,
+      "word": "零"
+    },
+    {
+      "confidence": 0.76422703,
+      "endTime": 211.2167,
+      "startTime": 211.10672,
+      "word": "一"
+    },
+    {
+      "confidence": 0.93338585,
+      "endTime": 211.31671,
+      "startTime": 211.2167,
+      "word": "二"
+    },
+    {
+      "confidence": 0.95625323,
+      "endTime": 211.58672,
+      "startTime": 211.31671,
+      "word": "年，"
+    },
+    {
+      "confidence": 0.8983323,
+      "endTime": 212.02672,
+      "startTime": 211.7967,
+      "word": "使"
+    },
+    {
+      "confidence": 0.9519082,
+      "endTime": 212.2167,
+      "startTime": 212.02672,
+      "word": "用"
+    },
+    {
+      "confidence": 0.88231933,
+      "endTime": 212.44672,
+      "startTime": 212.2167,
+      "word": "英"
+    },
+    {
+      "confidence": 0.5686266,
+      "endTime": 212.60672,
+      "startTime": 212.44672,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.9118035,
+      "endTime": 212.8267,
+      "startTime": 212.60672,
+      "word": "达"
+    },
+    {
+      "confidence": 0.64860684,
+      "endTime": 213.03671,
+      "startTime": 212.8267,
+      "word": "g"
+    },
+    {
+      "confidence": 0.74897665,
+      "endTime": 213.1867,
+      "startTime": 213.03671,
+      "word": "p"
+    },
+    {
+      "confidence": 0.63527834,
+      "endTime": 213.34671,
+      "startTime": 213.1867,
+      "word": "u"
+    },
+    {
+      "confidence": 0.5155842,
+      "endTime": 213.50671,
+      "startTime": 213.34671,
+      "word": "训"
+    },
+    {
+      "confidence": 0.59356886,
+      "endTime": 213.64671,
+      "startTime": 213.50671,
+      "word": "练"
+    },
+    {
+      "confidence": 0.9484991,
+      "endTime": 213.83672,
+      "startTime": 213.64671,
+      "word": "的"
+    },
+    {
+      "confidence": 0.22172114,
+      "endTime": 214.41672,
+      "startTime": 214.38672,
+      "word": "AlexNet"
+    },
+    {
+      "confidence": 0.89307654,
+      "endTime": 215.09671,
+      "startTime": 214.90671,
+      "word": "在"
+    },
+    {
+      "confidence": 0.23980975,
+      "endTime": 215.88672,
+      "startTime": 215.85672,
+      "word": "ImageNet"
+    },
+    {
+      "confidence": 0.934266,
+      "endTime": 216.11671,
+      "startTime": 215.88672,
+      "word": "图"
+    },
+    {
+      "confidence": 0.9843387,
+      "endTime": 216.26671,
+      "startTime": 216.11671,
+      "word": "像"
+    },
+    {
+      "confidence": 0.9648348,
+      "endTime": 216.47672,
+      "startTime": 216.26671,
+      "word": "识"
+    },
+    {
+      "confidence": 0.88100815,
+      "endTime": 216.60672,
+      "startTime": 216.47672,
+      "word": "别"
+    },
+    {
+      "confidence": 0.9575145,
+      "endTime": 216.75671,
+      "startTime": 216.60672,
+      "word": "比"
+    },
+    {
+      "confidence": 0.9630299,
+      "endTime": 216.92671,
+      "startTime": 216.75671,
+      "word": "赛"
+    },
+    {
+      "confidence": 0.97290003,
+      "endTime": 217.09671,
+      "startTime": 216.92671,
+      "word": "中"
+    },
+    {
+      "confidence": 0.9420259,
+      "endTime": 217.27672,
+      "startTime": 217.09671,
+      "word": "取"
+    },
+    {
+      "confidence": 0.92194664,
+      "endTime": 217.39671,
+      "startTime": 217.27672,
+      "word": "得"
+    },
+    {
+      "confidence": 0.93519574,
+      "endTime": 217.53671,
+      "startTime": 217.39671,
+      "word": "突"
+    },
+    {
+      "confidence": 0.9766224,
+      "endTime": 217.80672,
+      "startTime": 217.53671,
+      "word": "破，"
+    },
+    {
+      "confidence": 0.89812976,
+      "endTime": 218.49672,
+      "startTime": 218.2967,
+      "word": "让"
+    },
+    {
+      "confidence": 0.9282081,
+      "endTime": 218.75671,
+      "startTime": 218.49672,
+      "word": "更"
+    },
+    {
+      "confidence": 0.98196733,
+      "endTime": 218.95671,
+      "startTime": 218.75671,
+      "word": "多"
+    },
+    {
+      "confidence": 0.9409456,
+      "endTime": 219.14671,
+      "startTime": 218.95671,
+      "word": "研"
+    },
+    {
+      "confidence": 0.89850545,
+      "endTime": 219.31671,
+      "startTime": 219.14671,
+      "word": "究"
+    },
+    {
+      "confidence": 0.83835775,
+      "endTime": 219.4367,
+      "startTime": 219.31671,
+      "word": "人"
+    },
+    {
+      "confidence": 0.9688306,
+      "endTime": 219.59671,
+      "startTime": 219.4367,
+      "word": "员"
+    },
+    {
+      "confidence": 0.9014189,
+      "endTime": 219.72672,
+      "startTime": 219.59671,
+      "word": "意"
+    },
+    {
+      "confidence": 0.93337905,
+      "endTime": 219.85672,
+      "startTime": 219.72672,
+      "word": "识"
+    },
+    {
+      "confidence": 0.9558871,
+      "endTime": 220.11671,
+      "startTime": 219.85672,
+      "word": "到"
+    },
+    {
+      "confidence": 0.6893152,
+      "endTime": 220.58672,
+      "startTime": 220.40671,
+      "word": "g"
+    },
+    {
+      "confidence": 0.7790753,
+      "endTime": 220.75671,
+      "startTime": 220.58672,
+      "word": "p"
+    },
+    {
+      "confidence": 0.5845397,
+      "endTime": 220.89671,
+      "startTime": 220.75671,
+      "word": "u"
+    },
+    {
+      "confidence": 0.82867414,
+      "endTime": 221.1867,
+      "startTime": 220.89671,
+      "word": "不"
+    },
+    {
+      "confidence": 0.9200239,
+      "endTime": 221.30672,
+      "startTime": 221.1867,
+      "word": "只"
+    },
+    {
+      "confidence": 0.9331289,
+      "endTime": 221.4667,
+      "startTime": 221.30672,
+      "word": "是"
+    },
+    {
+      "confidence": 0.9651455,
+      "endTime": 221.60672,
+      "startTime": 221.4667,
+      "word": "用"
+    },
+    {
+      "confidence": 0.9342947,
+      "endTime": 221.73671,
+      "startTime": 221.60672,
+      "word": "来"
+    },
+    {
+      "confidence": 0.9627417,
+      "endTime": 221.86671,
+      "startTime": 221.73671,
+      "word": "玩"
+    },
+    {
+      "confidence": 0.95303947,
+      "endTime": 221.99672,
+      "startTime": 221.86671,
+      "word": "游"
+    },
+    {
+      "confidence": 0.97906905,
+      "endTime": 222.2967,
+      "startTime": 221.99672,
+      "word": "戏，"
+    },
+    {
+      "confidence": 0.84158665,
+      "endTime": 222.83672,
+      "startTime": 222.60672,
+      "word": "拿"
+    },
+    {
+      "confidence": 0.87234634,
+      "endTime": 223.09671,
+      "startTime": 222.83672,
+      "word": "他"
+    },
+    {
+      "confidence": 0.7870154,
+      "endTime": 223.19672,
+      "startTime": 223.09671,
+      "word": "来"
+    },
+    {
+      "confidence": 0.71045464,
+      "endTime": 223.38672,
+      "startTime": 223.19672,
+      "word": "训"
+    },
+    {
+      "confidence": 0.9001215,
+      "endTime": 223.5467,
+      "startTime": 223.38672,
+      "word": "练"
+    },
+    {
+      "confidence": 0.9368965,
+      "endTime": 223.80672,
+      "startTime": 223.5467,
+      "word": "人"
+    },
+    {
+      "confidence": 0.98004264,
+      "endTime": 224.00671,
+      "startTime": 223.80672,
+      "word": "工"
+    },
+    {
+      "confidence": 0.91419196,
+      "endTime": 224.16672,
+      "startTime": 224.00671,
+      "word": "智"
+    },
+    {
+      "confidence": 0.9326417,
+      "endTime": 224.37671,
+      "startTime": 224.16672,
+      "word": "能"
+    },
+    {
+      "confidence": 0.8164036,
+      "endTime": 224.58672,
+      "startTime": 224.37671,
+      "word": "也"
+    },
+    {
+      "confidence": 0.9382859,
+      "endTime": 224.77672,
+      "startTime": 224.58672,
+      "word": "很"
+    },
+    {
+      "confidence": 0.97734076,
+      "endTime": 224.94672,
+      "startTime": 224.77672,
+      "word": "高"
+    },
+    {
+      "confidence": 0.94431645,
+      "endTime": 225.20671,
+      "startTime": 224.94672,
+      "word": "效。"
+    },
+    {
+      "confidence": 0.8188581,
+      "endTime": 225.81146,
+      "startTime": 225.62146,
+      "word": "此"
+    },
+    {
+      "confidence": 0.8986124,
+      "endTime": 226.14146,
+      "startTime": 225.81146,
+      "word": "后，"
+    },
+    {
+      "confidence": 0.90029323,
+      "endTime": 226.55147,
+      "startTime": 226.32147,
+      "word": "模"
+    },
+    {
+      "confidence": 0.90226483,
+      "endTime": 226.81146,
+      "startTime": 226.55147,
+      "word": "型"
+    },
+    {
+      "confidence": 0.9078457,
+      "endTime": 227.03146,
+      "startTime": 226.81146,
+      "word": "越"
+    },
+    {
+      "confidence": 0.9830653,
+      "endTime": 227.18147,
+      "startTime": 227.03146,
+      "word": "来"
+    },
+    {
+      "confidence": 0.95441425,
+      "endTime": 227.29147,
+      "startTime": 227.18147,
+      "word": "越"
+    },
+    {
+      "confidence": 0.95166993,
+      "endTime": 227.53146,
+      "startTime": 227.29147,
+      "word": "大，"
+    },
+    {
+      "confidence": 0.9621891,
+      "endTime": 228.04147,
+      "startTime": 227.70146,
+      "word": "数"
+    },
+    {
+      "confidence": 0.9084645,
+      "endTime": 228.22147,
+      "startTime": 228.04147,
+      "word": "据"
+    },
+    {
+      "confidence": 0.8910629,
+      "endTime": 228.38147,
+      "startTime": 228.22147,
+      "word": "越"
+    },
+    {
+      "confidence": 0.961024,
+      "endTime": 228.52147,
+      "startTime": 228.38147,
+      "word": "来"
+    },
+    {
+      "confidence": 0.9720797,
+      "endTime": 228.63147,
+      "startTime": 228.52147,
+      "word": "越"
+    },
+    {
+      "confidence": 0.95010877,
+      "endTime": 228.90147,
+      "startTime": 228.63147,
+      "word": "多，"
+    },
+    {
+      "confidence": 0.7548417,
+      "endTime": 229.49147,
+      "startTime": 229.36147,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.8195071,
+      "endTime": 229.64146,
+      "startTime": 229.49147,
+      "word": "对"
+    },
+    {
+      "confidence": 0.8366002,
+      "endTime": 229.94147,
+      "startTime": 229.64146,
+      "word": "算"
+    },
+    {
+      "confidence": 0.945816,
+      "endTime": 230.06146,
+      "startTime": 229.94147,
+      "word": "力"
+    },
+    {
+      "confidence": 0.96507496,
+      "endTime": 230.16147,
+      "startTime": 230.06146,
+      "word": "的"
+    },
+    {
+      "confidence": 0.8690977,
+      "endTime": 230.35147,
+      "startTime": 230.16147,
+      "word": "需"
+    },
+    {
+      "confidence": 0.9671748,
+      "endTime": 230.64146,
+      "startTime": 230.35147,
+      "word": "求"
+    },
+    {
+      "confidence": 0.9398557,
+      "endTime": 230.99147,
+      "startTime": 230.78146,
+      "word": "也"
+    },
+    {
+      "confidence": 0.9340988,
+      "endTime": 231.24147,
+      "startTime": 230.99147,
+      "word": "越"
+    },
+    {
+      "confidence": 0.98016655,
+      "endTime": 231.38147,
+      "startTime": 231.24147,
+      "word": "来"
+    },
+    {
+      "confidence": 0.9723783,
+      "endTime": 231.54147,
+      "startTime": 231.38147,
+      "word": "越"
+    },
+    {
+      "confidence": 0.9758077,
+      "endTime": 231.83147,
+      "startTime": 231.54147,
+      "word": "高。"
+    },
+    {
+      "confidence": 0.9251973,
+      "endTime": 232.4433,
+      "startTime": 232.2833,
+      "word": "到"
+    },
+    {
+      "confidence": 0.9716125,
+      "endTime": 232.5433,
+      "startTime": 232.4433,
+      "word": "了"
+    },
+    {
+      "confidence": 0.92980355,
+      "endTime": 232.7933,
+      "startTime": 232.5433,
+      "word": "生"
+    },
+    {
+      "confidence": 0.9812582,
+      "endTime": 232.9633,
+      "startTime": 232.7933,
+      "word": "成"
+    },
+    {
+      "confidence": 0.9298983,
+      "endTime": 233.2133,
+      "startTime": 232.9633,
+      "word": "式"
+    },
+    {
+      "confidence": 0.4473306,
+      "endTime": 233.4433,
+      "startTime": 233.4133,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.8518497,
+      "endTime": 233.6633,
+      "startTime": 233.4433,
+      "word": "兴"
+    },
+    {
+      "confidence": 0.9349986,
+      "endTime": 233.9333,
+      "startTime": 233.6633,
+      "word": "起，"
+    },
+    {
+      "confidence": 0.828262,
+      "endTime": 234.4533,
+      "startTime": 234.1433,
+      "word": "企"
+    },
+    {
+      "confidence": 0.8875425,
+      "endTime": 234.5633,
+      "startTime": 234.4533,
+      "word": "业"
+    },
+    {
+      "confidence": 0.95479167,
+      "endTime": 234.7433,
+      "startTime": 234.5633,
+      "word": "需"
+    },
+    {
+      "confidence": 0.93017083,
+      "endTime": 234.84329,
+      "startTime": 234.7433,
+      "word": "要"
+    },
+    {
+      "confidence": 0.84683377,
+      "endTime": 235.0833,
+      "startTime": 234.84329,
+      "word": "训"
+    },
+    {
+      "confidence": 0.83794457,
+      "endTime": 235.2733,
+      "startTime": 235.0833,
+      "word": "练"
+    },
+    {
+      "confidence": 0.8929765,
+      "endTime": 235.4433,
+      "startTime": 235.2733,
+      "word": "和"
+    },
+    {
+      "confidence": 0.90395194,
+      "endTime": 235.6133,
+      "startTime": 235.4433,
+      "word": "运"
+    },
+    {
+      "confidence": 0.9270891,
+      "endTime": 235.8133,
+      "startTime": 235.6133,
+      "word": "行"
+    },
+    {
+      "confidence": 0.89922786,
+      "endTime": 235.98329,
+      "startTime": 235.8133,
+      "word": "大"
+    },
+    {
+      "confidence": 0.955953,
+      "endTime": 236.1133,
+      "startTime": 235.98329,
+      "word": "模"
+    },
+    {
+      "confidence": 0.9623468,
+      "endTime": 236.37329,
+      "startTime": 236.1133,
+      "word": "型，"
+    },
+    {
+      "confidence": 0.8329632,
+      "endTime": 236.8633,
+      "startTime": 236.7133,
+      "word": "g"
+    },
+    {
+      "confidence": 0.8905253,
+      "endTime": 237.0333,
+      "startTime": 236.8633,
+      "word": "p"
+    },
+    {
+      "confidence": 0.6913401,
+      "endTime": 237.2433,
+      "startTime": 237.0333,
+      "word": "u"
+    },
+    {
+      "confidence": 0.86052436,
+      "endTime": 237.6833,
+      "startTime": 237.4433,
+      "word": "就"
+    },
+    {
+      "confidence": 0.9612228,
+      "endTime": 237.9033,
+      "startTime": 237.6833,
+      "word": "从"
+    },
+    {
+      "confidence": 0.93094504,
+      "endTime": 238.0233,
+      "startTime": 237.9033,
+      "word": "一"
+    },
+    {
+      "confidence": 0.898966,
+      "endTime": 238.2033,
+      "startTime": 238.0233,
+      "word": "种"
+    },
+    {
+      "confidence": 0.96597993,
+      "endTime": 238.4333,
+      "startTime": 238.2033,
+      "word": "专"
+    },
+    {
+      "confidence": 0.96074843,
+      "endTime": 238.6033,
+      "startTime": 238.4333,
+      "word": "业"
+    },
+    {
+      "confidence": 0.9475598,
+      "endTime": 238.7833,
+      "startTime": 238.6033,
+      "word": "计"
+    },
+    {
+      "confidence": 0.9452244,
+      "endTime": 238.9233,
+      "startTime": 238.7833,
+      "word": "算"
+    },
+    {
+      "confidence": 0.93455935,
+      "endTime": 239.09329,
+      "startTime": 238.9233,
+      "word": "设"
+    },
+    {
+      "confidence": 0.9700348,
+      "endTime": 239.2933,
+      "startTime": 239.09329,
+      "word": "备，"
+    },
+    {
+      "confidence": 0.94441974,
+      "endTime": 239.7233,
+      "startTime": 239.5033,
+      "word": "变"
+    },
+    {
+      "confidence": 0.9800977,
+      "endTime": 239.8933,
+      "startTime": 239.7233,
+      "word": "成"
+    },
+    {
+      "confidence": 0.9358336,
+      "endTime": 240.0033,
+      "startTime": 239.8933,
+      "word": "了"
+    },
+    {
+      "confidence": 0.7374826,
+      "endTime": 240.3233,
+      "startTime": 240.2433,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.8320219,
+      "endTime": 240.5533,
+      "startTime": 240.3233,
+      "word": "产"
+    },
+    {
+      "confidence": 0.90263,
+      "endTime": 240.6633,
+      "startTime": 240.5533,
+      "word": "业"
+    },
+    {
+      "confidence": 0.94462293,
+      "endTime": 240.7833,
+      "startTime": 240.6633,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9467246,
+      "endTime": 240.98329,
+      "startTime": 240.7833,
+      "word": "基"
+    },
+    {
+      "confidence": 0.9709864,
+      "endTime": 241.12329,
+      "startTime": 240.98329,
+      "word": "础"
+    },
+    {
+      "confidence": 0.9764409,
+      "endTime": 241.3033,
+      "startTime": 241.12329,
+      "word": "设"
+    },
+    {
+      "confidence": 0.9098018,
+      "endTime": 241.5433,
+      "startTime": 241.3033,
+      "word": "施。"
+    },
+    {
+      "confidence": 0.8611549,
+      "endTime": 242.0433,
+      "startTime": 241.8833,
+      "word": "由"
+    },
+    {
+      "confidence": 0.9545573,
+      "endTime": 242.1633,
+      "startTime": 242.0433,
+      "word": "于"
+    },
+    {
+      "confidence": 0.8788713,
+      "endTime": 242.3833,
+      "startTime": 242.1633,
+      "word": "大"
+    },
+    {
+      "confidence": 0.96490425,
+      "endTime": 242.5433,
+      "startTime": 242.3833,
+      "word": "量"
+    },
+    {
+      "confidence": 0.9557658,
+      "endTime": 242.7733,
+      "startTime": 242.5433,
+      "word": "代"
+    },
+    {
+      "confidence": 0.7360579,
+      "endTime": 242.9133,
+      "startTime": 242.7733,
+      "word": "码"
+    },
+    {
+      "confidence": 0.90562046,
+      "endTime": 243.0633,
+      "startTime": 242.9133,
+      "word": "和"
+    },
+    {
+      "confidence": 0.97088087,
+      "endTime": 243.2633,
+      "startTime": 243.0633,
+      "word": "工"
+    },
+    {
+      "confidence": 0.9677519,
+      "endTime": 243.5033,
+      "startTime": 243.2633,
+      "word": "具"
+    },
+    {
+      "confidence": 0.925826,
+      "endTime": 243.8333,
+      "startTime": 243.6633,
+      "word": "已"
+    },
+    {
+      "confidence": 0.9661574,
+      "endTime": 244.0033,
+      "startTime": 243.8333,
+      "word": "经"
+    },
+    {
+      "confidence": 0.9537493,
+      "endTime": 244.2233,
+      "startTime": 244.0033,
+      "word": "建"
+    },
+    {
+      "confidence": 0.9052524,
+      "endTime": 244.3333,
+      "startTime": 244.2233,
+      "word": "立"
+    },
+    {
+      "confidence": 0.7938295,
+      "endTime": 244.48329,
+      "startTime": 244.3333,
+      "word": "在"
+    },
+    {
+      "confidence": 0.30522078,
+      "endTime": 244.8333,
+      "startTime": 244.8033,
+      "word": "CUDA"
+    },
+    {
+      "confidence": 0.7486661,
+      "endTime": 244.9533,
+      "startTime": 244.8333,
+      "word": "之"
+    },
+    {
+      "confidence": 0.94056726,
+      "endTime": 245.2133,
+      "startTime": 244.9533,
+      "word": "上，"
+    },
+    {
+      "confidence": 0.93760616,
+      "endTime": 245.73329,
+      "startTime": 245.5033,
+      "word": "开"
+    },
+    {
+      "confidence": 0.96047986,
+      "endTime": 245.9233,
+      "startTime": 245.73329,
+      "word": "发"
+    },
+    {
+      "confidence": 0.8777454,
+      "endTime": 246.0633,
+      "startTime": 245.9233,
+      "word": "者"
+    },
+    {
+      "confidence": 0.93624604,
+      "endTime": 246.2133,
+      "startTime": 246.0633,
+      "word": "和"
+    },
+    {
+      "confidence": 0.9352047,
+      "endTime": 246.4333,
+      "startTime": 246.2133,
+      "word": "企"
+    },
+    {
+      "confidence": 0.94273853,
+      "endTime": 246.62329,
+      "startTime": 246.4333,
+      "word": "业"
+    },
+    {
+      "confidence": 0.96809876,
+      "endTime": 246.9733,
+      "startTime": 246.7633,
+      "word": "很"
+    },
+    {
+      "confidence": 0.9698065,
+      "endTime": 247.2233,
+      "startTime": 246.9733,
+      "word": "难"
+    },
+    {
+      "confidence": 0.9326113,
+      "endTime": 247.5133,
+      "startTime": 247.2233,
+      "word": "轻"
+    },
+    {
+      "confidence": 0.92532706,
+      "endTime": 247.6933,
+      "startTime": 247.5133,
+      "word": "易"
+    },
+    {
+      "confidence": 0.8441389,
+      "endTime": 247.84329,
+      "startTime": 247.6933,
+      "word": "更"
+    },
+    {
+      "confidence": 0.8615946,
+      "endTime": 247.9933,
+      "startTime": 247.84329,
+      "word": "换"
+    },
+    {
+      "confidence": 0.9566295,
+      "endTime": 248.1833,
+      "startTime": 247.9933,
+      "word": "平"
+    },
+    {
+      "confidence": 0.96867,
+      "endTime": 248.4633,
+      "startTime": 248.1833,
+      "word": "台。"
+    },
+    {
+      "confidence": 0.9745549,
+      "endTime": 248.91272,
+      "startTime": 248.75272,
+      "word": "如"
+    },
+    {
+      "confidence": 0.866461,
+      "endTime": 249.19272,
+      "startTime": 248.91272,
+      "word": "今，"
+    },
+    {
+      "confidence": 0.8324963,
+      "endTime": 249.68272,
+      "startTime": 249.49272,
+      "word": "英"
+    },
+    {
+      "confidence": 0.52437747,
+      "endTime": 249.82272,
+      "startTime": 249.68272,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.8232534,
+      "endTime": 250.03271,
+      "startTime": 249.82272,
+      "word": "达"
+    },
+    {
+      "confidence": 0.8911194,
+      "endTime": 250.25272,
+      "startTime": 250.03271,
+      "word": "卖"
+    },
+    {
+      "confidence": 0.9470362,
+      "endTime": 250.44272,
+      "startTime": 250.25272,
+      "word": "的"
+    },
+    {
+      "confidence": 0.76975036,
+      "endTime": 250.51273,
+      "startTime": 250.44272,
+      "word": "已"
+    },
+    {
+      "confidence": 0.9674778,
+      "endTime": 250.66272,
+      "startTime": 250.51273,
+      "word": "经"
+    },
+    {
+      "confidence": 0.94512546,
+      "endTime": 250.92271,
+      "startTime": 250.66272,
+      "word": "不"
+    },
+    {
+      "confidence": 0.924822,
+      "endTime": 251.02272,
+      "startTime": 250.92271,
+      "word": "只"
+    },
+    {
+      "confidence": 0.9377287,
+      "endTime": 251.22272,
+      "startTime": 251.02272,
+      "word": "是"
+    },
+    {
+      "confidence": 0.92544717,
+      "endTime": 251.43272,
+      "startTime": 251.22272,
+      "word": "单"
+    },
+    {
+      "confidence": 0.85239774,
+      "endTime": 251.65273,
+      "startTime": 251.43272,
+      "word": "颗"
+    },
+    {
+      "confidence": 0.49345616,
+      "endTime": 251.79272,
+      "startTime": 251.65273,
+      "word": "g"
+    },
+    {
+      "confidence": 0.60800546,
+      "endTime": 251.94272,
+      "startTime": 251.79272,
+      "word": "p"
+    },
+    {
+      "confidence": 0.48130673,
+      "endTime": 252.09271,
+      "startTime": 251.94272,
+      "word": "u，"
+    },
+    {
+      "confidence": 0.978528,
+      "endTime": 252.52272,
+      "startTime": 252.39272,
+      "word": "而"
+    },
+    {
+      "confidence": 0.9385563,
+      "endTime": 252.73271,
+      "startTime": 252.52272,
+      "word": "是"
+    },
+    {
+      "confidence": 0.9115481,
+      "endTime": 252.91272,
+      "startTime": 252.73271,
+      "word": "一"
+    },
+    {
+      "confidence": 0.92401177,
+      "endTime": 253.10272,
+      "startTime": 252.91272,
+      "word": "整"
+    },
+    {
+      "confidence": 0.91235703,
+      "endTime": 253.33272,
+      "startTime": 253.10272,
+      "word": "套"
+    },
+    {
+      "confidence": 0.72734886,
+      "endTime": 253.47272,
+      "startTime": 253.33272,
+      "word": "可"
+    },
+    {
+      "confidence": 0.7598358,
+      "endTime": 253.59271,
+      "startTime": 253.47272,
+      "word": "以"
+    },
+    {
+      "confidence": 0.91510266,
+      "endTime": 253.82272,
+      "startTime": 253.59271,
+      "word": "直"
+    },
+    {
+      "confidence": 0.9695541,
+      "endTime": 254.00272,
+      "startTime": 253.82272,
+      "word": "接"
+    },
+    {
+      "confidence": 0.9516004,
+      "endTime": 254.16272,
+      "startTime": 254.00272,
+      "word": "用"
+    },
+    {
+      "confidence": 0.9597167,
+      "endTime": 254.28271,
+      "startTime": 254.16272,
+      "word": "于"
+    },
+    {
+      "confidence": 0.9667497,
+      "endTime": 254.50272,
+      "startTime": 254.28271,
+      "word": "建"
+    },
+    {
+      "confidence": 0.9536166,
+      "endTime": 254.73271,
+      "startTime": 254.50272,
+      "word": "设"
+    },
+    {
+      "confidence": 0.7890437,
+      "endTime": 255.02272,
+      "startTime": 254.95271,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.9466982,
+      "endTime": 255.21272,
+      "startTime": 255.02272,
+      "word": "工"
+    },
+    {
+      "confidence": 0.9047112,
+      "endTime": 255.40273,
+      "startTime": 255.21272,
+      "word": "厂"
+    },
+    {
+      "confidence": 0.9203857,
+      "endTime": 255.53271,
+      "startTime": 255.40273,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9375458,
+      "endTime": 255.79272,
+      "startTime": 255.53271,
+      "word": "算"
+    },
+    {
+      "confidence": 0.80443215,
+      "endTime": 255.91272,
+      "startTime": 255.79272,
+      "word": "力"
+    },
+    {
+      "confidence": 0.9451307,
+      "endTime": 256.08273,
+      "startTime": 255.91272,
+      "word": "平"
+    },
+    {
+      "confidence": 0.9199963,
+      "endTime": 256.35272,
+      "startTime": 256.08273,
+      "word": "台。"
+    },
+    {
+      "confidence": 0.5537029,
+      "endTime": 256.8242,
+      "startTime": 256.67416,
+      "word": "以"
+    },
+    {
+      "confidence": 0.9142009,
+      "endTime": 256.99417,
+      "startTime": 256.8242,
+      "word": "最"
+    },
+    {
+      "confidence": 0.91316646,
+      "endTime": 257.16418,
+      "startTime": 256.99417,
+      "word": "新"
+    },
+    {
+      "confidence": 0.8530004,
+      "endTime": 257.33417,
+      "startTime": 257.16418,
+      "word": "的"
+    },
+    {
+      "confidence": 0.6919738,
+      "endTime": 257.72418,
+      "startTime": 257.33417,
+      "word": "Rubin"
+    },
+    {
+      "confidence": 0.5907289,
+      "endTime": 257.87418,
+      "startTime": 257.72418,
+      "word": "g"
+    },
+    {
+      "confidence": 0.7123651,
+      "endTime": 258.00418,
+      "startTime": 257.87418,
+      "word": "p"
+    },
+    {
+      "confidence": 0.50711226,
+      "endTime": 258.17416,
+      "startTime": 258.00418,
+      "word": "u"
+    },
+    {
+      "confidence": 0.8342939,
+      "endTime": 258.30417,
+      "startTime": 258.17416,
+      "word": "为"
+    },
+    {
+      "confidence": 0.9769206,
+      "endTime": 258.46417,
+      "startTime": 258.30417,
+      "word": "核"
+    },
+    {
+      "confidence": 0.91718334,
+      "endTime": 258.71417,
+      "startTime": 258.46417,
+      "word": "心，"
+    },
+    {
+      "confidence": 0.9387628,
+      "endTime": 259.33417,
+      "startTime": 259.15417,
+      "word": "它"
+    },
+    {
+      "confidence": 0.88025784,
+      "endTime": 259.50418,
+      "startTime": 259.33417,
+      "word": "还"
+    },
+    {
+      "confidence": 0.98586255,
+      "endTime": 259.61417,
+      "startTime": 259.50418,
+      "word": "会"
+    },
+    {
+      "confidence": 0.97510266,
+      "endTime": 259.75418,
+      "startTime": 259.61417,
+      "word": "和"
+    },
+    {
+      "confidence": 0.81628627,
+      "endTime": 259.95416,
+      "startTime": 259.75418,
+      "word": "c"
+    },
+    {
+      "confidence": 0.745413,
+      "endTime": 260.1042,
+      "startTime": 259.95416,
+      "word": "p"
+    },
+    {
+      "confidence": 0.24172479,
+      "endTime": 260.1342,
+      "startTime": 260.1042,
+      "word": "u、"
+    },
+    {
+      "confidence": 0.91793627,
+      "endTime": 260.68417,
+      "startTime": 260.47418,
+      "word": "高"
+    },
+    {
+      "confidence": 0.9366741,
+      "endTime": 260.8542,
+      "startTime": 260.68417,
+      "word": "速"
+    },
+    {
+      "confidence": 0.804615,
+      "endTime": 261.09418,
+      "startTime": 260.8542,
+      "word": "互"
+    },
+    {
+      "confidence": 0.14805429,
+      "endTime": 261.12418,
+      "startTime": 261.09418,
+      "word": "联、"
+    },
+    {
+      "confidence": 0.9361944,
+      "endTime": 261.70416,
+      "startTime": 261.40417,
+      "word": "存"
+    },
+    {
+      "confidence": 0.883636,
+      "endTime": 261.98416,
+      "startTime": 261.70416,
+      "word": "储"
+    },
+    {
+      "confidence": 0.9168272,
+      "endTime": 262.1042,
+      "startTime": 261.98416,
+      "word": "以"
+    },
+    {
+      "confidence": 0.7867268,
+      "endTime": 262.26416,
+      "startTime": 262.1042,
+      "word": "及"
+    },
+    {
+      "confidence": 0.91748345,
+      "endTime": 262.48416,
+      "startTime": 262.26416,
+      "word": "网"
+    },
+    {
+      "confidence": 0.69364196,
+      "endTime": 262.55417,
+      "startTime": 262.48416,
+      "word": "络"
+    },
+    {
+      "confidence": 0.97027457,
+      "endTime": 262.79416,
+      "startTime": 262.55417,
+      "word": "设"
+    },
+    {
+      "confidence": 0.92598146,
+      "endTime": 262.93417,
+      "startTime": 262.79416,
+      "word": "备"
+    },
+    {
+      "confidence": 0.91519755,
+      "endTime": 263.08417,
+      "startTime": 262.93417,
+      "word": "一"
+    },
+    {
+      "confidence": 0.9710499,
+      "endTime": 263.25418,
+      "startTime": 263.08417,
+      "word": "起"
+    },
+    {
+      "confidence": 0.98331434,
+      "endTime": 263.43417,
+      "startTime": 263.25418,
+      "word": "工"
+    },
+    {
+      "confidence": 0.98068875,
+      "endTime": 263.65417,
+      "startTime": 263.43417,
+      "word": "作，"
+    },
+    {
+      "confidence": 0.8939568,
+      "endTime": 264.19418,
+      "startTime": 263.99417,
+      "word": "组"
+    },
+    {
+      "confidence": 0.93009937,
+      "endTime": 264.41418,
+      "startTime": 264.19418,
+      "word": "成"
+    },
+    {
+      "confidence": 0.83895344,
+      "endTime": 264.53418,
+      "startTime": 264.41418,
+      "word": "面"
+    },
+    {
+      "confidence": 0.84039736,
+      "endTime": 264.71417,
+      "startTime": 264.53418,
+      "word": "向"
+    },
+    {
+      "confidence": 0.9167558,
+      "endTime": 264.97418,
+      "startTime": 264.71417,
+      "word": "大"
+    },
+    {
+      "confidence": 0.972586,
+      "endTime": 265.1042,
+      "startTime": 264.97418,
+      "word": "模"
+    },
+    {
+      "confidence": 0.9450277,
+      "endTime": 265.26416,
+      "startTime": 265.1042,
+      "word": "型"
+    },
+    {
+      "confidence": 0.82143694,
+      "endTime": 265.44418,
+      "startTime": 265.26416,
+      "word": "训"
+    },
+    {
+      "confidence": 0.8476589,
+      "endTime": 265.61417,
+      "startTime": 265.44418,
+      "word": "练"
+    },
+    {
+      "confidence": 0.9303276,
+      "endTime": 265.75418,
+      "startTime": 265.61417,
+      "word": "和"
+    },
+    {
+      "confidence": 0.9639075,
+      "endTime": 266.02417,
+      "startTime": 265.75418,
+      "word": "推"
+    },
+    {
+      "confidence": 0.91493124,
+      "endTime": 266.1342,
+      "startTime": 266.02417,
+      "word": "理"
+    },
+    {
+      "confidence": 0.94818485,
+      "endTime": 266.25418,
+      "startTime": 266.1342,
+      "word": "的"
+    },
+    {
+      "confidence": 0.96951973,
+      "endTime": 266.44418,
+      "startTime": 266.25418,
+      "word": "完"
+    },
+    {
+      "confidence": 0.95238006,
+      "endTime": 266.58417,
+      "startTime": 266.44418,
+      "word": "整"
+    },
+    {
+      "confidence": 0.9421506,
+      "endTime": 266.75418,
+      "startTime": 266.58417,
+      "word": "系"
+    },
+    {
+      "confidence": 0.9180247,
+      "endTime": 266.96417,
+      "startTime": 266.75418,
+      "word": "统。"
+    },
+    {
+      "confidence": 0.91430175,
+      "endTime": 267.57803,
+      "startTime": 267.35803,
+      "word": "这"
+    },
+    {
+      "confidence": 0.96519953,
+      "endTime": 267.65805,
+      "startTime": 267.57803,
+      "word": "也"
+    },
+    {
+      "confidence": 0.81467813,
+      "endTime": 267.93805,
+      "startTime": 267.65805,
+      "word": "是"
+    },
+    {
+      "confidence": 0.63511163,
+      "endTime": 268.10803,
+      "startTime": 267.93805,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.8150771,
+      "endTime": 268.32803,
+      "startTime": 268.10803,
+      "word": "科"
+    },
+    {
+      "confidence": 0.9408141,
+      "endTime": 268.46805,
+      "startTime": 268.32803,
+      "word": "技"
+    },
+    {
+      "confidence": 0.91869104,
+      "endTime": 268.60803,
+      "startTime": 268.46805,
+      "word": "巨"
+    },
+    {
+      "confidence": 0.9627963,
+      "endTime": 268.84805,
+      "startTime": 268.60803,
+      "word": "头"
+    },
+    {
+      "confidence": 0.955078,
+      "endTime": 269.04803,
+      "startTime": 268.84805,
+      "word": "争"
+    },
+    {
+      "confidence": 0.9619115,
+      "endTime": 269.27805,
+      "startTime": 269.04803,
+      "word": "相"
+    },
+    {
+      "confidence": 0.95742196,
+      "endTime": 269.43805,
+      "startTime": 269.27805,
+      "word": "部"
+    },
+    {
+      "confidence": 0.9088674,
+      "endTime": 269.65805,
+      "startTime": 269.43805,
+      "word": "署"
+    },
+    {
+      "confidence": 0.84651434,
+      "endTime": 269.85803,
+      "startTime": 269.65805,
+      "word": "英"
+    },
+    {
+      "confidence": 0.549456,
+      "endTime": 269.98804,
+      "startTime": 269.85803,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.88017464,
+      "endTime": 270.16806,
+      "startTime": 269.98804,
+      "word": "达"
+    },
+    {
+      "confidence": 0.89339244,
+      "endTime": 270.40805,
+      "startTime": 270.16806,
+      "word": "产"
+    },
+    {
+      "confidence": 0.9829375,
+      "endTime": 270.55804,
+      "startTime": 270.40805,
+      "word": "品"
+    },
+    {
+      "confidence": 0.96818995,
+      "endTime": 270.64804,
+      "startTime": 270.55804,
+      "word": "的"
+    },
+    {
+      "confidence": 0.694003,
+      "endTime": 270.92804,
+      "startTime": 270.64804,
+      "word": "原"
+    },
+    {
+      "confidence": 0.26494282,
+      "endTime": 270.95804,
+      "startTime": 270.92804,
+      "word": "因："
+    },
+    {
+      "confidence": 0.88900256,
+      "endTime": 271.71805,
+      "startTime": 271.51804,
+      "word": "这"
+    },
+    {
+      "confidence": 0.9499142,
+      "endTime": 271.84805,
+      "startTime": 271.71805,
+      "word": "让"
+    },
+    {
+      "confidence": 0.9778249,
+      "endTime": 271.99805,
+      "startTime": 271.84805,
+      "word": "它"
+    },
+    {
+      "confidence": 0.98154444,
+      "endTime": 272.08804,
+      "startTime": 271.99805,
+      "word": "们"
+    },
+    {
+      "confidence": 0.8429461,
+      "endTime": 272.23804,
+      "startTime": 272.08804,
+      "word": "可"
+    },
+    {
+      "confidence": 0.754636,
+      "endTime": 272.33804,
+      "startTime": 272.23804,
+      "word": "以"
+    },
+    {
+      "confidence": 0.8699679,
+      "endTime": 272.48804,
+      "startTime": 272.33804,
+      "word": "向"
+    },
+    {
+      "confidence": 0.9785305,
+      "endTime": 272.70804,
+      "startTime": 272.48804,
+      "word": "客"
+    },
+    {
+      "confidence": 0.97057354,
+      "endTime": 272.89804,
+      "startTime": 272.70804,
+      "word": "户"
+    },
+    {
+      "confidence": 0.95511746,
+      "endTime": 273.05804,
+      "startTime": 272.89804,
+      "word": "提"
+    },
+    {
+      "confidence": 0.94654536,
+      "endTime": 273.22806,
+      "startTime": 273.05804,
+      "word": "供"
+    },
+    {
+      "confidence": 0.91585153,
+      "endTime": 273.45804,
+      "startTime": 273.22806,
+      "word": "大"
+    },
+    {
+      "confidence": 0.96067655,
+      "endTime": 273.59805,
+      "startTime": 273.45804,
+      "word": "模"
+    },
+    {
+      "confidence": 0.9375537,
+      "endTime": 273.76804,
+      "startTime": 273.59805,
+      "word": "型"
+    },
+    {
+      "confidence": 0.91465586,
+      "endTime": 274.00806,
+      "startTime": 273.76804,
+      "word": "服"
+    },
+    {
+      "confidence": 0.93982804,
+      "endTime": 274.05804,
+      "startTime": 274.00806,
+      "word": "务"
+    },
+    {
+      "confidence": 0.9629465,
+      "endTime": 274.15805,
+      "startTime": 274.05804,
+      "word": "的"
+    },
+    {
+      "confidence": 0.9751881,
+      "endTime": 274.32803,
+      "startTime": 274.15805,
+      "word": "同"
+    },
+    {
+      "confidence": 0.9872571,
+      "endTime": 274.64804,
+      "startTime": 274.32803,
+      "word": "时，"
+    },
+    {
+      "confidence": 0.8922042,
+      "endTime": 275.07803,
+      "startTime": 274.79803,
+      "word": "降"
+    },
+    {
+      "confidence": 0.8809759,
+      "endTime": 275.22806,
+      "startTime": 275.07803,
+      "word": "低"
+    },
+    {
+      "confidence": 0.82256097,
+      "endTime": 275.46805,
+      "startTime": 275.22806,
+      "word": "训"
+    },
+    {
+      "confidence": 0.8210932,
+      "endTime": 275.62805,
+      "startTime": 275.46805,
+      "word": "练"
+    },
+    {
+      "confidence": 0.91264105,
+      "endTime": 275.77805,
+      "startTime": 275.62805,
+      "word": "和"
+    },
+    {
+      "confidence": 0.959525,
+      "endTime": 276.04803,
+      "startTime": 275.77805,
+      "word": "推"
+    },
+    {
+      "confidence": 0.93764955,
+      "endTime": 276.14804,
+      "startTime": 276.04803,
+      "word": "理"
+    },
+    {
+      "confidence": 0.9136991,
+      "endTime": 276.23804,
+      "startTime": 276.14804,
+      "word": "的"
+    },
+    {
+      "confidence": 0.95455647,
+      "endTime": 276.46805,
+      "startTime": 276.23804,
+      "word": "成"
+    },
+    {
+      "confidence": 0.9536923,
+      "endTime": 276.65805,
+      "startTime": 276.46805,
+      "word": "本。"
+    },
+    {
+      "confidence": 0.79162633,
+      "endTime": 277.28232,
+      "startTime": 277.1323,
+      "word": "英"
+    },
+    {
+      "confidence": 0.46138528,
+      "endTime": 277.4023,
+      "startTime": 277.28232,
+      "word": "伟"
+    },
+    {
+      "confidence": 0.94674623,
+      "endTime": 277.6023,
+      "startTime": 277.4023,
+      "word": "达"
+    },
+    {
+      "confidence": 0.770154,
+      "endTime": 277.7023,
+      "startTime": 277.6023,
+      "word": "则"
+    },
+    {
+      "confidence": 0.95559293,
+      "endTime": 277.8723,
+      "startTime": 277.7023,
+      "word": "通"
+    },
+    {
+      "confidence": 0.9658111,
+      "endTime": 277.9823,
+      "startTime": 277.8723,
+      "word": "过"
+    },
+    {
+      "confidence": 0.8434811,
+      "endTime": 278.19232,
+      "startTime": 277.9823,
+      "word": "芯"
+    },
+    {
+      "confidence": 0.14513111,
+      "endTime": 278.22232,
+      "startTime": 278.19232,
+      "word": "片、"
+    },
+    {
+      "confidence": 0.8239372,
+      "endTime": 278.8323,
+      "startTime": 278.6323,
+      "word": "网"
+    },
+    {
+      "confidence": 0.95395625,
+      "endTime": 278.9623,
+      "startTime": 278.8323,
+      "word": "络"
+    },
+    {
+      "confidence": 0.81447333,
+      "endTime": 279.2423,
+      "startTime": 278.9623,
+      "word": "设"
+    },
+    {
+      "confidence": 0.12564965,
+      "endTime": 279.2723,
+      "startTime": 279.2423,
+      "word": "备、"
+    },
+    {
+      "confidence": 0.8771557,
+      "endTime": 279.8223,
+      "startTime": 279.6023,
+      "word": "整"
+    },
+    {
+      "confidence": 0.87314266,
+      "endTime": 279.9623,
+      "startTime": 279.8223,
+      "word": "机"
+    },
+    {
+      "confidence": 0.91833824,
+      "endTime": 280.1723,
+      "startTime": 279.9623,
+      "word": "系"
+    },
+    {
+      "confidence": 0.92122525,
+      "endTime": 280.34232,
+      "startTime": 280.1723,
+      "word": "统"
+    },
+    {
+      "confidence": 0.8818958,
+      "endTime": 280.53232,
+      "startTime": 280.34232,
+      "word": "和"
+    },
+    {
+      "confidence": 0.22890355,
+      "endTime": 280.8623,
+      "startTime": 280.8323,
+      "word": "CUDA"
+    },
+    {
+      "confidence": 0.80406266,
+      "endTime": 281.06232,
+      "startTime": 280.8623,
+      "word": "软"
+    },
+    {
+      "confidence": 0.97199124,
+      "endTime": 281.2123,
+      "startTime": 281.06232,
+      "word": "件"
+    },
+    {
+      "confidence": 0.9414389,
+      "endTime": 281.3923,
+      "startTime": 281.2123,
+      "word": "生"
+    },
+    {
+      "confidence": 0.9555169,
+      "endTime": 281.6223,
+      "startTime": 281.3923,
+      "word": "态，"
+    },
+    {
+      "confidence": 0.98156244,
+      "endTime": 282.1223,
+      "startTime": 281.94232,
+      "word": "在"
+    },
+    {
+      "confidence": 0.9564921,
+      "endTime": 282.3623,
+      "startTime": 282.1223,
+      "word": "整"
+    },
+    {
+      "confidence": 0.95242643,
+      "endTime": 282.56232,
+      "startTime": 282.3623,
+      "word": "个"
+    },
+    {
+      "confidence": 0.64308566,
+      "endTime": 282.8723,
+      "startTime": 282.8023,
+      "word": "AI"
+    },
+    {
+      "confidence": 0.793049,
+      "endTime": 283.06232,
+      "startTime": 282.8723,
+      "word": "产"
+    },
+    {
+      "confidence": 0.9158145,
+      "endTime": 283.1623,
+      "startTime": 283.06232,
+      "word": "业"
+    },
+    {
+      "confidence": 0.94255865,
+      "endTime": 283.31232,
+      "startTime": 283.1623,
+      "word": "链"
+    },
+    {
+      "confidence": 0.9627856,
+      "endTime": 283.5423,
+      "startTime": 283.31232,
+      "word": "中"
+    },
+    {
+      "confidence": 0.91398823,
+      "endTime": 283.9323,
+      "startTime": 283.6723,
+      "word": "占"
+    },
+    {
+      "confidence": 0.7988421,
+      "endTime": 284.0723,
+      "startTime": 283.9323,
+      "word": "据"
+    },
+    {
+      "confidence": 0.95607144,
+      "endTime": 284.19232,
+      "startTime": 284.0723,
+      "word": "了"
+    },
+    {
+      "confidence": 0.9511695,
+      "endTime": 284.4123,
+      "startTime": 284.19232,
+      "word": "重"
+    },
+    {
+      "confidence": 0.9740415,
+      "endTime": 284.53232,
+      "startTime": 284.4123,
+      "word": "要"
+    },
+    {
+      "confidence": 0.92937106,
+      "endTime": 284.6823,
+      "startTime": 284.53232,
+      "word": "地"
+    },
+    {
+      "confidence": 0.975583,
+      "endTime": 284.8623,
+      "startTime": 284.6823,
+      "word": "位。"
+    }
+  ],
+  "duration": 284.8623
+}
