@@ -4,7 +4,7 @@ import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { complete, type UserMessage } from "@mariozechner/pi-ai";
 import { createSession, getSharedResources } from "../agent.js";
-import { CONFIG_DIR } from "../utils/run-python.js";
+import { CONFIG_DIR, WORK_DIR } from "../utils/runtime-paths.js";
 import type { AgentSession, ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 type AgentContext = {
@@ -43,7 +43,7 @@ type AgentInput =
 let context: AgentContext = {};
 let session: AgentSession | null = null;
 let sessionPromise: Promise<AgentSession> | null = null;
-let sessionFile = path.join(process.cwd(), "agent-data", "supervisor.jsonl");
+let sessionFile = path.join(WORK_DIR, "agent-data", "supervisor.jsonl");
 let queue = Promise.resolve();
 const pendingChoices = new Map<string, (value: { optionId: string; optionLabel?: string }) => void>();
 const pendingCommands = new Map<string, (value: { ok: boolean; result?: unknown; error?: string }) => void>();
@@ -77,7 +77,7 @@ function responseText(response: Awaited<ReturnType<typeof complete>>): string {
 }
 
 function safeProjectPath(projectName: string, episode: number, fileName: string): string {
-  const workspace = path.resolve(process.cwd(), "workspace");
+  const workspace = path.resolve(WORK_DIR, "workspace");
   const project = path.resolve(workspace, projectName);
   if (path.basename(project) !== projectName || (!project.startsWith(`${workspace}${path.sep}`) && project !== workspace)) {
     throw new Error("项目名称无效");
@@ -114,7 +114,7 @@ async function reviseVisualPreset(instruction: string): Promise<{ version: numbe
   const current = await fs.readFile(presetPath, "utf8");
   const originals = presetOriginals(current);
   if (!originals.length) throw new Error("画面预设为空，无法修改");
-  const progressPath = path.resolve(process.cwd(), "workspace", projectName, "改编进度.json");
+  const progressPath = path.resolve(WORK_DIR, "workspace", projectName, "改编进度.json");
   const progress = JSON.parse(await fs.readFile(progressPath, "utf8"));
   if (progress?.episodes?.[String(episode)]?.stages?.visualPreset !== "review") {
     throw new Error("当前不在画面预设审核阶段");
@@ -245,7 +245,7 @@ const getConfigTool: ToolDefinition = {
   execute: async () => {
     const projectName = String(context.projectName || "");
     const progress = projectName
-      ? await readConfigSummary(path.join(process.cwd(), "workspace", projectName, "改编进度.json"), ["article_type", "aspect_ratio", "render_mode", "source_path"])
+      ? await readConfigSummary(path.join(WORK_DIR, "workspace", projectName, "改编进度.json"), ["article_type", "aspect_ratio", "render_mode", "source_path"])
       : { missing: true };
     const llm = await readConfigSummary(path.join(CONFIG_DIR, "config.json"), ["provider", "model", "base_url", "api_key"]);
     const image = await readConfigSummary(path.join(CONFIG_DIR, "image_gen_config.json"), ["model", "base_url", "api_key"]);
@@ -442,7 +442,7 @@ async function getSession(): Promise<AgentSession> {
       [getStatusTool, getConfigTool, requestUserChoiceTool, createProjectTool, startPipelineTool, pausePipelineTool, showVisualPresetTool, reviseVisualPresetTool],
       systemPrompt,
       [],
-      process.cwd(),
+      WORK_DIR,
     ).then((created) => {
       session = created;
       return created;

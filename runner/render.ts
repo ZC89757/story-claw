@@ -15,10 +15,10 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
-import { CONFIG_DIR } from "../utils/run-python.js";
+import { CONFIG_DIR } from "../utils/runtime-paths.js";
+import {generateImage as generateImageWithApi} from "../utils/image-gen.js";
 import { novelPaths } from "../utils/paths.js";
 import type { NovelSelection } from "../ui/select.js";
 import {
@@ -28,10 +28,13 @@ import {
   wrapSubtitleLines,
 } from "./subtitles.js";
 import {hasAudioStream} from "./mg/media.js";
+import {resolveMediaCommand} from "../utils/media-binaries.js";
 
-const RENDER_DIR = path.dirname(fileURLToPath(import.meta.url));
-
-const execFileAsync = promisify(execFile);
+const execFileAsyncRaw = promisify(execFile);
+const execFileAsync = async (command: string, args: string[], options?: any): Promise<{stdout: string; stderr: string}> => {
+  const result = await execFileAsyncRaw(resolveMediaCommand(command), args, options);
+  return {stdout: String(result.stdout), stderr: String(result.stderr)};
+};
 
 // ── 渲染日志（同时写文件）────────────────────────────────────────────────────
 
@@ -73,16 +76,13 @@ const vidCfg = loadConfig("video_config.json");
 const llmCfg = loadConfig("config.json");
 const ttsCfg = loadConfig("tts_config.json");
 
-// 图片生成（gpt-image-gen.py via Vertex AI SDK）
+// 图片生成（纯 Node.js API 适配器）
 const IMAGE_CONCURRENCY = (imgCfg.concurrency ?? 4) as number;
-const IMAGE_MAX_RETRIES = 3;
-const IMAGE_RETRY_SLEEP = 3000; // ms
 
 // 资源选择器（selectResources，LLM 偶发返回非 JSON 需要重试兜底）
 const SELECT_CONCURRENCY = Math.max(1, Number(llmCfg.select_concurrency ?? 2));
 const SELECT_MAX_RETRIES = 3;
 const SELECT_RETRY_SLEEP = 2000; // ms
-const SOFTEN_MAX = 2; // 被内容安全系统拒绝时，提示词递进软化的最大档数
 
 // 视频生成（ComfyUI）
 const VIDEO_BASE_URL         = (vidCfg.base_url         ?? "http://127.0.0.1:8188") as string;
@@ -557,74 +557,6 @@ async function selectResources(
 
 // ── 图片生成 ──────────────────────────────────────────────────────────────────
 
-const IMAGE_TIMEOUT_MS = 600_000;
-
-function runPython(args: string[]): Promise<{ ok: boolean; stderr: string }> {
-  return new Promise((resolve) => {
-    const child = spawn("python", args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stderr = "";
-    child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-    let settled = false;
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve({ ok, stderr });
-    };
-
-    const timer = setTimeout(() => {
-      child.kill();
-      stderr += "\n[timeout] process killed after " + IMAGE_TIMEOUT_MS / 1000 + "s";
-      finish(false);
-    }, IMAGE_TIMEOUT_MS);
-
-    child.on("close", (code: number | null) => {
-      clearTimeout(timer);
-      finish(code === 0);
-    });
-    child.on("error", (err: Error) => {
-      clearTimeout(timer);
-      stderr += "\n" + err.message;
-      finish(false);
-    });
-  });
-}
-
-/** 判断 stderr 是否为内容安全系统拒绝（gpt-image-2 透传的 400 safety_violations 等） */
-function isSafetyRejection(stderr: string): boolean {
-  return /rejected by the safety system|safety_violations/i.test(stderr);
-}
-
-const SOFTEN_SYSTEM = `你是生图提示词安全改写专员。给你一段生图提示词和它被内容安全系统拒绝的原因，请改写出一段能通过审核的版本。
-
-规则：
-1. 保留画面主体、构图、景别、镜头、光影、情绪基调不变。
-2. 保留所有 "the person in image N" / "the background in image N" 占位符原样不动（N 是数字），不得删除或改写它们。
-3. 仅弱化会触发内容安全审核的血腥、暴力、惊悚、伤害等直白描写：用含蓄、间接、艺术化的表达替代（如"破碎的大脑组织带血丝"→"掌心一团模糊的暗红色物体，虚化处理"）。
-4. 不要添加新的画面元素，只做必要的弱化。
-5. 只输出改写后的提示词纯文本，不要解释、不要 JSON、不要方括号标签、不要代码块包裹。`;
-
-/** 用主文本 LLM 软化提示词，使其通过内容安全审核（递进：传入的可能是上一档软化结果） */
-async function softenPrompt(prompt: string, rejectionInfo: string): Promise<string> {
-  const client = await getOpenAI(LLM_API_KEY, LLM_BASE_URL);
-  const resp = await client.chat.completions.create({
-    model: LLM_MODEL,
-    max_tokens: LLM_MAX_TOKENS,
-    messages: [
-      { role: "system", content: SOFTEN_SYSTEM },
-      { role: "user", content: `原提示词：\n${prompt}\n\n被拒原因：\n${rejectionInfo}\n\n请输出软化后的提示词：` },
-    ],
-  });
-  let raw = resp.choices[0].message.content?.trim() ?? "";
-  if (raw.includes("```")) {
-    raw = raw.split("```")[1] ?? raw;
-    if (raw.startsWith("json")) raw = raw.slice(4);
-    raw = raw.trim();
-  }
-  if (!raw) throw new Error("softenPrompt 返回空");
-  return raw;
-}
-
 async function generateImage(
   imgSem: Semaphore,
   prompt: string,
@@ -635,59 +567,8 @@ async function generateImage(
   await imgSem.acquire();
   try {
     console.log(`    [生图] 提交: ${path.basename(outputPath)}（参考图 ${refPaths.length} 张，宽高比 ${aspectRatio}）`);
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-
-    const gptHelperPath = path.join(RENDER_DIR, "../utils/gpt-image-gen.py");
-
-    // ── 主路径：gpt-image-gen.py（普通失败重试 + 安全拒绝时递进软化）──────
-    let curPrompt = prompt;   // 当前使用的提示词（可能被软化覆盖）
-    let softenCount = 0;      // 已软化档数
-    let normalAttempt = 0;    // 普通失败重试次数
-    while (true) {
-      const args = [gptHelperPath, outputPath, curPrompt, "--aspect", aspectRatio, ...refPaths];
-      const { ok, stderr } = await runPython(args);
-      if (ok) {
-        console.log(`    [生图] [gpt-image-2] 已保存: ${path.basename(outputPath)}`);
-        return;
-      }
-      const errMsg = stderr.slice(-1500);
-
-      // 内容安全拒绝：递进软化提示词后立即重试（不计入普通重试、不 sleep）
-      if (isSafetyRejection(stderr)) {
-        if (softenCount >= SOFTEN_MAX) {
-          console.log(`    [生图] 安全拒绝，已软化 ${SOFTEN_MAX} 档仍未通过，降级 Gemini...`);
-          break;
-        }
-        try {
-          const softened = await softenPrompt(curPrompt, errMsg);
-          softenCount++;
-          console.log(`    [生图] 检测到内容安全拒绝，第 ${softenCount}/${SOFTEN_MAX} 次软化提示词后重试`);
-          curPrompt = softened;
-          continue;
-        } catch (e: any) {
-          console.log(`    [生图] 软化提示词失败（${e?.message ?? e}），降级 Gemini...`);
-          break;
-        }
-      }
-
-      // 普通失败：限次重试 + sleep
-      normalAttempt++;
-      console.log(`    [生图] [${normalAttempt}/${IMAGE_MAX_RETRIES}] gpt-image-gen 失败: ${errMsg}`);
-      if (normalAttempt >= IMAGE_MAX_RETRIES) break;
-      console.log(`    [生图] ${IMAGE_RETRY_SLEEP / 1000}s 后重试...`);
-      await sleep(IMAGE_RETRY_SLEEP);
-    }
-
-    // ── 降级：调用 Gemini Python helper（使用最新（可能已软化的）提示词）──
-    console.log(`    [生图] gpt-image-2 失败，降级到 Gemini...`);
-    const geminiPath = path.join(RENDER_DIR, "../utils/gemini-image-gen.py");
-    const geminiArgs = [geminiPath, outputPath, curPrompt, "--aspect", aspectRatio, ...refPaths];
-    const { ok: geminiOk, stderr: geminiErr } = await runPython(geminiArgs);
-    if (geminiOk) {
-      console.log(`    [生图] [Gemini] 已保存: ${path.basename(outputPath)}`);
-      return;
-    }
-    throw new Error(`生图失败（gpt-image-2 + Gemini 降级，软化 ${softenCount} 档）: ${path.basename(outputPath)}: ${geminiErr.slice(-1500)}`);
+    await generateImageWithApi(prompt, outputPath, refPaths, aspectRatio);
+    console.log(`    [生图] 已保存: ${path.basename(outputPath)}`);
   } finally {
     imgSem.release();
   }

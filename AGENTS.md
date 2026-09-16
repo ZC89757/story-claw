@@ -51,17 +51,19 @@ Defined in `runner/pipeline.ts`, orchestrated by `runner/solo.ts`（**唯一模�
 ### Configuration
 Stored in `~/.story-claw/` (not in the repo):
 - `config.json`: LLM provider/model/api_key/base_url
-- `image_gen_config.json`: `{ api_key, model, base_url }` — 当前 model 为 `openai/gpt-image-2:openai`，base_url 为 `https://zenmux.ai/api/vertex-ai`
+- `image_gen_config.json`: `{ api_key, model, base_url, api_format? }` — 当前 model 为 `openai/gpt-image-2:openai`，base_url 为 `https://zenmux.ai/api/vertex-ai`；`api_format` 可显式选 `vertex` / `openai`
 - `video_config.json`: ComfyUI base_url、workflow_path、duration、concurrency
 - `tts_config.json`: 豆包语音（火山引擎 语音合成大模型 V3，HTTP Chunked 单向流式）api_key（X-Api-Key）、base_url（`https://openspeech.bytedance.com/api/v3/tts/unidirectional`）、resource_id（`seed-tts-1.0`，决定可用音色版本与计费）、voices（`{voice_type: 性别}` 可分配音色池，key 为豆包 voice_type，**不应包含旁白音**）、narrator_voice（旁白专用 voice_type，独立于 voices 池）、concurrency、assign_character_voice（可选，默认 `true`；设为 `false` 时音色照常分配，但 TTS 合成时全部强制用 narrator_voice，相当于全程旁白音）、sfx_enabled（可选，默认 `true`；关闭后音效全程跳过）、sfx_volume（可选，默认 `0.7`；音效相对人声的音量 0–1）
 - `sfx/`（目录，可选）: 全局音效库，放 `*.mp3`/`*.wav`，**标签 = 去扩展名的文件名**（可含空格，如 `玻璃破碎 心碎时刻`）。增删文件即增删标签，代码无需改（见「音效（SFX）」）
 
 ### Key Utilities
 - `utils/paths.ts`: 所有输出路径的集中管理，**构造路径时必须使用此文件**
-- `utils/image-gen.ts`: Node.js 生图统一入口，调用 `gpt-image-gen.py`（3次重试），失败后降级 `gemini-image-gen.py`
-- `utils/gpt-image-gen.py`: 主力生图脚本，使用 Google GenAI SDK（Vertex AI 模式）调用 `openai/gpt-image-2:openai`
-- `utils/gemini-image-gen.py`: 降级生图脚本，使用 `google/gemini-3.1-flash-lite-image`
-- `utils/run-python.ts`: 导出 `CONFIG_DIR`（`~/.story-claw/`）、`WORK_DIR`（cwd）和 `PROJECT_ROOT`（别名）
+- `utils/image-gen.ts`: 纯 Node.js 生图统一入口，直接调用 OpenAI-compatible Images API 或 Google GenAI Vertex 网关；主模型重试 3 次后降级 `google/gemini-3.1-flash-lite-image`
+- `utils/runtime-paths.ts`: 导出 `CONFIG_DIR`（默认 `~/.story-claw/`）和可由 `STORY_CLAW_WORK_DIR` 覆盖的 `WORK_DIR`
+- `utils/media-binaries.ts`: 统一解析应用内置的 FFmpeg / FFprobe，并兼容 Electron `app.asar.unpacked`
+- `utils/gpu-lifecycle.ts`: 纯 TypeScript CompShare 实例查询、启动、停止、状态轮询及 ComfyUI 轻量自检
+- `utils/video-speed.ts`: 无丢帧视频倍速、音轨变速、可选 BGM 混音及结果校验
+- `utils/title-watermark.ts`: 故事标题设计、生图、dominant-color 抠图、标题/署名水印和倍速
 - `utils/progress.ts`: 改编进度读写（`readProgress` / `getEpisodeRecord` / `markStage` / `finalizeEpisode`），记录每集每阶段完成状态
 
 ### Image Generation Flow
@@ -70,8 +72,8 @@ Stored in `~/.story-claw/` (not in the repo):
 1. LLM sub-agent（ARCHIVE_SYSTEM）分析画面预设文本，输出 `archive-tasks` JSON 块
 2. `pipeline.ts:archive()` 用正则解析 JSON，**代码直接**调用 `generateCharacterTool.execute()` / `generateSceneTool.execute()`（不是 LLM 调工具）
 3. 工具内部拼接完整 prompt，调 `utils/image-gen.ts:generateImage(prompt, outputPath, images, "16:9")`
-4. `image-gen.ts` 用 async `spawn` 调 `gpt-image-gen.py`，失败重试 3 次，超时 600s
-5. 3 次全败 → `image-gen.ts` 改调 `gemini-image-gen.py`（只试一次）
+4. `image-gen.ts` 直接从 Node.js 调图像 API，失败重试 3 次，超时 600s
+5. 3 次全败 → `image-gen.ts` 改调 Gemini 图像模型（只试一次）
 
 **路径二：渲染合成**（每个 panel 的分镜静态图）
 1. 分镜制作阶段 LLM sub-agent 已将每个 panel 的 `image_prompt` 写入 `storyboards/*.jsonl`；`image_prompt` 中名单角色用 `[角色名·阶段]` 内联标注身份
@@ -81,17 +83,17 @@ Stored in `~/.story-claw/` (not in the repo):
    - 候选资源来自 `buildResourceCatalog()`，它**扫 `characters/` 与 `scenes/` 目录**列出所有 `{name}_*.png` / `{loc}*.png`，因此用户手动放入的真人参考图也会被纳入候选
    - `render.ts` 还有兜底：若选择器漏剥离 `[...]`，按是否有参考图替换为 `the person (in image 1)`，避免中文身份词污染生图
    - `is_continuation=true` 的 panel 跳过生图，等待 `videoEvents` 前驱事件后提取尾帧作为参考
-4. 代码调 `render.ts:generateImage(imgSem, ...)`，async `spawn` 调 `gpt-image-gen.py`，失败重试 3 次
-5. 3 次全败 → 代码改调 `gemini-image-gen.py`（只试一次）
+4. 代码调 `render.ts:generateImage(imgSem, ...)`，由共享 `utils/image-gen.ts` 直接请求图像 API，失败重试 3 次
+5. 3 次全败 → 代码改调 Gemini 图像模型（只试一次）
 
-**两条路径的共同点**：LLM 只负责生成数据，**生图始终由 Node.js 代码主动调 Python 脚本**，LLM 不直接触发生图。降级逻辑在 Node.js 侧，Python 脚本本身没有降级。
+**两条路径的共同点**：LLM 只负责生成数据，**生图始终由 Node.js 代码直接调用远程 API**，LLM 不直接触发生图。本机生产链路不需要 Python；旧 Python 辅助脚本仅作开发/历史参考，不进入桌面安装包。
 
 **自定义参考图约定**：用户可手动把 `{角色名}_原型.png`（角色）或 `{场景名}.png` / `{场景名}_变体.png`（场景）放进 `characters/` / `scenes/`。`buildResourceCatalog` 扫目录后这些图会作为候选（描述标注为「用户提供的真实参考图」）；`list_resources` 也会在「角色/场景现有图片」段列出每个资源磁盘上现有的 PNG。角色音色以 `_原型.png` 对应的角色为单位分配（见「音色分配」）。
 
 **尺寸规则**：
 - 资源建档固定 `16:9` → `1536×1024`
 - 渲染分镜使用用户选择的 `aspectRatio`（`9:16` 或 `16:9`），通过 `NovelSelection.aspectRatio` 透传到 `render.ts`
-- `aspectRatio` 通过 `--aspect` 传入 Python，映射：`9:16` → `1024×1536`，`16:9` → `1536×1024`
+- `aspectRatio` 直接传给 TS API 适配层，目标映射：`9:16` → `1024×1536`，`16:9` → `1536×1024`
 
 ### Output Directory Structure
 ```

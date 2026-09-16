@@ -7,6 +7,7 @@ import {promisify} from "node:util";
 import {fileURLToPath} from "node:url";
 import {createRequire} from "node:module";
 import OpenAI from "openai";
+import {resolveMediaCommand} from "../utils/media-binaries.js";
 import {
   progressTimelineFunctionDefinition,
   resolveProgressTimelineFunctionArgs,
@@ -38,7 +39,11 @@ import {collageNetworkFunctionDefinition, resolveCollageNetworkFunctionArgs} fro
 
 const require = createRequire(import.meta.url);
 const parse5 = require("parse5") as {parse(input: string): HtmlNode};
-const execFileAsync = promisify(execFile);
+const execFileAsyncRaw = promisify(execFile);
+const execFileAsync = async (command: string, args: string[], options?: any): Promise<{stdout: string; stderr: string}> => {
+  const result = await execFileAsyncRaw(resolveMediaCommand(command), args, options);
+  return {stdout: String(result.stdout), stderr: String(result.stderr)};
+};
 const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TEMPLATE_DIR = path.resolve(ROOT_DIR, "../story-claw-templates");
 const EP_DIR = path.join(ROOT_DIR, "workspace", "谷歌的第二次创业_横屏测试_20260822", "ep01");

@@ -3,10 +3,7 @@
  */
 
 import fs from "node:fs/promises";
-import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { NovelSelection } from "../ui/select.js";
 import { createProgress, progressBar } from "../ui/progress.js";
 import { cleanText, visualPreset, archive, segment, storyboard, renderScene, assignGlobalOrder } from "./pipeline.js";
@@ -25,6 +22,7 @@ import { annotateEssayMg } from "./mg/annotate.js";
 import { validateMgAnnotationHtml } from "./mg/html.js";
 import { isEssayMgPlanCurrent, planEssayMg } from "./mg/planner.js";
 import { renderAndAssembleEssayMg } from "./mg/assembler.js";
+import {startGpu as startManagedGpu, stopGpu as stopManagedGpu} from "../utils/gpu-lifecycle.js";
 
 export type SoloRunResult = "done" | "images_only" | "already_done" | "review_pending" | "failed";
 
@@ -78,9 +76,6 @@ const ESSAY_PROGRESS = [
 ] as const;
 
 const sha256 = (content: string): string => createHash("sha256").update(content).digest("hex");
-const STORY_CLAW_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SHUTDOWN_GPU_SCRIPT = path.join(STORY_CLAW_ROOT, "scripts", "shutdown_gpu.py");
-
 /**
  * 只有当前 HTML 合法，且生成时消费的画面预设与当前文件完全一致，才允许续跑复用。
  * 旧项目没有 provenance 时保守地重建一次。
@@ -146,11 +141,9 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     }
   };
 
-  const stopGpu = (): void => {
+  const stopGpu = async (): Promise<void> => {
     if (!gpuStarted) return;
-    // Remotion's bundler may change process.cwd() to the template package.
-    // Resolve this host-owned script from solo.ts instead of relying on cwd.
-    execFileSync("python", ["-u", SHUTDOWN_GPU_SCRIPT], { stdio: "inherit" });
+    await stopManagedGpu();
     gpuStarted = false;
     reportPhase({ phase: "gpu_stopped", label: "GPU 已关闭", detail: "本次渲染实例已经停止计费" });
   };
@@ -340,7 +333,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         });
         console.log(`\n  正在启动 GPU；实例启动后会自动等待渲染服务预热...`);
         gpuStarted = true;
-        execSync("python -u scripts/grab_gpu.py", { stdio: "inherit" });
+        await startManagedGpu();
         console.log(`  GPU 实例已就绪\n`);
         reportPhase({ phase: "gpu_ready", label: "GPU 已就绪", detail: "渲染资源已准备完成" });
       }
@@ -418,7 +411,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         });
         console.log(`\n  正在启动 GPU；实例启动后会自动等待渲染服务预热...`);
         gpuStarted = true;
-        execSync("python -u scripts/grab_gpu.py", { stdio: "inherit" });
+        await startManagedGpu();
         console.log(`  GPU 实例已就绪\n`);
         reportPhase({ phase: "gpu_ready", label: "GPU 已就绪", detail: "视觉片段生成服务已准备完成" });
       }
@@ -447,7 +440,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         p.done(progressIndex.mgPlan, title, "function_calls.json / render_bundle.json / 视频片段");
       }
       // planEssayMg 只有在全部 Function Calling 视频片段落盘后才返回。
-      stopGpu();
+      await stopGpu();
 
       reportPhase({
         phase: "mg_rendering",
@@ -515,7 +508,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
     // ── 本次启动过 GPU 时，无论成功还是出错都负责关闭 ──
     if (gpuStarted) {
       try {
-        stopGpu();
+        await stopGpu();
       } catch (error) {
         reportPhase({
           phase: "failed",

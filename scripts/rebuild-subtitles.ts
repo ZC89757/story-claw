@@ -1,11 +1,9 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
-import { CONFIG_DIR } from "../utils/run-python.js";
+import { CONFIG_DIR } from "../utils/runtime-paths.js";
 import { novelPaths } from "../utils/paths.js";
+import {speedVideoWithBgm} from "../utils/video-speed.js";
 import {
   concatPanels,
   getMediaDuration,
@@ -22,10 +20,6 @@ import {
   wrapSubtitleLines,
   type SubtitleWord,
 } from "../runner/subtitles.js";
-
-const execFileAsync = promisify(execFile);
-const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SPEED_SCRIPT = path.join(ROOT_DIR, "scripts", "speed_video_with_bgm.py");
 
 interface TtsConfig {
   narrator_voice: string;
@@ -215,12 +209,7 @@ async function main(): Promise<void> {
 
   const alignedVideo = path.join(rebuildDir, "_aligned_no_bgm.mp4");
   await globalAlignAndMerge([...sceneResults.values()], alignedVideo, rebuildDir);
-  await execFileAsync("python", [
-    SPEED_SCRIPT,
-    alignedVideo,
-    "--speed", "1.2",
-    "--output", finalVideo,
-  ]);
+  await speedVideoWithBgm({input: alignedVideo, output: finalVideo, speed: 1.2});
   console.log(`[字幕重建] 完成: ${finalVideo}`);
 }
 

@@ -23,7 +23,7 @@ import {
   readTool,
 } from "@mariozechner/pi-coding-agent";
 import { PATHS } from "./utils/paths.js";
-import { CONFIG_DIR } from "./utils/run-python.js";
+import { CONFIG_DIR } from "./utils/runtime-paths.js";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 // ─── 配置文件加载 ──────────────────────────────────────────────

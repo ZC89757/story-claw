@@ -4,16 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import type { NovelSelection } from "../ui/select.js";
-import { CONFIG_DIR } from "../utils/run-python.js";
+import { CONFIG_DIR } from "../utils/runtime-paths.js";
 import { novelPaths } from "../utils/paths.js";
+import {createAndApplyStoryTitle, overlayTitleWatermark} from "../utils/title-watermark.js";
+import {speedVideoWithBgm} from "../utils/video-speed.js";
 
 interface BgmConfig {
   bgm_dir?: string;
 }
 
 const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const TITLE_SCRIPT = path.join(ROOT_DIR, "scripts", "title_watermark_gui.py");
-const SPEED_BGM_SCRIPT = path.join(ROOT_DIR, "scripts", "speed_video_with_bgm.py");
 const GENERATE_BGM_SCRIPT = path.join(ROOT_DIR, "utils", "generate-bgm.ts");
 const BGM_CONFIG_PATH = path.join(CONFIG_DIR, "bgm_config.json");
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"]);
@@ -64,16 +64,20 @@ async function postprocessStory(sel: NovelSelection, episodeVideo: string): Prom
   }
 
   const title = `${sel.novelName} ${String(sel.episode).padStart(2, "0")}`;
-  execFileSync("python", [
-    TITLE_SCRIPT,
-    "--folder", epDir,
-    "--videos-folder", epDir,
-    "--title", title,
-    "--txt", cleanTextPath,
-    "--no-intro",
-    "--apply",
-    "--speed", "1.1",
-  ], { stdio: "inherit" });
+  const titleResult = await createAndApplyStoryTitle({
+    episodeDirectory: epDir,
+    videoPath: episodeVideo,
+    cleanTextPath,
+    title,
+    speed: 1.1,
+  });
+
+  // The legacy BGM generator writes a sibling viewing copy. Keep processing
+  // that copy when it exists, while deliberately leaving raw masters alone.
+  const withBgm = path.join(epDir, `${path.basename(epDir)}_with_bgm.mp4`);
+  if (fsSync.existsSync(withBgm)) {
+    await overlayTitleWatermark(withBgm, titleResult.cutoutPath, 1.1);
+  }
 
   if (!fsSync.existsSync(episodeVideo)) throw new Error(`故事后处理后找不到集视频: ${episodeVideo}`);
   return { article_type: "story", speed: 1.1, title };
@@ -84,12 +88,19 @@ async function postprocessEssay(sel: NovelSelection, episodeVideo: string): Prom
   const bgm = await selectRandomBgm();
   await fs.rm(tempOutput, { force: true });
 
-  const args = [SPEED_BGM_SCRIPT, episodeVideo, "--speed", "1.2", "--output", tempOutput];
-  if (bgm) args.push("--bgm", bgm);
-
   try {
-    execFileSync("python", args, { stdio: "inherit" });
-    await fs.rename(tempOutput, episodeVideo);
+    await speedVideoWithBgm({input: episodeVideo, output: tempOutput, speed: 1.2, bgm});
+    const backup = `${episodeVideo}.${process.pid}.${Date.now().toString(36)}.backup`;
+    await fs.rename(episodeVideo, backup);
+    try {
+      await fs.rename(tempOutput, episodeVideo);
+    } catch (error) {
+      await fs.rename(backup, episodeVideo).catch(() => undefined);
+      throw error;
+    }
+    await fs.rm(backup, {force: true}).catch((error) => {
+      console.warn(`  [视频后处理] 已替换成片，但清理备份失败: ${error}`);
+    });
   } catch (err) {
     await fs.rm(tempOutput, { force: true });
     throw err;

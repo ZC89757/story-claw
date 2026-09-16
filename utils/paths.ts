@@ -20,7 +20,7 @@
  */
 
 import path from "node:path";
-import { WORK_DIR } from "./run-python.js";
+import { WORK_DIR } from "./runtime-paths.js";
 
 // ── 固定路径（绝对路径） ────────────────────────────────────────────
 export const PATHS = {

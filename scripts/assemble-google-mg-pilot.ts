@@ -5,6 +5,8 @@ import fsSync from "node:fs";
 import path from "node:path";
 import {promisify} from "node:util";
 import {fileURLToPath} from "node:url";
+import {FFPROBE_PATH, resolveMediaCommand} from "../utils/media-binaries.js";
+import {speedVideoWithBgm} from "../utils/video-speed.js";
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,7 +29,6 @@ const COMPLETE_VIDEO = path.join(PILOT_DIR, "ep01_mg_optimized_with_audio_subtit
 const FINAL_VIDEO = path.join(PILOT_DIR, "ep01_mg_optimized_final.mp4");
 const NEXT_FINAL_VIDEO = path.join(PILOT_DIR, "ep01_mg_optimized_final.next.mp4");
 const VALIDATION_PATH = path.join(PILOT_DIR, "validation.json");
-const SPEED_SCRIPT = path.join(ROOT_DIR, "scripts", "speed_video_with_bgm.py");
 const BGM_PATH = path.join(ROOT_DIR, "bgm", "_bgm_src.mp3");
 
 type Scene = {
@@ -59,7 +60,7 @@ type AudioGroup = {
 
 const run = (command: string, args: string[], cwd = ROOT_DIR): Promise<void> =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, {cwd, stdio: "inherit"});
+    const child = spawn(resolveMediaCommand(command), args, {cwd, stdio: "inherit"});
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve();
@@ -73,7 +74,7 @@ const sha256 = async (filePath: string): Promise<string> => {
 };
 
 const probeDuration = async (filePath: string): Promise<number> => {
-  const {stdout} = await execFileAsync("ffprobe", [
+  const {stdout} = await execFileAsync(FFPROBE_PATH, [
     "-v", "error",
     "-show_entries", "format=duration",
     "-of", "csv=p=0",
@@ -85,7 +86,7 @@ const probeDuration = async (filePath: string): Promise<number> => {
 };
 
 const probeMedia = async (filePath: string): Promise<unknown> => {
-  const {stdout} = await execFileAsync("ffprobe", [
+  const {stdout} = await execFileAsync(FFPROBE_PATH, [
     "-v", "error",
     "-show_entries", "format=duration,size:stream=index,codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels,nb_frames",
     "-of", "json",
@@ -95,7 +96,7 @@ const probeMedia = async (filePath: string): Promise<unknown> => {
 };
 
 const assertVideoFrameCount = async (filePath: string, expectedFrames: number, expectedDuration: number) => {
-  const {stdout} = await execFileAsync("ffprobe", [
+  const {stdout} = await execFileAsync(FFPROBE_PATH, [
     "-v", "error",
     "-select_streams", "v:0",
     "-show_entries", "stream=nb_frames,duration,r_frame_rate",
@@ -378,15 +379,13 @@ const createCompleteVideos = async (plan: Plan): Promise<void> => {
     COMPLETE_VIDEO,
   ], PILOT_DIR);
 
-  const speedArgs = [
-    SPEED_SCRIPT,
-    COMPLETE_VIDEO,
-    "--speed", "1.2",
-    "--output", NEXT_FINAL_VIDEO,
-  ];
-  if (fsSync.existsSync(BGM_PATH)) speedArgs.push("--bgm", BGM_PATH);
   if (fsSync.existsSync(NEXT_FINAL_VIDEO)) await fs.unlink(NEXT_FINAL_VIDEO);
-  await run("python", speedArgs);
+  await speedVideoWithBgm({
+    input: COMPLETE_VIDEO,
+    output: NEXT_FINAL_VIDEO,
+    speed: 1.2,
+    bgm: fsSync.existsSync(BGM_PATH) ? BGM_PATH : null,
+  });
   await fs.copyFile(NEXT_FINAL_VIDEO, FINAL_VIDEO);
   await fs.unlink(NEXT_FINAL_VIDEO);
 };

@@ -8,7 +8,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
-import { CONFIG_DIR } from "./run-python.js";
+import { CONFIG_DIR } from "./runtime-paths.js";
 
 const CONFIG_FILE          = path.join(CONFIG_DIR, "config.json");
 const IMAGE_GEN_CONFIG_FILE = path.join(CONFIG_DIR, "image_gen_config.json");

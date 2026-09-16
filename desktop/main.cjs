@@ -5,6 +5,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { spawn, execFile } = require("node:child_process");
 const os = require("node:os");
+const ffprobeInstaller = require("@ffprobe-installer/ffprobe");
 const { listMgAnnotationInstances } = require("./mg-assets.cjs");
 
 const projectRoot = path.resolve(__dirname, "..");
@@ -15,6 +16,14 @@ const mgTemplateGalleryPort = 41731;
 const mgTemplateGalleryUrl = `http://127.0.0.1:${mgTemplateGalleryPort}/`;
 const userConfigRoot = path.join(os.homedir(), ".story-claw");
 const desktopSettingsPath = path.join(userConfigRoot, "desktop_settings.json");
+const ffprobePath = (() => {
+  const configured = String(process.env.STORY_CLAW_FFPROBE_PATH || "").trim();
+  if (configured) return configured;
+  const installed = ffprobeInstaller.path;
+  const unpacked = installed.replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
+  if (fsSync.existsSync(unpacked)) return unpacked;
+  return installed;
+})();
 const SYSTEM_CONFIG_SECTIONS = Object.freeze({
   llm: {
     fileName: "config.json",
@@ -692,7 +701,7 @@ async function probeMediaDuration(filePath) {
   if (cached?.signature === signature) return cached.duration;
 
   const duration = await new Promise((resolve) => {
-    execFile("ffprobe", [
+    execFile(ffprobePath, [
       "-v", "error",
       "-show_entries", "format=duration",
       "-of", "default=noprint_wrappers=1:nokey=1",
@@ -1653,12 +1662,18 @@ function shutdownGpuOnce(run) {
   if (!run || run.selection?.imagesOnly) return Promise.resolve();
   if (run.shutdownPromise) return run.shutdownPromise;
   run.shutdownPromise = new Promise((resolve) => {
-    execFile(
-      "python",
-      ["scripts/shutdown_gpu.py"],
-      { cwd: projectRoot, windowsHide: true },
-      (_error) => resolve(),
-    );
+    const workerPath = path.join(__dirname, "gpu-stop-worker.ts");
+    const loaderPath = path.join(projectRoot, "node_modules", "tsx", "dist", "loader.mjs");
+    const child = spawn(nodeExecutable(), ["--import", pathToFileURL(loaderPath).href, workerPath], {
+      cwd: projectRoot,
+      env: {...process.env, FORCE_COLOR: "0"},
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    forwardStream(child.stdout, "stdout", run);
+    forwardStream(child.stderr, "stderr", run);
+    child.once("error", () => resolve());
+    child.once("close", () => resolve());
   });
   return run.shutdownPromise;
 }

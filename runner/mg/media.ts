@@ -3,8 +3,13 @@ import {execFile, spawn} from "node:child_process";
 import fs from "node:fs/promises";
 import {promisify} from "node:util";
 import type {MgVideoInfo} from "./types.js";
+import {resolveMediaCommand} from "../../utils/media-binaries.js";
 
-const execFileAsync = promisify(execFile);
+const execFileAsyncRaw = promisify(execFile);
+const execFileAsync = async (command: string, args: string[]): Promise<{stdout: string; stderr: string}> => {
+  const result = await execFileAsyncRaw(resolveMediaCommand(command), args);
+  return {stdout: String(result.stdout), stderr: String(result.stderr)};
+};
 
 const parseRate = (rate: string): number => {
   const [numerator, denominator = "1"] = rate.split("/");
@@ -75,7 +80,7 @@ export const runMediaCommand = (
   args: string[],
   cwd?: string,
 ): Promise<void> => new Promise((resolve, reject) => {
-  const child = spawn(command, args, {cwd, stdio: "inherit"});
+  const child = spawn(resolveMediaCommand(command), args, {cwd, stdio: "inherit"});
   child.on("error", reject);
   child.on("close", (code) => {
     if (code === 0) resolve();

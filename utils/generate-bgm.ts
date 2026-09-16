@@ -16,16 +16,18 @@ import fsSync from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { CONFIG_DIR } from "./run-python.js";
-import { EnvHttpProxyAgent } from "undici";
+import { CONFIG_DIR } from "./runtime-paths.js";
+import {resolveMediaCommand} from "./media-binaries.js";
+import {fetchWithEnvironmentProxy} from "./proxy-fetch.js";
 
-const execFileAsync = promisify(execFile);
+const execFileAsyncRaw = promisify(execFile);
+const execFileAsync = async (command: string, args: string[]): Promise<{stdout: string; stderr: string}> => {
+  const result = await execFileAsyncRaw(resolveMediaCommand(command), args);
+  return {stdout: String(result.stdout), stderr: String(result.stderr)};
+};
 
-// Node 20 内置 fetch 不会自动读取 HTTP_PROXY/HTTPS_PROXY；显式使用环境代理。
-// 未配置代理时 EnvHttpProxyAgent 会直接连接，因此本地/服务器部署均可使用。
-const fetchDispatcher = new EnvHttpProxyAgent();
 const fetchWithProxy = (input: string | URL, init: RequestInit = {}) =>
-  fetch(input, { ...init, dispatcher: fetchDispatcher } as RequestInit);
+  fetchWithEnvironmentProxy(input, init);
 
 const cleanTextPath = process.argv[2];
 if (!cleanTextPath) {
