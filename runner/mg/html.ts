@@ -1,6 +1,6 @@
 import {createRequire} from "node:module";
 import type {ArticleTimelineEntry} from "../render.js";
-import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
+import {loadMgTemplateProvider} from "../../utils/mg-template-runtime.js";
 import type {DirectedGraphAnnotation, LocatedMgTag, MgInstanceInfo, MgMode} from "./types.js";
 
 const require = createRequire(import.meta.url);
@@ -14,7 +14,7 @@ type HtmlNode = {
   childNodes?: HtmlNode[];
 };
 
-const mgProvider = getMgTemplateProvider();
+const mgProvider = await loadMgTemplateProvider();
 export const MG_TAG_NAMES = mgProvider.templates.map((template) => template.htmlTag);
 const MG_TAGS = new Set<string>(MG_TAG_NAMES);
 const GROUP_PATTERN = /^[A-Za-z0-9_-]+$/;

@@ -18,10 +18,6 @@ import { generateEpisodeCovers } from "./cover.js";
 import { postprocessEpisodeVideo } from "./postprocess.js";
 import { novelPaths } from "../utils/paths.js";
 import { readProgress, getEpisodeRecord, markStage, finalizeEpisode } from "../utils/progress.js";
-import { annotateEssayMg } from "./mg/annotate.js";
-import { validateMgAnnotationHtml } from "./mg/html.js";
-import { isEssayMgPlanCurrent, planEssayMg } from "./mg/planner.js";
-import { renderAndAssembleEssayMg } from "./mg/assembler.js";
 import {startGpu as startManagedGpu, stopGpu as stopManagedGpu} from "../utils/gpu-lifecycle.js";
 
 export type SoloRunResult = "done" | "images_only" | "already_done" | "review_pending" | "failed";
@@ -93,6 +89,7 @@ async function hasCurrentEssayMgAnnotation(
       fs.readFile(novelPaths.mgAnnotation(sel.novelName, sel.episode), "utf-8"),
     ]);
     if (sha256(preset) !== expectedPresetHash) return false;
+    const {validateMgAnnotationHtml} = await import("./mg/html.js");
     validateMgAnnotationHtml(html, article);
     return true;
   } catch {
@@ -214,6 +211,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       if (await hasCurrentEssayMgAnnotation(sel, epRec)) {
         p.done(progressIndex.mgAnnotate, title, "已完成，且与当前画面预设一致");
       } else {
+        const {annotateEssayMg} = await import("./mg/annotate.js");
         const annotation = await annotateEssayMg(sel);
         await markStage(sel.novelName, ep, "mgAnnotate", "done", {
           mgAnnotationPresetHash: annotation.presetHash,
@@ -270,6 +268,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
 
     let essayPlanCurrent = false;
     if (isEssay && !essayAnnotationChanged && epRec.stages.mgPlan === "done") {
+      const {isEssayMgPlanCurrent} = await import("./mg/planner.js");
       essayPlanCurrent = await isEssayMgPlanCurrent(sel);
       if (!essayPlanCurrent) console.log("  [视觉规划] 已有缓存与当前输入不一致，将重新生成");
     }
@@ -434,6 +433,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         await markStage(sel.novelName, ep, "render", "done", {
           invalidateStages: ["mgPlan", "mgRender", "finalize"],
         });
+        const {planEssayMg} = await import("./mg/planner.js");
         await planEssayMg(sel);
         await markStage(sel.novelName, ep, "mgPlan", "done");
         epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
@@ -453,6 +453,7 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
         await fs.access(novelPaths.episodeMgRawVideo(sel.novelName, ep));
         p.done(progressIndex.mgRender, title, "已完成，跳过");
       } else {
+        const {renderAndAssembleEssayMg} = await import("./mg/assembler.js");
         await renderAndAssembleEssayMg(sel);
         await markStage(sel.novelName, ep, "mgRender", "done");
         p.done(progressIndex.mgRender, title, "epXX_mg_raw.mp4");

@@ -14,6 +14,7 @@
     selectedEpisode: 1,
     previewLoadId: 0,
     showingFinalFilm: false,
+    finalFilmUrl: "",
     lastLog: "就绪",
     runPhase: "idle",
     runPhaseLabel: "",
@@ -1598,12 +1599,7 @@
   }
 
   function finalFilmUrl(project, episode) {
-    const episodeDir = `ep${String(Math.max(1, Math.trunc(Number(episode) || 1))).padStart(2, "0")}`;
-    const projectDir = project.id || project.novelName;
-    return new URL(
-      `../../workspace/${encodeURIComponent(projectDir)}/${episodeDir}/${episodeDir}.mp4`,
-      window.location.href,
-    ).href;
+    return state.finalFilmUrl || "";
   }
 
   function updatePreviewNavigation() {
@@ -1676,6 +1672,10 @@
 
     const episode = Math.max(1, Math.trunc(Number(state.selectedEpisode) || 1));
     const videoUrl = finalFilmUrl(project, episode);
+    if (!videoUrl) {
+      showToast("本集成片尚未生成");
+      return;
+    }
     const range = root.querySelector(".claw-range");
     const current = root.querySelector("[data-claw-current-time]");
     const duration = root.querySelector("[data-claw-duration]");
@@ -1829,9 +1829,11 @@
       if (loadId !== state.previewLoadId || state.selectedProject?.id !== project.id) return;
       const images = Array.isArray(previewData) ? previewData : previewData?.panels;
       const totalDuration = Array.isArray(previewData) ? null : previewData?.totalDuration;
+      state.finalFilmUrl = Array.isArray(previewData) ? "" : previewData?.finalVideoUrl || "";
       renderShots(images, { totalDuration });
     } catch (error) {
       if (loadId !== state.previewLoadId || state.selectedProject?.id !== project.id) return;
+      state.finalFilmUrl = "";
       renderShots([]);
       showToast(error instanceof Error ? error.message : "读取分镜失败");
     } finally {

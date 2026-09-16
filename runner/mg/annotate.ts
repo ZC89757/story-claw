@@ -1,12 +1,12 @@
 import fs from "node:fs/promises";
 import {createHash} from "node:crypto";
-import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
+import {loadMgTemplateProvider} from "../../utils/mg-template-runtime.js";
 import {runSubAgent} from "../../agent.js";
 import {novelPaths} from "../../utils/paths.js";
 import type {NovelSelection} from "../../ui/select.js";
 import {prepareMgAnnotationHtml} from "./html.js";
 
-const mgProvider = getMgTemplateProvider();
+const mgProvider = await loadMgTemplateProvider();
 
 const MG_ANNOTATION_SYSTEM = `你负责为议论文原文添加视觉动画语义标签。
 

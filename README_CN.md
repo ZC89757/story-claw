@@ -72,7 +72,16 @@ ep{N}.mp4
 
 ## 安装
 
-### 全局安装（推荐）
+### Windows 桌面版（推荐）
+
+从 [GitHub Releases](https://github.com/ZC89757/story-claw/releases) 下载两个彼此独立的安装包：
+
+- `Story-Claw-Setup-<版本>.exe`：主程序。故事项目只需要安装它。
+- `Story-Claw-MG-Template-Pack-Setup-<版本>.exe`：可选模板包。议论文的 MG 标注、Function Calling、模板预览和 Remotion 合成需要安装它。
+
+桌面安装包已经包含 Node/Electron 运行时、FFmpeg 和 FFprobe，用户不需要另装 Python、Node.js、npm 或 FFmpeg。模型、ComfyUI 和远程 GPU 环境不打进安装包。MG 模板包可以单独安装和升级，安装后重启 Story Claw 即可识别。
+
+### 命令行全局安装
 
 ```bash
 npm install -g story-claw

@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "build/runtime",
+    "declaration": false,
+    "sourceMap": false,
+    "incremental": false
+  },
+  "include": [
+    "agent.ts",
+    "desktop/*.ts",
+    "runner/**/*.ts",
+    "tools/**/*.ts",
+    "ui/**/*.ts",
+    "utils/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.integration.test.ts",
+    "node_modules",
+    "build",
+    "dist",
+    "agent-data",
+    "experiments",
+    "zenmux-doc"
+  ]
+}

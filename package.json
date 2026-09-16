@@ -1,8 +1,10 @@
 {
   "name": "story-claw",
   "version": "1.0.1",
+  "productName": "Story Claw",
   "description": "AI-powered novel-to-storyboard pipeline. Transform web novels into visual short drama panels.",
   "type": "module",
+  "main": "desktop/main.cjs",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -34,7 +36,12 @@
   ],
   "scripts": {
     "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts",
-    "desktop": "electron desktop/main.cjs",
+    "build:runtime": "node scripts/clean-desktop-runtime.mjs && tsc -p tsconfig.desktop.json && node scripts/build-desktop-runtime.mjs",
+    "build:templates": "node scripts/build-mg-template-pack.mjs",
+    "desktop": "npm run build:runtime && electron .",
+    "dist:app:win": "npm run build:runtime && electron-builder --win nsis --x64",
+    "dist:templates:win": "npm run build:templates && node scripts/package-mg-template-pack.mjs",
+    "dist:win": "npm run dist:app:win && npm run dist:templates:win",
     "gallery:mg": "npm run gallery --prefix ../story-claw-templates",
     "gallery:mg:portable": "npm run gallery:portable --prefix ../story-claw-templates",
     "typecheck": "tsc --noEmit",
@@ -50,7 +57,6 @@
     "@mariozechner/pi-coding-agent": "0.52.8",
     "@remotion/bundler": "^4.0.512",
     "@remotion/renderer": "^4.0.512",
-    "@story-claw/mg-templates": "file:../story-claw-templates",
     "openai": "^6.10.0",
     "parse5": "^5.1.1",
     "react": "^18.3.1",
@@ -63,7 +69,65 @@
   "devDependencies": {
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
+    "@story-claw/mg-templates": "https://github.com/ZC89757/story-claw-templates/archive/0831945371d1956218561db06cce368ee3bc8281.tar.gz",
     "electron": "^43.3.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.1",
     "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "com.storyclaw.desktop",
+    "productName": "Story Claw",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "desktop/mg-assets.cjs",
+      "desktop/renderer/**/*",
+      "build/runtime/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/*.py",
+      "!**/__pycache__/**"
+    ],
+    "asarUnpack": [
+      "node_modules/@remotion/**/*",
+      "node_modules/remotion/**/*",
+      "node_modules/react/**/*",
+      "node_modules/react-dom/**/*",
+      "node_modules/scheduler/**/*",
+      "node_modules/@dagrejs/**/*",
+      "node_modules/@ffmpeg-installer/**/*",
+      "node_modules/@ffprobe-installer/**/*",
+      "node_modules/@img/**/*",
+      "node_modules/sharp/**/*",
+      "node_modules/@remotion/compositor-win32-x64-msvc/**/*",
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Story-Claw-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Story Claw",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

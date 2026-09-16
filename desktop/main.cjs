@@ -4,18 +4,38 @@ const fsSync = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { spawn, execFile } = require("node:child_process");
+const http = require("node:http");
 const os = require("node:os");
 const ffprobeInstaller = require("@ffprobe-installer/ffprobe");
 const { listMgAnnotationInstances } = require("./mg-assets.cjs");
 
 const projectRoot = path.resolve(__dirname, "..");
-const workspaceRoot = path.join(projectRoot, "workspace");
+const compiledRuntimeRoot = path.join(projectRoot, "build", "runtime");
+const writableRuntimeRoot = process.env.STORY_CLAW_WORK_DIR?.trim()
+  ? path.resolve(process.env.STORY_CLAW_WORK_DIR)
+  : app.isPackaged
+    ? path.join(app.getPath("userData"), "data")
+    : projectRoot;
+const workspaceRoot = path.join(writableRuntimeRoot, "workspace");
 const rendererPath = path.join(__dirname, "renderer", "index.html");
 const sessionsFileName = "sessions.json";
 const mgTemplateGalleryPort = 41731;
 const mgTemplateGalleryUrl = `http://127.0.0.1:${mgTemplateGalleryPort}/`;
 const userConfigRoot = path.join(os.homedir(), ".story-claw");
 const desktopSettingsPath = path.join(userConfigRoot, "desktop_settings.json");
+const mgTemplatePackRoot = path.resolve(
+  process.env.STORY_CLAW_MG_TEMPLATES_DIR?.trim()
+    || (process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, "StoryClaw", "mg-templates")
+      : path.join(userConfigRoot, "mg-templates")),
+);
+process.env.STORY_CLAW_WORK_DIR = writableRuntimeRoot;
+process.env.STORY_CLAW_CONFIG_DIR = userConfigRoot;
+process.env.STORY_CLAW_MG_TEMPLATES_DIR = mgTemplatePackRoot;
+process.env.STORY_CLAW_APP_ROOT = projectRoot;
+process.env.STORY_CLAW_PACKAGED = app.isPackaged ? "1" : "0";
+if (!app.isPackaged) process.env.STORY_CLAW_DEV_TEMPLATES = "1";
+fsSync.mkdirSync(writableRuntimeRoot, {recursive: true});
 const ffprobePath = (() => {
   const configured = String(process.env.STORY_CLAW_FFPROBE_PATH || "").trim();
   if (configured) return configured;
@@ -111,20 +131,49 @@ const sessionWriteQueues = new Map();
 const projectNameAliases = new Map();
 const pendingVisualPresetDisplays = new Set();
 let mgStyleCatalogPromise = null;
+let mgTemplateRuntimePromise = null;
 let mgTemplateGalleryServerPromise = null;
+
+function getMgTemplateRuntime() {
+  if (!mgTemplateRuntimePromise) {
+    const manifestPath = path.join(mgTemplatePackRoot, "manifest.json");
+    const providerPath = path.join(mgTemplatePackRoot, "src", "provider.js");
+    if (fsSync.existsSync(manifestPath) && fsSync.existsSync(providerPath)) {
+      mgTemplateRuntimePromise = fs.readFile(manifestPath, "utf8").then(async (content) => {
+        const manifest = JSON.parse(content);
+        if (manifest.protocolVersion !== 1) {
+          throw new Error(`MG Template Pack 接口版本不兼容：主程序需要 v1，当前为 v${String(manifest.protocolVersion ?? "未知")}`);
+        }
+        const module = await import(`${pathToFileURL(providerPath).href}?v=${encodeURIComponent(String(manifest.version || "0"))}`);
+        const provider = module.getMgTemplateProvider();
+        if (provider.protocolVersion !== 1) throw new Error("MG Template Pack Provider 协议不兼容");
+        return {packageRoot: mgTemplatePackRoot, provider};
+      });
+    } else if (!app.isPackaged) {
+      const packageEntry = require.resolve("@story-claw/mg-templates");
+      const packageRoot = path.resolve(path.dirname(packageEntry), "..");
+      const providerPath = path.join(path.dirname(packageEntry), "provider.ts");
+      const {require: tsxRequire} = require("tsx/cjs/api");
+      mgTemplateRuntimePromise = Promise.resolve({
+        packageRoot,
+        provider: tsxRequire(providerPath, __filename).getMgTemplateProvider(),
+      });
+    } else {
+      mgTemplateRuntimePromise = Promise.reject(new Error(
+        `未安装 Story Claw MG Template Pack。请从 GitHub Release 下载并安装模板包。\n模板目录: ${mgTemplatePackRoot}`,
+      ));
+    }
+    mgTemplateRuntimePromise = mgTemplateRuntimePromise.catch((error) => {
+      mgTemplateRuntimePromise = null;
+      throw error;
+    });
+  }
+  return mgTemplateRuntimePromise;
+}
 
 function getMgStyleCatalog() {
   if (!mgStyleCatalogPromise) {
-    const packageEntry = require.resolve("@story-claw/mg-templates");
-    const packageRoot = path.resolve(path.dirname(packageEntry), "..");
-    const providerPath = path.join(path.dirname(packageEntry), "provider.ts");
-    // Electron loads this file as CommonJS. Use tsx's CJS bridge so the
-    // template package can stay TypeScript/ESM without coupling the desktop
-    // host to a transpiled copy of its registry.
-    const {require: tsxRequire} = require("tsx/cjs/api");
-    mgStyleCatalogPromise = Promise.resolve().then(() => {
-      const module = tsxRequire(providerPath, __filename);
-      const provider = module.getMgTemplateProvider();
+    mgStyleCatalogPromise = getMgTemplateRuntime().then(({packageRoot, provider}) => {
       const templates = new Map(provider.templates.map((item) => [item.htmlTag, item]));
       return provider.listStylePreviews().map((entry) => {
         const previewPath = path.join(packageRoot, "public", entry.previewFile);
@@ -136,6 +185,13 @@ function getMgStyleCatalog() {
           layerRole: entry.layerRole,
           renderMode: entry.layerRole === "overlay" ? "overlay" : "replace",
           groups: descriptor?.groups ?? [],
+          useWhen: entry.description,
+          planningTools: provider.getPlanningTools([entry.htmlTag]).map((tool) => ({
+            name: tool.name,
+            label: tool.label,
+            description: tool.description,
+            parameters: tool.parameters,
+          })),
           previewUrl: fsSync.existsSync(previewPath) ? pathToFileURL(previewPath).href : null,
           previewPlaceholderUrl: pathToFileURL(path.join(packageRoot, "public", "mg-previews", "missing.svg")).href,
         };
@@ -143,6 +199,21 @@ function getMgStyleCatalog() {
     });
   }
   return mgStyleCatalogPromise;
+}
+
+function assertMgTemplatePackInstalled() {
+  if (!app.isPackaged) return;
+  const manifestPath = path.join(mgTemplatePackRoot, "manifest.json");
+  const providerPath = path.join(mgTemplatePackRoot, "src", "provider.js");
+  if (!fsSync.existsSync(manifestPath) || !fsSync.existsSync(providerPath)) {
+    throw new Error("议论文 MG 功能需要单独安装 Story Claw MG Template Pack。请从同一 GitHub Release 下载模板安装包。");
+  }
+  try {
+    const manifest = JSON.parse(fsSync.readFileSync(manifestPath, "utf8"));
+    if (manifest.protocolVersion !== 1) throw new Error(`需要接口 v1，当前为 v${String(manifest.protocolVersion ?? "未知")}`);
+  } catch (error) {
+    throw new Error(`MG Template Pack 不兼容或已损坏，请重新安装：${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function reviewPhaseCopy(articleType) {
@@ -962,9 +1033,14 @@ async function getEpisodePreview(novelName, episode) {
       });
     }
   }
+  const episodeName = path.basename(episodeDir);
+  const finalVideoPath = path.join(episodeDir, `${episodeName}.mp4`);
   return {
     panels,
     totalDuration: await totalDurationPromise,
+    finalVideoUrl: fsSync.existsSync(finalVideoPath) && isWithin(episodeDir, finalVideoPath)
+      ? pathToFileURL(finalVideoPath).href
+      : null,
   };
 }
 
@@ -1009,19 +1085,104 @@ async function inspectSource(inputPath) {
   return { kind: stat.isDirectory() ? "directory" : "file", path: resolvedPath };
 }
 
+function sendGalleryJson(response, status, value) {
+  response.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  response.end(JSON.stringify(value));
+}
+
+async function serveGalleryFile(request, response, filePath, contentType) {
+  const info = await fs.stat(filePath);
+  const range = request.headers.range;
+  response.setHeader("accept-ranges", "bytes");
+  response.setHeader("cache-control", "no-store");
+  response.setHeader("content-type", contentType);
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match) {
+      response.writeHead(416, {"content-range": `bytes */${info.size}`});
+      response.end();
+      return;
+    }
+    const start = match[1] ? Number(match[1]) : 0;
+    const end = match[2] ? Math.min(Number(match[2]), info.size - 1) : info.size - 1;
+    if (start > end || start >= info.size) {
+      response.writeHead(416, {"content-range": `bytes */${info.size}`});
+      response.end();
+      return;
+    }
+    response.writeHead(206, {
+      "content-range": `bytes ${start}-${end}/${info.size}`,
+      "content-length": end - start + 1,
+    });
+    fsSync.createReadStream(filePath, {start, end}).pipe(response);
+    return;
+  }
+  response.writeHead(200, {"content-length": info.size});
+  fsSync.createReadStream(filePath).pipe(response);
+}
+
+async function startMgTemplateGalleryServer(packageRoot) {
+  const galleryRoot = path.join(packageRoot, "tools", "mg-template-gallery");
+  const previewRoot = path.join(packageRoot, "public", "mg-previews");
+  const server = http.createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url || "/", "http://127.0.0.1");
+      if (url.pathname === "/api/catalog") {
+        const catalog = (await getMgStyleCatalog()).map((entry) => ({
+          ...entry,
+          previewFile: `/previews/${path.basename(entry.previewFile)}`,
+        }));
+        sendGalleryJson(response, 200, catalog);
+        return;
+      }
+      if (url.pathname === "/api/health") {
+        sendGalleryJson(response, 200, {ok: true});
+        return;
+      }
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        await serveGalleryFile(request, response, path.join(galleryRoot, "index.html"), "text/html; charset=utf-8");
+        return;
+      }
+      if (url.pathname === "/assets/logo.png") {
+        await serveGalleryFile(request, response, path.join(packageRoot, "public", "storyclaw-logo-v6-ui.png"), "image/png");
+        return;
+      }
+      if (url.pathname === "/gallery/app.js") {
+        await serveGalleryFile(request, response, path.join(galleryRoot, "public", "app.js"), "text/javascript; charset=utf-8");
+        return;
+      }
+      if (url.pathname === "/gallery/gallery.css") {
+        await serveGalleryFile(request, response, path.join(galleryRoot, "gallery.css"), "text/css; charset=utf-8");
+        return;
+      }
+      if (url.pathname.startsWith("/previews/")) {
+        const fileName = path.basename(decodeURIComponent(url.pathname));
+        if (!/^[A-Za-z0-9._-]+\.mp4$/.test(fileName)) throw new Error("invalid preview path");
+        await serveGalleryFile(request, response, path.join(previewRoot, fileName), "video/mp4");
+        return;
+      }
+      sendGalleryJson(response, 404, {error: "not found"});
+    } catch (error) {
+      sendGalleryJson(response, 500, {error: error instanceof Error ? error.message : String(error)});
+    }
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(mgTemplateGalleryPort, "127.0.0.1", resolve);
+  });
+  return {server, url: mgTemplateGalleryUrl};
+}
+
 async function openMgTemplateGallery() {
-  // The gallery is served by the template package. Its API reads the current
-  // Provider/catalog on every request; no HTML data regeneration is involved.
-  const packageEntry = require.resolve("@story-claw/mg-templates");
-  const packageRoot = path.resolve(path.dirname(packageEntry), "..");
+  const {packageRoot} = await getMgTemplateRuntime();
   if (!mgTemplateGalleryServerPromise) {
     mgTemplateGalleryServerPromise = Promise.resolve().then(async () => {
       const health = await fetch(`${mgTemplateGalleryUrl}api/health`).catch(() => null);
       if (health?.ok) return {server: null, url: mgTemplateGalleryUrl};
-      const serverPath = path.join(packageRoot, "tools", "mg-template-gallery", "server.ts");
-      const {require: tsxRequire} = require("tsx/cjs/api");
-      const galleryModule = tsxRequire(serverPath, __filename);
-      return galleryModule.startMgTemplateGalleryServer(mgTemplateGalleryPort);
+      return startMgTemplateGalleryServer(packageRoot);
     }).catch((error) => {
       mgTemplateGalleryServerPromise = null;
       throw error;
@@ -1251,12 +1412,39 @@ function nodeExecutable() {
   return process.platform === "win32" ? "node.exe" : "node";
 }
 
+function spawnDesktopWorker(fileName, stdio) {
+  const compiledPath = path.join(compiledRuntimeRoot, "desktop", `${fileName}.js`);
+  const env = {
+    ...process.env,
+    FORCE_COLOR: "0",
+    STORY_CLAW_WORK_DIR: writableRuntimeRoot,
+    STORY_CLAW_CONFIG_DIR: userConfigRoot,
+  };
+  if (fsSync.existsSync(compiledPath)) {
+    return spawn(process.execPath, [compiledPath], {
+      cwd: writableRuntimeRoot,
+      env: {...env, ELECTRON_RUN_AS_NODE: "1"},
+      stdio,
+      windowsHide: true,
+    });
+  }
+  if (app.isPackaged) throw new Error(`安装包缺少运行文件: ${fileName}.js`);
+  const sourcePath = path.join(__dirname, `${fileName}.ts`);
+  const loaderPath = path.join(projectRoot, "node_modules", "tsx", "dist", "loader.mjs");
+  return spawn(nodeExecutable(), ["--import", pathToFileURL(loaderPath).href, sourcePath], {
+    cwd: writableRuntimeRoot,
+    env,
+    stdio,
+    windowsHide: true,
+  });
+}
+
 function agentSessionPath(selection) {
   const project = String(selection?.agentSessionId || selection?.novelName || "project")
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
     .slice(0, 80);
   const episode = Math.max(1, Number(selection?.episode) || 1);
-  return path.join(projectRoot, "agent-data", `supervisor_${project}_ep${String(episode).padStart(2, "0")}.jsonl`);
+  return path.join(writableRuntimeRoot, "agent-data", `supervisor_${project}_ep${String(episode).padStart(2, "0")}.jsonl`);
 }
 
 function runContext(run = activeRun) {
@@ -1572,14 +1760,7 @@ function ensureAgentWorker(selection) {
   if (activeAgent?.key === key && activeAgent.child && !activeAgent.child.killed) return activeAgent;
   if (activeAgent?.child && !activeAgent.child.killed) activeAgent.child.kill();
 
-  const agentPath = path.join(__dirname, "agent-worker.ts");
-  const loaderPath = path.join(projectRoot, "node_modules", "tsx", "dist", "loader.mjs");
-  const child = spawn(nodeExecutable(), ["--import", pathToFileURL(loaderPath).href, agentPath], {
-    cwd: projectRoot,
-    env: { ...process.env, FORCE_COLOR: "0" },
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  const child = spawnDesktopWorker("agent-worker", ["pipe", "pipe", "pipe"]);
   activeAgent = { key, child, selection };
   forwardAgentStream(child.stdout, "stdout");
   forwardAgentStream(child.stderr, "stderr");
@@ -1662,14 +1843,7 @@ function shutdownGpuOnce(run) {
   if (!run || run.selection?.imagesOnly) return Promise.resolve();
   if (run.shutdownPromise) return run.shutdownPromise;
   run.shutdownPromise = new Promise((resolve) => {
-    const workerPath = path.join(__dirname, "gpu-stop-worker.ts");
-    const loaderPath = path.join(projectRoot, "node_modules", "tsx", "dist", "loader.mjs");
-    const child = spawn(nodeExecutable(), ["--import", pathToFileURL(loaderPath).href, workerPath], {
-      cwd: projectRoot,
-      env: {...process.env, FORCE_COLOR: "0"},
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    const child = spawnDesktopWorker("gpu-stop-worker", ["ignore", "pipe", "pipe"]);
     forwardStream(child.stdout, "stdout", run);
     forwardStream(child.stderr, "stderr", run);
     child.once("error", () => resolve());
@@ -1686,20 +1860,14 @@ function startRun(selection) {
   if (!selection || typeof selection.novelName !== "string") throw new Error("运行参数无效");
   if (!selection.sourcePath) throw new Error("项目还没有章节源目录");
   if (selection.articleType !== "essay" && selection.articleType !== "story") throw new Error("项目文章类型尚未确定");
+  if (selection.articleType === "essay") assertMgTemplatePackInstalled();
   if (selection.aspectRatio !== "16:9" && selection.aspectRatio !== "9:16") throw new Error("项目画幅尚未确定");
   if (selection.renderMode !== "full" && selection.renderMode !== "images_only") throw new Error("项目渲染模式尚未确定");
   if (typeof selection.reviewVisualPreset !== "boolean" || typeof selection.requireFinalConfirmation !== "boolean") {
     throw new Error("项目审核配置尚未确定");
   }
   const runId = `run_${Date.now().toString(36)}_${nextRunId++}`;
-  const workerPath = path.join(__dirname, "worker.ts");
-  const loaderPath = path.join(projectRoot, "node_modules", "tsx", "dist", "loader.mjs");
-  const child = spawn(nodeExecutable(), ["--import", pathToFileURL(loaderPath).href, workerPath], {
-    cwd: projectRoot,
-    env: { ...process.env, FORCE_COLOR: "0" },
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  const child = spawnDesktopWorker("worker", ["pipe", "pipe", "pipe"]);
   activeRun = {
     id: runId,
     child,

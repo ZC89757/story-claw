@@ -4,7 +4,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {bundle} from "@remotion/bundler";
 import {renderMedia, selectComposition} from "@remotion/renderer";
-import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
+import {loadMgTemplateProvider} from "../../utils/mg-template-runtime.js";
 import {EnvHttpProxyAgent} from "undici";
 import type {NovelSelection} from "../../ui/select.js";
 import {generateImage} from "../../utils/image-gen.js";
@@ -21,12 +21,26 @@ import type {
   MgSolidBackgroundRemovalRequest,
 } from "@story-claw/mg-templates/provider";
 
-const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const mgProvider = getMgTemplateProvider();
+const PROJECT_ROOT = process.env.STORY_CLAW_APP_ROOT?.trim()
+  ? path.resolve(process.env.STORY_CLAW_APP_ROOT)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const MODULE_ROOT = PROJECT_ROOT.replace(/app\.asar(?=$|[\\/])/, "app.asar.unpacked");
+const mgProvider = await loadMgTemplateProvider();
 const REMOTION_ENTRY = fileURLToPath(mgProvider.runtimeEntryUrl);
 const fetchDispatcher = new EnvHttpProxyAgent();
 const fetchWithProxy = (input: string | URL, init: RequestInit = {}) =>
   fetch(input, {...init, dispatcher: fetchDispatcher} as RequestInit);
+const remotionBundleOptions = (publicDir: string) => ({
+  entryPoint: REMOTION_ENTRY,
+  publicDir,
+  webpackOverride: (config: any) => ({
+    ...config,
+    resolve: {
+      ...(config.resolve ?? {}),
+      modules: [path.join(MODULE_ROOT, "node_modules"), path.join(PROJECT_ROOT, "node_modules"), ...(config.resolve?.modules ?? ["node_modules"])],
+    },
+  }),
+});
 
 const assetKey = (source: string): string => createHash("sha256").update(source).digest("hex").slice(0, 24);
 const imageFileExtension = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i;
@@ -302,7 +316,7 @@ export async function renderVisualTagTemplateClip(
   const publicDir = await fs.mkdtemp(path.join(process.env.TEMP ?? process.env.TMP ?? ".", "story-claw-mg-clip-"));
   try {
     await preparePublicAssets(input, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
-    const serveUrl = await bundle({entryPoint: REMOTION_ENTRY, publicDir});
+    const serveUrl = await bundle(remotionBundleOptions(publicDir));
     const composition = await selectComposition({serveUrl, id: "StoryClawMgEpisode", inputProps: {episode: input}});
     await fs.mkdir(path.dirname(outputPath), {recursive: true});
     const nextPath = `${outputPath}.next${path.extname(outputPath)}`;
@@ -417,8 +431,7 @@ export async function renderEssayMgEpisode(sel: NovelSelection): Promise<string>
     await preparePublicAssets(runtimeInput, novelPaths.episodeDir(sel.novelName, sel.episode), publicDir);
     console.log("[MG渲染] 正在打包模板 Provider 运行时...");
     const serveUrl = await bundle({
-      entryPoint: REMOTION_ENTRY,
-      publicDir,
+      ...remotionBundleOptions(publicDir),
       onProgress: (progress) => {
         if (progress === 1 || Math.round(progress * 100) % 20 === 0) console.log(`[MG渲染] 模板打包 ${Math.round(progress * 100)}%`);
       },

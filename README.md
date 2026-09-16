@@ -75,7 +75,16 @@ ep{N}.mp4
 
 ## Installation
 
-### Global Install (Recommended)
+### Windows Desktop (Recommended)
+
+Download the installers from [GitHub Releases](https://github.com/ZC89757/story-claw/releases):
+
+- `Story-Claw-Setup-<version>.exe` installs the desktop app. This is all you need for story projects.
+- `Story-Claw-MG-Template-Pack-Setup-<version>.exe` is an optional, separate install for essay MG annotation, Function Calling, template previews, and Remotion rendering.
+
+The desktop installer includes its Node/Electron runtime, FFmpeg, and FFprobe. You do not need to install Python, Node.js, npm, or FFmpeg. Models, ComfyUI, and the remote GPU environment are not bundled. Install or update the MG template pack independently, then restart Story Claw so the app can load it.
+
+### Global CLI Install
 
 ```bash
 npm install -g story-claw

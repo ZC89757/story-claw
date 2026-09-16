@@ -3,10 +3,10 @@
  * MG registry. Template names, function schemas and resolvers now live only
  * in the independently versioned template Provider.
  */
-import {getMgTemplateProvider} from "@story-claw/mg-templates/provider";
+import {loadMgTemplateProvider} from "../../utils/mg-template-runtime.js";
 import type {RawMgFunctionCall, ResolvedMgFunctionCall} from "./types.js";
 
-export const mgProvider = getMgTemplateProvider();
+export const mgProvider = await loadMgTemplateProvider();
 
 export const resolveMgFunctionCall = (call: RawMgFunctionCall): ResolvedMgFunctionCall => {
   const resolved = mgProvider.resolveCall({name: call.name, arguments: call.arguments});

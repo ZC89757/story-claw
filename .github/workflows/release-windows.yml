@@ -1,0 +1,58 @@
+name: Build Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Story Claw
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify
+        run: |
+          npm run typecheck
+          npm run test:runtime
+          node --test desktop/mg-assets.test.cjs
+
+      - name: Build application and template installers
+        run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: story-claw-windows
+          path: |
+            release/Story-Claw-Setup-*.exe
+            release/Story-Claw-MG-Template-Pack-Setup-*.exe
+            release/*.blockmap
+            release/latest.yml
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/Story-Claw-Setup-*.exe
+            release/Story-Claw-MG-Template-Pack-Setup-*.exe
+            release/*.blockmap
+            release/latest.yml

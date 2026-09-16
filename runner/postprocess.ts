@@ -14,7 +14,8 @@ interface BgmConfig {
 }
 
 const ROOT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const GENERATE_BGM_SCRIPT = path.join(ROOT_DIR, "utils", "generate-bgm.ts");
+const GENERATE_BGM_JS = path.join(ROOT_DIR, "utils", "generate-bgm.js");
+const GENERATE_BGM_TS = path.join(ROOT_DIR, "utils", "generate-bgm.ts");
 const BGM_CONFIG_PATH = path.join(CONFIG_DIR, "bgm_config.json");
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"]);
 
@@ -58,7 +59,10 @@ async function postprocessStory(sel: NovelSelection, episodeVideo: string): Prom
 
   // 故事继续使用现有 ACE-Step 阶段生成 BGM；失败时仍对原始集视频执行标题与倍速。
   try {
-    execFileSync(process.execPath, ["--import", "tsx", GENERATE_BGM_SCRIPT, cleanTextPath], { stdio: "inherit" });
+    const args = fsSync.existsSync(GENERATE_BGM_JS)
+      ? [GENERATE_BGM_JS, cleanTextPath]
+      : ["--import", "tsx", GENERATE_BGM_TS, cleanTextPath];
+    execFileSync(process.execPath, args, {stdio: "inherit", env: process.env});
   } catch (err) {
     console.warn(`  [BGM] ACE-Step 生成失败或跳过，将继续处理原始集视频: ${err}`);
   }

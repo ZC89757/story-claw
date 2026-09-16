@@ -1,6 +1,8 @@
 # 依赖
 node_modules/
 dist/
+build/
+release/
 __pycache__/
 *.py[cod]
 
