@@ -1,6 +1,6 @@
 {
   "name": "story-claw",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "productName": "Story Claw",
   "description": "AI-powered novel-to-storyboard pipeline. Transform web novels into visual short drama panels.",
   "type": "module",
@@ -38,7 +38,7 @@
     "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts",
     "build:runtime": "node scripts/clean-desktop-runtime.mjs && tsc -p tsconfig.desktop.json && node scripts/build-desktop-runtime.mjs",
     "desktop": "npm run build:runtime && electron .",
-    "dist:app:win": "npm run build:runtime && electron-builder --win nsis --x64",
+    "dist:app:win": "npm run build:runtime && electron-builder --win nsis --x64 --publish never",
     "dist:win": "npm run dist:app:win",
     "gallery:mg": "npm run gallery --prefix ../story-claw-templates",
     "gallery:mg:portable": "npm run gallery:portable --prefix ../story-claw-templates",
