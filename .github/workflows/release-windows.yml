@@ -31,10 +31,17 @@ jobs:
           npm run test:runtime
           node --test desktop/mg-assets.test.cjs
 
-      - name: Build application and template installers
+      - name: Build application installer
         run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Write checksum
+        shell: pwsh
+        run: |
+          $artifact = Get-ChildItem release/Story-Claw-Setup-*.exe | Select-Object -First 1
+          $hash = (Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($artifact.Name)" | Set-Content release/SHA256SUMS.txt -Encoding ascii
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
@@ -42,9 +49,9 @@ jobs:
           name: story-claw-windows
           path: |
             release/Story-Claw-Setup-*.exe
-            release/Story-Claw-MG-Template-Pack-Setup-*.exe
             release/*.blockmap
             release/latest.yml
+            release/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Publish GitHub Release assets
@@ -53,6 +60,6 @@ jobs:
         with:
           files: |
             release/Story-Claw-Setup-*.exe
-            release/Story-Claw-MG-Template-Pack-Setup-*.exe
             release/*.blockmap
             release/latest.yml
+            release/SHA256SUMS.txt

@@ -74,7 +74,7 @@ ep{N}.mp4
 
 ### Windows 桌面版（推荐）
 
-从 [GitHub Releases](https://github.com/ZC89757/story-claw/releases) 下载两个彼此独立的安装包：
+主程序从 [Story Claw Releases](https://github.com/ZC89757/story-claw/releases) 下载；可选 MG 模板包由 [Story Claw MG Templates Releases](https://github.com/ZC89757/story-claw-templates/releases) 独立发布：
 
 - `Story-Claw-Setup-<版本>.exe`：主程序。故事项目只需要安装它。
 - `Story-Claw-MG-Template-Pack-Setup-<版本>.exe`：可选模板包。议论文的 MG 标注、Function Calling、模板预览和 Remotion 合成需要安装它。

@@ -37,11 +37,9 @@
   "scripts": {
     "start": "node --import tsx --disable-warning=MaxListenersExceededWarning cli.ts",
     "build:runtime": "node scripts/clean-desktop-runtime.mjs && tsc -p tsconfig.desktop.json && node scripts/build-desktop-runtime.mjs",
-    "build:templates": "node scripts/build-mg-template-pack.mjs",
     "desktop": "npm run build:runtime && electron .",
     "dist:app:win": "npm run build:runtime && electron-builder --win nsis --x64",
-    "dist:templates:win": "npm run build:templates && node scripts/package-mg-template-pack.mjs",
-    "dist:win": "npm run dist:app:win && npm run dist:templates:win",
+    "dist:win": "npm run dist:app:win",
     "gallery:mg": "npm run gallery --prefix ../story-claw-templates",
     "gallery:mg:portable": "npm run gallery:portable --prefix ../story-claw-templates",
     "typecheck": "tsc --noEmit",
@@ -69,10 +67,9 @@
   "devDependencies": {
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
-    "@story-claw/mg-templates": "https://github.com/ZC89757/story-claw-templates/archive/0831945371d1956218561db06cce368ee3bc8281.tar.gz",
+    "@story-claw/mg-templates": "https://github.com/ZC89757/story-claw-templates/archive/8eac44821c8e62a239570d311e8ad70468577c84.tar.gz",
     "electron": "^43.3.0",
     "electron-builder": "^26.0.12",
-    "esbuild": "^0.28.1",
     "typescript": "^5.9.3"
   },
   "build": {

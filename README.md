@@ -77,7 +77,7 @@ ep{N}.mp4
 
 ### Windows Desktop (Recommended)
 
-Download the installers from [GitHub Releases](https://github.com/ZC89757/story-claw/releases):
+Download the desktop app from [Story Claw Releases](https://github.com/ZC89757/story-claw/releases). The optional MG pack is published independently from [Story Claw MG Templates Releases](https://github.com/ZC89757/story-claw-templates/releases):
 
 - `Story-Claw-Setup-<version>.exe` installs the desktop app. This is all you need for story projects.
 - `Story-Claw-MG-Template-Pack-Setup-<version>.exe` is an optional, separate install for essay MG annotation, Function Calling, template previews, and Remotion rendering.
