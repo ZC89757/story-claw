@@ -19,8 +19,9 @@ const article = [
 
 const html = `<!DOCTYPE html>
 <html><body><article>
-<p>谷歌从<progress-timeline group="horizontal" mode="split" value="1">搜索入口</progress-timeline>走向<progress-timeline group="horizontal" mode="split" value="2">AI基础设施</progress-timeline>。</p>
-<p><decomposition group="cards" mode="together">底层是<emphasis group="scale" mode="together">芯片</emphasis>，中间是模型，上层是应用</decomposition>。</p>
+谷歌从<progress-timeline group="horizontal" mode="split" value="1">搜索入口</progress-timeline>走向<progress-timeline group="horizontal" mode="split" value="2">AI基础设施</progress-timeline>。
+
+<decomposition group="cards" mode="together">底层是<emphasis group="scale" mode="together">芯片</emphasis>，中间是模型，上层是应用</decomposition>。
 </article></body></html>`;
 
 const buildTimeline = (source: string): ArticleTimelineEntry[] =>
@@ -52,9 +53,9 @@ test("MG HTML rejects at because timestamps belong to Function Calling", () => {
 
 test("directed-graph keeps the reviewed topology in the located instance", () => {
   const source = "显卡连接研究机构。";
-  const valid = `<!DOCTYPE html><html><body><article><p>`
+  const valid = `<!DOCTYPE html><html><body><article>`
     + `<directed-graph group="flow" mode="together" nodes='["显卡","研究机构"]' edges='[[0,1]]'>${source}</directed-graph>`
-    + `</p></article></body></html>`;
+    + `</article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
   const instance = locateMgInstances(valid, buildTimeline(source), source).get("directed-graph::flow::one");
   assert.deepEqual(instance?.graph, {nodes: ["显卡", "研究机构"], edges: [[0, 1]]});
@@ -70,9 +71,9 @@ test("directed-graph keeps the reviewed topology in the located instance", () =>
 
 test("sc-longtake is a single relay video instance without mode or value", () => {
   const source = "这次转向虽然在短期内增加了成本。";
-  const valid = `<!DOCTYPE html><html><body><article><p>`
+  const valid = `<!DOCTYPE html><html><body><article>`
     + `<sc-longtake group="relay">${source}</sc-longtake>`
-    + `</p></article></body></html>`;
+    + `</article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
   const instance = locateMgInstances(valid, buildTimeline(source), source).get("sc-longtake::relay::one");
   assert.equal(instance?.mode, "together");
@@ -115,27 +116,41 @@ test("sc-longtake maps absolute segment times to adjacent non-empty frame window
   ], 250, 260, 25), /第 2 段没有有效的帧区间/);
 });
 
-test("MG HTML rejects text or formatting markup outside the executable tag protocol", () => {
+test("MG HTML rejects changed text and all native article markup", () => {
   const extraText = html.replace("</article>", "额外说明</article>");
-  assert.throws(() => validateMgAnnotationHtml(extraText, article), /article 只能直接包含正文 p/);
+  assert.throws(() => validateMgAnnotationHtml(extraText, article), /去标签后的全文与原文不一致/);
   const formatting = html.replace("搜索入口", "<strong>搜索入口</strong>");
-  assert.throws(() => validateMgAnnotationHtml(formatting, article), /不支持的标签 <strong>/);
+  assert.throws(() => validateMgAnnotationHtml(formatting, article), /不支持的原生标签 <strong>/);
+  const paragraph = html.replace("谷歌从", "<p>谷歌从").replace("。</p>", "。");
+  assert.throws(() => validateMgAnnotationHtml(paragraph, article), /不支持的原生标签 <p>/);
+});
+
+test("ai-hot-focus-stage wraps the complete article and anchors ordered news titles", () => {
+  const source = ["第一条新闻正文。", "第二条新闻正文。", "第三条新闻正文。"].join("\n\n");
+  const annotated = `<!DOCTYPE html><html><body><article><ai-hot-focus-stage group="focus-stage" mode="together" values='["第一条新闻","第二条新闻","第三条新闻"]'><mg-value value="1">第一条新闻</mg-value>正文。\n\n<mg-value value="2">第二条新闻</mg-value>正文。\n\n<mg-value value="3">第三条新闻</mg-value>正文。</ai-hot-focus-stage></article></body></html>`;
+  assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 1, tagCount: 1});
+  const instance = locateMgInstances(annotated, buildTimeline(source), source).get("ai-hot-focus-stage::focus-stage::one");
+  assert.equal(instance?.tags[0].text, source);
+  assert.deepEqual(instance?.tags[0].values, ["第一条新闻", "第二条新闻", "第三条新闻"]);
+  assert.deepEqual(instance?.tags[0].valueAnchors?.map((anchor) => anchor.text), ["第一条新闻", "第二条新闻", "第三条新闻"]);
+  assert.equal(instance?.tags[0].start, 0);
+  assert.equal(instance?.tags[0].end, Number((source.replace(/\n/g, "").length * 0.1).toFixed(3)));
 });
 
 test("single-cue templates cannot reuse one group for multiple tags", () => {
   const source = "搜索广告仍是基本盘，但AI正在冲击基本盘。";
-  const invalid = `<!DOCTYPE html><html><body><article><p>` +
+  const invalid = `<!DOCTYPE html><html><body><article>` +
     `<emphasis group="scale" mode="split" value="1">搜索广告</emphasis>仍是基本盘，` +
     `但AI正在冲击<emphasis group="scale" mode="split" value="2">基本盘</emphasis>。` +
-    `</p></article></body></html>`;
+    `</article></body></html>`;
   assert.throws(() => validateMgAnnotationHtml(invalid, source), /<emphasis>.*只能出现一次/);
 });
 
 test("mg-title is executable markup and native title is rejected in article text", () => {
   const source = "谷歌的第二次创业";
-  const valid = `<!DOCTYPE html><html><body><article><p>` +
+  const valid = `<!DOCTYPE html><html><body><article>` +
     `<mg-title group="fade" mode="together">${source}</mg-title>` +
-    `</p></article></body></html>`;
+    `</article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
   assert.equal(locateMgInstances(valid, buildTimeline(source), source).get("mg-title::fade::one")?.tag, "mg-title");
 
@@ -145,13 +160,13 @@ test("mg-title is executable markup and native title is rejected in article text
 
 test("all Shotcraft structural tags remain executable through provider-backed HTML tags", () => {
   const source = "界面展示指标转场节拍效果。";
-  const annotated = `<!DOCTYPE html><html><body><article><p>` +
+  const annotated = `<!DOCTYPE html><html><body><article>` +
     `<mg-showcase group="card-stack" mode="together">界面</mg-showcase>` +
     `<mg-metric group="counter-confetti" mode="together">展示</mg-metric>` +
     `<mg-transition group="flash-cut" mode="together">指标</mg-transition>` +
     `<mg-rhythm group="beat-pump" mode="together">转场</mg-rhythm>` +
     `<mg-effect group="line-unfold-panel" mode="together">节拍效果</mg-effect>` +
-    `。</p></article></body></html>`;
+    `。</article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 5, tagCount: 5});
   const tags = [...locateMgInstances(annotated, buildTimeline(source), source).values()]
     .map((instance) => instance.tag);
@@ -176,10 +191,10 @@ test("annotation viewer styles expose provider tags and protocol attributes", ()
 test("order identifies repeated instances while value and values identify their nodes", () => {
   const source = ["十年前走向今天。", "芯片走向模型。"].join("\n\n");
   const repeated = `<!DOCTYPE html><html><body><article>` +
-    `<p><progress-timeline group="horizontal" order="1" mode="split" value="1">十年前</progress-timeline>走向` +
-    `<progress-timeline group="horizontal" order="1" mode="split" value="2">今天</progress-timeline>。</p>` +
-    `<p><progress-timeline group="horizontal" order="2" mode="together" values='["芯片","模型"]'>` +
-    `<span class="mg-value">芯片</span>走向<span class="mg-value">模型</span></progress-timeline>。</p>` +
+    `<progress-timeline group="horizontal" order="1" mode="split" value="1">十年前</progress-timeline>走向` +
+    `<progress-timeline group="horizontal" order="1" mode="split" value="2">今天</progress-timeline>。\n\n` +
+    `<progress-timeline group="horizontal" order="2" mode="together" values='["芯片","模型"]'>` +
+    `芯片走向模型</progress-timeline>。` +
     `</article></body></html>`;
 
   assert.deepEqual(validateMgAnnotationHtml(repeated, source), {instanceCount: 2, tagCount: 3});
@@ -209,17 +224,17 @@ test("order identifies repeated instances while value and values identify their 
 
 test("order is forbidden for one tag/group instance and mandatory for repeated tag/group instances", () => {
   const singletonSource = "十年前走向今天。";
-  const redundant = `<!DOCTYPE html><html><body><article><p>` +
+  const redundant = `<!DOCTYPE html><html><body><article>` +
     `<progress-timeline group="horizontal" order="1" mode="split" value="1">十年前</progress-timeline>走向` +
     `<progress-timeline group="horizontal" order="1" mode="split" value="2">今天</progress-timeline>。` +
-    `</p></article></body></html>`;
+    `</article></body></html>`;
   assert.throws(() => validateMgAnnotationHtml(redundant, singletonSource), /只有一个实例时不应填写 order/);
 
   const repeatedSource = ["十年前走向今天。", "芯片走向模型。"].join("\n\n");
   const differentGroups = `<!DOCTYPE html><html><body><article>` +
-    `<p><progress-timeline group="horizontal" mode="split" value="1">十年前</progress-timeline>走向` +
-    `<progress-timeline group="horizontal" mode="split" value="2">今天</progress-timeline>。</p>` +
-    `<p><progress-timeline group="vertical" mode="together" values='["芯片","模型"]'>芯片走向模型</progress-timeline>。</p>` +
+    `<progress-timeline group="horizontal" mode="split" value="1">十年前</progress-timeline>走向` +
+    `<progress-timeline group="horizontal" mode="split" value="2">今天</progress-timeline>。\n\n` +
+    `<progress-timeline group="vertical" mode="together" values='["芯片","模型"]'>芯片走向模型</progress-timeline>。` +
     `</article></body></html>`;
   // Different groups are different instances by themselves; order is not
   // shared across groups and is therefore omitted for both singleton groups.
@@ -267,7 +282,7 @@ test("annotation preparation rejects model-owned CSS, scripts, and changed artic
   );
   assert.throws(
     () => prepareMgAnnotationHtml(html.replace("搜索入口", "搜索产品"), article),
-    /去标签后与原文不一致/,
+    /去标签后的全文与原文不一致/,
   );
   assert.throws(
     () => prepareMgAnnotationHtml(html.replace("</article>", "</article><iframe src=\"https://example.com\"></iframe>"), article),
@@ -318,10 +333,10 @@ test("image stack and grid expose the same media contract", () => {
 
 test("effect tags remain executable through the provider", () => {
   const source = "先扫描页面，再确认核心数字。";
-  const annotated = `<!DOCTYPE html><html><body><article><p>` +
+  const annotated = `<!DOCTYPE html><html><body><article>` +
     `先<mg-effect group="scanline-annotate-focus" mode="together">扫描页面</mg-effect>，再` +
     `确认核心数字。` +
-    `</p></article></body></html>`;
+    `</article></body></html>`;
   assert.deepEqual(validateMgAnnotationHtml(annotated, source), {instanceCount: 1, tagCount: 1});
   const instances = locateMgInstances(annotated, buildTimeline(source), source);
   const effectCall = resolveMgFunctionCall({

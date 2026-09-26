@@ -111,10 +111,6 @@ const openAiImageBytes = async (response: any): Promise<Buffer> => {
   throw new Error("response image has neither b64_json nor url");
 };
 
-const outputSize = (aspectRatio?: string): any => ({
-  "16:9": "1536x1024", "9:16": "1024x1536", "1:1": "1024x1024",
-}[aspectRatio || ""] || "1024x1024");
-
 const generateOpenAi = async (cfg: ImageConfig, prompt: string, imagePaths: string[], aspectRatio?: string): Promise<Buffer> => {
   const client = new OpenAI({
     apiKey: cfg.api_key,
@@ -127,7 +123,6 @@ const generateOpenAi = async (cfg: ImageConfig, prompt: string, imagePaths: stri
     model: cfg.model,
     prompt: appendAspectInstruction(prompt, aspectRatio),
     n: 1,
-    size: outputSize(aspectRatio),
     response_format: "b64_json",
     image_size: ASPECT_TO_SIZE[aspectRatio || ""] || "1k",
     ...(aspectRatio ? {aspect_ratio: aspectRatio} : {}),

@@ -36,6 +36,7 @@ const AT_TOLERANCE_SECONDS = 0.35;
 const SCOPE_CONCURRENCY = 4;
 const SCOPE_MAX_ATTEMPTS = 3;
 const MEDIA_MAX_ATTEMPTS = 3;
+const WEB_NEWS_REPLAN_MAX_ATTEMPTS = 3;
 const VISUAL_RENDER_CACHE_VERSION = 2;
 
 const isGeneratedVideoTag = (tag: string | undefined): boolean =>
@@ -333,6 +334,11 @@ const validateResolvedCall = (
     if (!call.elementAts.some((at) => Math.abs(at - tag.start) <= AT_TOLERANCE_SECONDS)) {
       errors.push(`没有元素 at 对应“${tag.text.slice(0, 24)}”的 ${tag.start}`);
     }
+    for (const anchor of tag.valueAnchors ?? []) {
+      if (!call.elementAts.some((at) => Math.abs(at - anchor.start) <= AT_TOLERANCE_SECONDS)) {
+        errors.push(`没有元素 at 对应 value=${anchor.value}“${anchor.text.slice(0, 24)}”的 ${anchor.start}`);
+      }
+    }
   }
   if (call.elementAts.some((at) => at > videoDuration + AT_TOLERANCE_SECONDS)) {
     errors.push("存在超出整集时长的元素 at");
@@ -538,8 +544,9 @@ const runScope = async (
   timeline: ArticleTimelineEntry[],
   referenceImages: string[],
   videoDuration: number,
+  initialFeedback = "",
 ): Promise<ResolvedMgFunctionCall[]> => {
-  let feedback = "";
+  let feedback = initialFeedback;
   let lastError: unknown;
   for (let attempt = 1; attempt <= SCOPE_MAX_ATTEMPTS; attempt++) {
     try {
@@ -547,11 +554,32 @@ const runScope = async (
       return await requestScopeCalls(root, members, timeline, referenceImages, feedback, videoDuration);
     } catch (error) {
       lastError = error;
-      feedback = error instanceof Error ? error.message : String(error);
+      feedback = [initialFeedback, error instanceof Error ? error.message : String(error)]
+        .filter(Boolean)
+        .join("\n\n");
       console.warn(`[视觉 Agent] ${root.instanceKey} 未通过: ${feedback}`);
     }
   }
   throw lastError ?? new Error(`${root.instanceKey} Function Calling 失败`);
+};
+
+const isWebNewsCaptureFailure = (error: unknown): boolean =>
+  (error instanceof Error ? error.message : String(error)).includes("WEB_NEWS_FOCUS_CAPTURE_FAILED");
+
+const failedWebNewsUrl = (error: unknown): string | undefined => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.match(/WEB_NEWS_FOCUS_CAPTURE_FAILED url=(\S+)/)?.[1];
+};
+
+const normalizedWebUrl = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return undefined;
+  }
 };
 
 const ownTargetWindow = (
@@ -1265,7 +1293,7 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
 
   const callsByInstance = new Map(resolvedCalls.map((call) => [call.instanceKey, call]));
   await runWithConcurrency(records, SCOPE_CONCURRENCY, async (record, index) => {
-    const call = callsByInstance.get(record.instanceKey)!;
+    let call = callsByInstance.get(record.instanceKey)!;
     if (record.status === "completed" && record.videoPath) {
       if (await reuseValidClip(record.videoPath, record.endFrame - record.startFrame, video.fps)) {
         console.log(`[视觉任务] 复用 ${record.instanceKey} -> ${path.basename(record.videoPath)}`);
@@ -1274,7 +1302,11 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
       await updateRecord(index, "queued", {videoPath: undefined});
     }
     let lastError: unknown;
-    for (let attempt = 1; attempt <= MEDIA_MAX_ATTEMPTS; attempt++) {
+    let mediaAttempt = 0;
+    let webReplans = 0;
+    const rejectedWebUrls = new Set<string>();
+    while (true) {
+      const attempt = mediaAttempt + 1;
       try {
         const videoPath = call.htmlTag === "sc-video"
           ? await renderScVideoTask(
@@ -1313,9 +1345,67 @@ export async function planEssayMg(sel: NovelSelection): Promise<string> {
         lastError = error;
         const message = error instanceof Error ? error.message : String(error);
         await updateRecord(index, "failed", {error: message, retries: attempt});
-        if (attempt < MEDIA_MAX_ATTEMPTS) {
-          console.warn(`[视觉任务] ${record.instanceKey} 第 ${attempt}/${MEDIA_MAX_ATTEMPTS} 次失败，重试: ${message}`);
+        if (call.htmlTag === "web-news-focus" && isWebNewsCaptureFailure(error)) {
+          const rejectedUrl = failedWebNewsUrl(error) ?? String(call.arguments.url ?? "");
+          const normalizedRejectedUrl = normalizedWebUrl(rejectedUrl);
+          if (normalizedRejectedUrl) rejectedWebUrls.add(normalizedRejectedUrl);
+          if (webReplans >= WEB_NEWS_REPLAN_MAX_ATTEMPTS) break;
+          let replacementAccepted = false;
+          const instance = instances.get(record.instanceKey)!;
+          while (webReplans < WEB_NEWS_REPLAN_MAX_ATTEMPTS && !replacementAccepted) {
+            webReplans++;
+            console.warn(`[视觉任务] ${record.instanceKey} 网页捕获失败，通知主流程重新搜索 (${webReplans}/${WEB_NEWS_REPLAN_MAX_ATTEMPTS}): ${rejectedUrl}`);
+            const rejectedList = [...rejectedWebUrls].join("、") || rejectedUrl;
+            const feedback = `网页重点实例 ${record.instanceKey} 的页面捕获失败。必须调用 search_web({query}) 搜索另一篇可靠报道，再调用 search_web({url}) 读取所选正文。以下 URL 均已被程序拒绝，不能再次使用：${rejectedList}。不能使用 fallback URL、摘要或截图替代。然后仅为此实例重新调用 create_web_news_focus，保留当前时间轴语义并使用新网页正文中的逐字短语。`;
+            try {
+              const replanned = await runScope(instance, [instance], timeline, referenceImages, video.duration, feedback);
+              const nextCall = replanned[0];
+              const nextUrl = normalizedWebUrl(nextCall.arguments.url);
+              if (!nextUrl) throw new Error("重新规划没有提供有效的 canonical URL");
+              if (rejectedWebUrls.has(nextUrl)) {
+                throw new Error(`重新规划再次选择了已失败 URL：${nextUrl}`);
+              }
+              const nextTask = describeTask(nextCall, instance, instances, video, windowCache, referenceImageHashes);
+              if (nextTask.startFrame !== record.startFrame || nextTask.endFrame !== record.endFrame) {
+                throw new Error(`${record.instanceKey} 重新规划意外改变了时间窗口`);
+              }
+              call = nextCall;
+              callsByInstance.set(record.instanceKey, call);
+              const nextRecord: VisualFunctionRecord = {
+                ...record,
+                id: call.id,
+                taskId: hashId(`${sel.novelName}:${sel.episode}:${call.instanceKey}:${nextTask.signature}`),
+                taskSignature: nextTask.signature,
+                name: call.name,
+                htmlTag: call.htmlTag,
+                group: call.group,
+                ...(call.order === undefined ? {order: undefined} : {order: call.order}),
+                arguments: call.arguments,
+                status: "queued",
+                retries: 0,
+                error: undefined,
+                videoPath: undefined,
+              };
+              records[index] = nextRecord;
+              record = nextRecord;
+              await flushRecords();
+              mediaAttempt = 0;
+              replacementAccepted = true;
+            } catch (replanError) {
+              lastError = replanError;
+              const detail = replanError instanceof Error ? replanError.message : String(replanError);
+              await updateRecord(index, "failed", {error: `重新搜索/规划失败（已拒绝 ${rejectedList}）：${detail}`, retries: webReplans});
+            }
+          }
+          if (replacementAccepted) continue;
+          break;
         }
+        mediaAttempt++;
+        if (mediaAttempt < MEDIA_MAX_ATTEMPTS) {
+          console.warn(`[视觉任务] ${record.instanceKey} 第 ${attempt}/${MEDIA_MAX_ATTEMPTS} 次失败，重试: ${message}`);
+          continue;
+        }
+        break;
       }
     }
     throw lastError ?? new Error(`${record.instanceKey} 视频任务失败`);

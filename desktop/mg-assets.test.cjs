@@ -12,6 +12,7 @@ const catalog = [
   {htmlTag: "mg-metric", style: "counter-confetti", name: "计数庆祝", structureName: "指标动画"},
   {htmlTag: "mg-transition", style: "whip-pan", name: "甩镜转场", structureName: "转场"},
   {htmlTag: "mg-rhythm", style: "beat-pump", name: "节拍脉冲", structureName: "节拍强调"},
+  {htmlTag: "ai-hot-focus-stage", style: "focus-stage", name: "热点章节", structureName: "AI 热点章节舞台"},
 ];
 
 const html = `<!DOCTYPE html><html><body><article><p>
@@ -139,4 +140,13 @@ test("Shotcraft tags are parsed and style replacement keeps their template mappi
   assert.deepEqual(instances.map((item) => item.tag), ["mg-effect", "mg-showcase", "mg-metric", "mg-transition", "mg-rhythm"]);
   const replaced = replaceMgAnnotationStyle(shotcraft, {tag: "mg-effect", currentStyle: "scanline-annotate-focus", style: "scanline-annotate-focus", order: null}, catalog);
   assert.equal(replaced.changedTagCount, 1);
+});
+
+test("focus stage exposes HTML values titles in the options panel", () => {
+  const source = '<!DOCTYPE html><html><body><article>' +
+    '<ai-hot-focus-stage group="focus-stage" mode="together" values=\'["标题一","标题二"]\'>标题一\n正文一\n\n标题二\n正文二</ai-hot-focus-stage>' +
+    '</article></body></html>';
+  const [instance] = listMgAnnotationInstances(source, 1, true, catalog);
+  assert.deepEqual(instance.values, [1, 2]);
+  assert.deepEqual(instance.texts, ["标题一", "标题二"]);
 });

@@ -1,6 +1,6 @@
 const parse5 = require("parse5");
 
-const ALLOWED_ATTRIBUTES = new Set(["group", "order", "mode", "value"]);
+const ALLOWED_ATTRIBUTES = new Set(["group", "order", "mode", "value", "values"]);
 const GROUP_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 const MODES = new Set(["together", "split"]);
 
@@ -48,6 +48,15 @@ const parseValue = (raw, tagName) => {
   return value;
 };
 
+const parseValues = (raw, tagName) => {
+  let values;
+  try { values = JSON.parse(String(raw)); } catch { throw new Error(`<${tagName}> 的 values 不是合法 JSON`); }
+  if (!Array.isArray(values) || !values.length || values.some((item) => typeof item !== "string" || !item.trim())) {
+    throw new Error(`<${tagName}> 的 values 必须是非空字符串数组`);
+  }
+  return values;
+};
+
 const parseMgAnnotation = (html, catalog) => {
   const MG_HTML_TAGS = new Set(catalog.map(catalogHtmlTag));
   const document = parse5.parse(String(html || ""));
@@ -67,24 +76,26 @@ const parseMgAnnotation = (html, catalog) => {
       const styleEntry = styleEntryFor(catalog, node.tagName, style);
       const order = parseOrder(attrs.order, node.tagName);
       if (!MODES.has(attrs.mode)) throw new Error(`<${node.tagName}> 的 mode 必须是 together 或 split`);
-      const value = parseValue(attrs.value, node.tagName);
       const text = textContent(node).trim();
       if (!text) throw new Error(`<${node.tagName}> 不能包裹空文本`);
 
       const key = instanceKey(node.tagName, style, order);
       if (ancestors.includes(key)) throw new Error(`动画实例 ${key} 不能嵌套自身`);
-      tags.push({
+      const annotatedValues = attrs.mode === "together" && attrs.values !== undefined
+        ? parseValues(attrs.values, node.tagName).map((item, index) => ({value: index + 1, text: item}))
+        : [{value: parseValue(attrs.value, node.tagName), text}];
+      annotatedValues.forEach((annotatedValue) => tags.push({
         tag: node.tagName,
         style,
         styleEntry,
         order,
         mode: attrs.mode,
-        value,
-        text,
+        value: annotatedValue.value,
+        text: annotatedValue.text,
         instanceKey: key,
         parentInstance: ancestors.at(-1),
         documentOrder: documentOrder++,
-      });
+      }));
       const nextAncestors = [...ancestors, key];
       (node.childNodes || []).forEach((child) => walk(child, nextAncestors));
       return;

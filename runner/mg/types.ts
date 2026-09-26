@@ -23,6 +23,7 @@ export type LocatedMgTag = {
   mode: MgMode;
   value?: number;
   values?: string[];
+  valueAnchors?: Array<{value: number; text: string; start: number; end: number}>;
   graph?: DirectedGraphAnnotation;
   text: string;
   start: number;

@@ -12,7 +12,8 @@ const MG_ANNOTATION_SYSTEM = `你负责为议论文原文添加视觉动画语�
 
 输出要求：
 - 输出一份从 <!DOCTYPE html> 到 </html> 的完整 HTML，只包含一个 <article>
-- 原文每个自然段放入一个 <p>，段落文字不换行
+- <article> 内只允许原文文本与已注册的 Story Claw 自定义标签；禁止 p、div、span、br、strong 等任何原生正文标签
+- 完整保留原文中的段落换行；不要为了排版添加缩进、空格、标题或其他文字
 - 去掉标签后，正文必须与输入原文逐字一致
 - 只输出 HTML，不要解释、Markdown、CSS 或 JavaScript
 
@@ -37,7 +38,8 @@ ${mgProvider.getAnnotationInstructions()}
 - 可以嵌套，但嵌套标签必须属于不同动画实例
 - <mg-title> 和 <emphasis> 每个动画实例只能出现一次
 - 不要让无关的全屏动画重叠；只标注动态图形明显优于普通画面的内容
-- mode="split" 时每个节点独立标注并使用 value；mode="together" 时只使用一个外层标签包裹完整范围，并用 values='["词语1","词语2"]' 指定节点词。values 必须是 JSON 字符串数组且逐字出现在正文中`;
+- mode="split" 时每个节点独立标注并使用 value；mode="together" 时只使用一个外层标签包裹完整范围，并用 values='["词语1","词语2"]' 指定节点词。values 必须是 JSON 字符串数组且逐字出现在正文中
+- ai-hot-focus-stage 必须用一个标签包住整篇原文，values 按新闻顺序逐项填写数据库标题；正文中每个标题还必须用连续编号的 <mg-value value="N">标题原文</mg-value> 标出，标记文字和顺序必须与 values 完全一致`;
 
 export interface EssayMgAnnotationResult {
   outputPath: string;

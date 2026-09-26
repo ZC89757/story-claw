@@ -21,7 +21,7 @@ const GROUP_PATTERN = /^[A-Za-z0-9_-]+$/;
 const STYLE_ID = "story-claw-mg-annotation-style";
 const SC_VIDEO_TAG = "sc-video";
 const SC_LONGTAKE_TAG = "sc-longtake";
-const VALUE_MARKER_CLASS = "mg-value";
+const MG_VALUE_TAG = "mg-value";
 
 const isScVideo = (tag: string | undefined): boolean => tag === SC_VIDEO_TAG;
 const isScLongtake = (tag: string | undefined): boolean => tag === SC_LONGTAKE_TAG;
@@ -131,21 +131,25 @@ const tagColorRules = (): string => MG_TAG_NAMES.map((tag, index) => {
   return `article ${tag} { --mg-accent: ${accent}; --mg-fill: ${fill}; }`;
 }).join("\n");
 
-const valueMarkerRules = (): string => `${tagSelectors('[mode="together"]')} .${VALUE_MARKER_CLASS} {
-  padding: 1px 3px; border-bottom: 3px solid var(--mg-accent); background: rgba(255, 255, 255, .46); font-weight: 900;
-}`;
-
 const buildMgAnnotationStyle = (html: string): string => `<style id="${STYLE_ID}">
 :root { color-scheme: light; }
 body { margin: 0; background: #f3f5f6; color: #20262c; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
-article { width: min(920px, calc(100% - 48px)); margin: 0 auto; padding: 44px 0 80px; font-size: 17px; line-height: 1.95; }
-p { margin: 0 0 24px; white-space: pre-line; }
-article > p:first-child { margin-bottom: 12px; font-size: 30px; font-weight: 800; line-height: 1.35; }
+article { padding: 24px; white-space: pre-wrap; }
 ${tagSelectors()} {
-  padding: 2px 4px; border-bottom: 2px solid var(--mg-accent); border-radius: 3px;
-  background: var(--mg-fill); box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  border-bottom: 2px solid var(--mg-accent); background: var(--mg-fill);
+  box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
-${valueMarkerRules()}
+article ai-hot-focus-stage {
+  border-bottom: 0;
+  background: linear-gradient(to bottom, transparent calc(100% - 2px), var(--mg-accent) 0), var(--mg-fill);
+  box-decoration-break: clone; -webkit-box-decoration-break: clone;
+}
+article mg-value {
+  padding: 1px 3px; border-bottom: 0;
+  background: linear-gradient(to bottom, transparent calc(100% - 2px), var(--mg-accent) 0),
+    color-mix(in srgb, var(--mg-accent) 24%, white);
+  box-decoration-break: clone; -webkit-box-decoration-break: clone;
+}
 ${tagSelectors("::before")} {
   display: inline-block; margin: 0 6px 2px 0; padding: 1px 6px; border-radius: 3px;
   background: var(--mg-accent); color: #fff; font: 600 10px/1.5 Consolas, "Microsoft YaHei", sans-serif;
@@ -153,7 +157,6 @@ ${tagSelectors("::before")} {
 }
 ${tagColorRules()}
 ${annotationRules(html)}
-@media (max-width: 640px) { article { width: min(100% - 28px, 920px); padding-top: 24px; font-size: 16px; } }
 </style>`;
 
 /** AI 只产出语义标签；浏览器预览样式由代码统一注入，避免重复消耗模型输出。 */
@@ -191,9 +194,6 @@ const textContent = (node: HtmlNode): string => {
 const attrsOf = (node: HtmlNode): Record<string, string> =>
   Object.fromEntries((node.attrs ?? []).map((attr) => [attr.name, attr.value]));
 
-const isValueMarker = (node: HtmlNode): boolean =>
-  node.tagName === "span" && attrsOf(node).class === VALUE_MARKER_CLASS;
-
 const descendants = (node: HtmlNode, predicate: (candidate: HtmlNode) => boolean): HtmlNode[] => {
   const found: HtmlNode[] = [];
   const visit = (candidate: HtmlNode) => {
@@ -204,18 +204,12 @@ const descendants = (node: HtmlNode, predicate: (candidate: HtmlNode) => boolean
   return found;
 };
 
-const sourceParagraphs = (articleSource: string): string[] =>
-  articleSource
-    .replace(/\r\n/g, "\n")
-    .trim()
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+const normalizeSourceText = (value: string): string => value.replace(/\r\n?/g, "\n").trim();
+const timelineText = (value: string): string => normalizeSourceText(value).replace(/\n/g, "");
 
 type ParsedStructure = {
   article: HtmlNode;
-  paragraphs: HtmlNode[];
-  paragraphTexts: string[];
+  articleText: string;
   tags: Array<{
     tag: string;
     group: string;
@@ -224,11 +218,11 @@ type ParsedStructure = {
     mode: MgMode;
     value?: number;
     values?: string[];
+    valueAnchors?: Array<{value: number; text: string; startOffset: number; endOffset: number}>;
     graph?: DirectedGraphAnnotation;
     text: string;
     startOffset: number;
     endOffset: number;
-    paragraphIndex: number;
     depth: number;
     parentInstance?: string;
     documentOrder: number;
@@ -266,20 +260,9 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
     if (["meta", "title", "style"].includes(child.tagName ?? "")) continue;
     throw new Error("MG HTML 的 head 包含不支持的页面元素");
   }
-  for (const child of article.childNodes ?? []) {
-    if (child.nodeName === "#text" && !(child.value ?? "").trim()) continue;
-    if (child.tagName !== "p") throw new Error("MG HTML 的 article 只能直接包含正文 p 段落");
-  }
-  const paragraphs = descendants(article, (node) => node.tagName === "p");
-  const paragraphTexts = paragraphs.map((paragraph) => textContent(paragraph).trim());
-  const expectedParagraphs = sourceParagraphs(articleSource);
-  if (paragraphTexts.length !== expectedParagraphs.length) {
-    throw new Error(`MG HTML 段落数 ${paragraphTexts.length} 与原文 ${expectedParagraphs.length} 不一致`);
-  }
-  for (let index = 0; index < expectedParagraphs.length; index++) {
-    if (paragraphTexts[index] !== expectedParagraphs[index]) {
-      throw new Error(`MG HTML 第 ${index + 1} 段去标签后与原文不一致`);
-    }
+  const articleText = normalizeSourceText(textContent(article));
+  if (articleText !== normalizeSourceText(articleSource)) {
+    throw new Error("MG HTML 去标签后的全文与原文不一致");
   }
 
   const allMgNodes = descendants(document, (node) => Boolean(node.tagName && MG_TAGS.has(node.tagName)));
@@ -287,27 +270,29 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
   if (allMgNodes.length !== articleMgNodes.length) throw new Error("MG 标签只能出现在 article 正文中");
 
   const tags: ParsedStructure["tags"] = [];
-  const valueMarkers: Array<{parentInstance: string; text: string}> = [];
   let documentOrder = 0;
-  paragraphs.forEach((paragraph, paragraphIndex) => {
-    let relativeOffset = 0;
-    const walk = (node: HtmlNode, ancestors: string[]) => {
+  let relativeOffset = 0;
+  const walk = (node: HtmlNode, ancestors: string[], markerSink?: Array<{value: number; text: string; startOffset: number; endOffset: number}>) => {
       if (node.nodeName === "#text") {
-        relativeOffset += (node.value ?? "").length;
+        relativeOffset += timelineText(node.value ?? "").length;
+        return;
+      }
+      if (node.tagName === MG_VALUE_TAG) {
+        const attrs = attrsOf(node);
+        const value = Number(attrs.value);
+        if (Object.keys(attrs).some((name) => name !== "value") || !markerSink || !Number.isInteger(value) || value < 1) {
+          throw new Error(`<${MG_VALUE_TAG}> 必须位于 together 标签内且只使用正整数 value`);
+        }
+        const startOffset = relativeOffset;
+        for (const child of node.childNodes ?? []) walk(child, ancestors, markerSink);
+        const endOffset = relativeOffset;
+        const text = textContent(node);
+        if (!text.trim()) throw new Error(`<${MG_VALUE_TAG}> 不能包裹空文本`);
+        markerSink.push({value, text, startOffset, endOffset});
         return;
       }
       const isMg = Boolean(node.tagName && MG_TAGS.has(node.tagName));
-      const valueMarker = isValueMarker(node);
-      if (node.tagName && !isMg && !valueMarker) throw new Error(`MG HTML 正文包含不支持的标签 <${node.tagName}>`);
-      if (valueMarker) {
-        const parentInstance = ancestors.at(-1);
-        const markerText = textContent(node).trim();
-        if (!parentInstance) throw new Error(`.${VALUE_MARKER_CLASS} 只能出现在 MG 标签内部`);
-        if (!markerText) throw new Error(`.${VALUE_MARKER_CLASS} 不能包裹空文本`);
-        valueMarkers.push({parentInstance, text: markerText});
-        for (const child of node.childNodes ?? []) walk(child, ancestors);
-        return;
-      }
+      if (node.tagName && !isMg) throw new Error(`MG HTML 正文包含不支持的原生标签 <${node.tagName}>`);
       const attrs = isMg ? attrsOf(node) : {};
       const htmlTag = isMg ? node.tagName : undefined;
       const group = attrs.group;
@@ -316,7 +301,8 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       const nextAncestors = instanceKey ? [...ancestors, instanceKey] : ancestors;
       const currentDocumentOrder = isMg ? documentOrder++ : -1;
       const startOffset = relativeOffset;
-      for (const child of node.childNodes ?? []) walk(child, nextAncestors);
+      const ownMarkers: Array<{value: number; text: string; startOffset: number; endOffset: number}> = [];
+      for (const child of node.childNodes ?? []) walk(child, nextAncestors, isMg ? ownMarkers : markerSink);
       const endOffset = relativeOffset;
       if (!isMg) return;
 
@@ -346,6 +332,13 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
         && attrs.values !== undefined
         ? parseValuesAttribute(htmlTag!, attrs.values)
         : undefined;
+      const valueAnchors = ownMarkers.length ? [...ownMarkers].sort((left, right) => left.value - right.value) : undefined;
+      if (valueAnchors && valueAnchors.some((anchor, index) => anchor.value !== index + 1)) {
+        throw new Error(`<${htmlTag}> 的 mg-value 必须按正文顺序从 1 连续编号`);
+      }
+      if (valueAnchors && JSON.stringify(valueAnchors.map((anchor) => anchor.text)) !== JSON.stringify(values ?? [])) {
+        throw new Error(`<${htmlTag}> 的 mg-value 文本和顺序必须与 values 完全一致`);
+      }
       const graph = graphTag ? parseDirectedGraphTopology(attrs) : undefined;
       if (graphTag && !graph) throw new Error("<directed-graph> 必须提供已审核的 nodes 和 edges");
       if (!generatedVideo && attrs.mode === "split" && (value === undefined || !Number.isInteger(value) || value < 1)) throw new Error(`<${htmlTag}> 的 split value 必须是正整数`);
@@ -364,18 +357,17 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
         mode,
         ...(value === undefined ? {} : {value}),
         ...(values ? {values} : {}),
+        ...(valueAnchors ? {valueAnchors} : {}),
         ...(graph ? {graph} : {}),
         text: textContent(node),
         startOffset,
         endOffset,
-        paragraphIndex,
         depth: ancestors.length,
         parentInstance: ancestors.at(-1),
         documentOrder: currentDocumentOrder,
       });
-    };
-    for (const child of paragraph.childNodes ?? []) walk(child, []);
-  });
+  };
+  for (const child of article.childNodes ?? []) walk(child, []);
 
   const byTemplateGroup = new Map<string, ParsedStructure["tags"]>();
   for (const tag of tags) {
@@ -424,14 +416,7 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       throw new Error(`${instanceKey} 的 value 必须按正文顺序从 1 连续编号`);
     }
   }
-  for (const marker of valueMarkers) {
-    const parent = byInstance.get(marker.parentInstance)?.[0];
-    if (!parent || parent.mode !== "together" || !parent.values?.includes(marker.text)) {
-      throw new Error(`.${VALUE_MARKER_CLASS} 文本“${marker.text}”必须列在父级 together 标签的 values 中`);
-    }
-  }
-
-  return {article, paragraphs, paragraphTexts, tags};
+  return {article, articleText, tags};
 };
 
 export const validateMgAnnotationHtml = (html: string, articleSource: string): {instanceCount: number; tagCount: number} => {
@@ -459,7 +444,10 @@ export const locateMgInstances = (
 ): Map<string, MgInstanceInfo> => {
   const structure = parseStructure(html, articleSource);
   if (!timeline.length) throw new Error("字级时间轴为空，无法规划 MG");
-  const timelineText = timeline.map((entry) => entry.char).join("");
+  const fullTimelineText = timeline.map((entry) => entry.char).join("");
+  if (fullTimelineText !== timelineText(structure.articleText)) {
+    throw new Error("MG HTML 全文无法与字级时间轴逐字对应");
+  }
   const charOffsets: number[] = [];
   let charCursor = 0;
   timeline.forEach((entry) => {
@@ -480,22 +468,18 @@ export const locateMgInstances = (
     throw new Error(`时间轴字符偏移越界: ${offset}`);
   };
 
-  const paragraphOffsets: number[] = [];
-  let timelineCursor = 0;
-  for (const paragraphText of structure.paragraphTexts) {
-    const offset = timelineText.indexOf(paragraphText, timelineCursor);
-    if (offset < 0) throw new Error(`正文段落无法映射到字级时间轴: ${paragraphText.slice(0, 40)}`);
-    paragraphOffsets.push(offset);
-    timelineCursor = offset + paragraphText.length;
-  }
-
   const located: LocatedMgTag[] = structure.tags.map((tag) => {
-    const paragraphOffset = paragraphOffsets[tag.paragraphIndex];
-    const paragraphText = structure.paragraphTexts[tag.paragraphIndex];
-    const startEntry = entryAtOffset(paragraphOffset + tag.startOffset);
-    const endEntry = entryAtOffset(paragraphOffset + tag.endOffset - 1);
-    const paragraphEnd = entryAtOffset(paragraphOffset + paragraphText.length - 1).end;
-    return {...tag, start: startEntry.start, end: endEntry.end, paragraphEnd};
+    const startEntry = entryAtOffset(tag.startOffset);
+    const endEntry = entryAtOffset(tag.endOffset - 1);
+    const paragraphEnd = endEntry.end;
+    const valueAnchors = tag.valueAnchors?.map((anchor) => ({
+      value: anchor.value,
+      text: anchor.text,
+      start: entryAtOffset(anchor.startOffset).start,
+      end: entryAtOffset(anchor.endOffset - 1).end,
+    }));
+    const {valueAnchors: _rawAnchors, ...baseTag} = tag;
+    return {...baseTag, ...(valueAnchors ? {valueAnchors} : {}), start: startEntry.start, end: endEntry.end, paragraphEnd};
   });
 
   const instances = new Map<string, MgInstanceInfo>();
