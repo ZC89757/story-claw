@@ -8,7 +8,7 @@ import type {
 
 export type MgMode = "together" | "split";
 
-/** Static directed-graph topology approved in the annotation HTML. */
+/** Reviewed node/edge topology shared by all compatible annotation tags. */
 export type DirectedGraphAnnotation = Readonly<{
   nodes: readonly string[];
   edges: readonly (readonly [number, number])[];

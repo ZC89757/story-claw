@@ -3,7 +3,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {CONFIG_DIR, WORK_DIR} from "./runtime-paths.js";
 
-/** Settings for the story render branch; the existing LTX/MG settings stay separate. */
+/** Shared H3 configuration for story, essay panels and generated MG video. */
 export interface StoryVideoConfig {
   baseUrl: string;
   workflowPath: string;
@@ -21,7 +21,7 @@ export const H3_MAX_DURATION = 15;
 const positive = (value: unknown, fallback: number): number => {
   if (value === undefined) return fallback;
   const number = Number(value);
-  if (!Number.isFinite(number) || number <= 0) throw new Error("故事视频配置必须是正数");
+  if (!Number.isFinite(number) || number <= 0) throw new Error("H3 视频配置必须是正数");
   return number;
 };
 
@@ -34,7 +34,7 @@ export function bundledH3WorkflowPath(): string {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
 }
 
-/** Synchronous and deliberately independent from render.ts's cached LTX configuration. */
+/** Legacy backend fields are intentionally ignored; H3 is the only generation backend. */
 export function getStoryVideoConfig(configPath = path.join(CONFIG_DIR, "video_config.json")): StoryVideoConfig {
   const raw = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, "utf8")) : {};
   const configuredWorkflow = raw.h3_workflow_path;
@@ -47,13 +47,13 @@ export function getStoryVideoConfig(configPath = path.join(CONFIG_DIR, "video_co
     throw new Error(`H3 目标时长上限须在 0.1–${H3_MAX_DURATION} 秒之间，请拆分过长镜头`);
   }
   const retryValue = Number(raw.h3_max_retries ?? 2);
-  if (!Number.isInteger(retryValue) || retryValue < 0 || retryValue > 10) throw new Error("故事视频重试次数须为 0–10 的整数");
+  if (!Number.isInteger(retryValue) || retryValue < 0 || retryValue > 10) throw new Error("H3 视频重试次数须为 0–10 的整数");
   const concurrency = positive(raw.h3_concurrency, 1);
   if (!Number.isInteger(concurrency) || concurrency > 16) throw new Error("H3 并发须为 1–16 的整数");
   const baseUrl = String(raw.h3_base_url || "http://127.0.0.1:8188").replace(/\/+$/, "");
   const serviceUrl = new URL(baseUrl);
   if (!["http:", "https:"].includes(serviceUrl.protocol)) throw new Error("H3 服务地址须为 HTTP 或 HTTPS");
-  if (serviceUrl.port === "8191") throw new Error("H3 必须直连 ComfyUI（通常 8188），不能使用 LTX wrapper 的 8191 端口");
+  if (serviceUrl.port === "8191") throw new Error("H3 必须直连 ComfyUI（通常 8188），不能使用 旧处理服务的 8191 端口");
   const pollIntervalMs = positive(raw.h3_poll_interval_ms, 5000);
   const timeoutMs = positive(raw.h3_timeout_ms, 1_800_000);
   if (!Number.isInteger(pollIntervalMs) || pollIntervalMs > 600_000) throw new Error("H3 轮询间隔须为 1–600000 毫秒的整数");

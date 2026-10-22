@@ -19,7 +19,7 @@ const withTemp = async (run: (directory: string) => Promise<void>): Promise<void
 const configFor = (): StoryVideoConfig => ({baseUrl: "http://comfy.test", workflowPath: bundledH3WorkflowPath(), maxDuration: 15, fps: 24, concurrency: 1, maxRetries: 1, pollIntervalMs: 1, timeoutMs: 10_000});
 const workflowInput = () => ({references: ["person.png", "scene.png"], prompt: "<Picture 1> is the only actor. <Picture 2> supplies the scene.", aspectRatio: "9:16", duration: 5, seed: 123, filenamePrefix: "test"});
 
-test("story configuration always uses H3 and leaves essay LTX settings independent", async () => withTemp(async (directory) => {
+test("all generation uses H3 config and ignores legacy LTX settings", async () => withTemp(async (directory) => {
   const file = path.join(directory, "video_config.json");
   await fs.writeFile(file, JSON.stringify({base_url: "http://ltx.test:8191", workflow_path: path.join(directory, "ltx.json"), concurrency: 6, max_retries: 50, story_backend: "ltx"}));
   const original = await fs.readFile(file, "utf8");

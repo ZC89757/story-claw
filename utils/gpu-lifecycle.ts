@@ -1,7 +1,8 @@
 import {createHash} from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {CONFIG_DIR, WORK_DIR} from "./runtime-paths.js";
+import {CONFIG_DIR} from "./runtime-paths.js";
+import {warmH3RenderService} from "./h3-video.js";
 import {getStoryVideoConfig} from "./story-video-config.js";
 
 type GpuConfig = {
@@ -14,11 +15,9 @@ type GpuConfig = {
   base_url?: string;
 };
 
-type VideoConfig = {base_url?: string; workflow_path?: string};
 type JsonObject = Record<string, any>;
 
 const API_URL = "https://api.compshare.cn";
-const TEST_IMAGE_B64 = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAS0lEQVR42u3PMQ0AAAwDoDqv9UrYvQQckD4XAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAYHLANtV0Vq+zpWkAAAAAElFTkSuQmCC";
 const sleep = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const now = (): string => new Date().toLocaleTimeString("zh-CN", {hour12: false});
 
@@ -81,106 +80,29 @@ const locateInstance = async (config: GpuConfig): Promise<{region: string; zone:
 const waitForState = async (config: GpuConfig, desired: string, timeoutSeconds: number): Promise<void> => {
   const deadline = Date.now() + timeoutSeconds * 1000;
   let last = "unknown";
+  let reported = "";
   while (Date.now() < deadline) {
     const current = await locateInstance(config);
     last = current.state || "unknown";
     if (last.toLowerCase() === desired.toLowerCase()) return;
+    if (last !== reported) {
+      console.log(`[${now()}] GPU 当前状态 ${last}，等待 ${desired}...`);
+      reported = last;
+    }
     await sleep(5000);
   }
   throw new Error(`等待 GPU 状态 ${desired} 超时，当前状态 ${last}`);
 };
 
-const workflowPath = (configured: string): string => path.isAbsolute(configured)
-  ? configured
-  : path.resolve(WORK_DIR, configured);
-
-const submitHealthCheck = async (baseUrl: string, workflow: JsonObject): Promise<string | null> => {
-  const response = await fetch(`${baseUrl}/prompt`, {
-    method: "POST",
-    headers: {"content-type": "application/json"},
-    body: JSON.stringify({prompt: workflow}),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) return null;
-  const result = await response.json() as JsonObject;
-  return typeof result.prompt_id === "string" ? result.prompt_id : null;
-};
-
-/** Check H3 resources, or wait for the original LTX minimum-size video request. */
-export const waitForRenderService = async (mode: "ltx" | "h3" = "ltx"): Promise<void> => {
-  if (mode === "h3") {
-    const {checkH3RenderService} = await import("./h3-video.js");
-    console.log(`[${now()}] GPU 实例已启动，正在检测 H3 渲染服务...`);
-    await checkH3RenderService(getStoryVideoConfig());
-    console.log(`[${now()}] H3 视频生成服务已通过自检`);
-    return;
-  }
-  const video = await readJson<VideoConfig>(path.join(CONFIG_DIR, "video_config.json"));
-  if (!video.workflow_path) throw new Error("video_config.json 缺少 workflow_path");
-  const baseUrl = (video.base_url || "http://127.0.0.1:8188").replace(/\/$/, "");
-  const workflow = await readJson<JsonObject>(workflowPath(video.workflow_path));
-  workflow["324"].inputs.base64_data = TEST_IMAGE_B64;
-  workflow["320:319"].inputs.value = "a quiet test scene";
-  workflow["320:312"].inputs.value = 1024;
-  workflow["320:299"].inputs.value = 1536;
-  workflow["320:295"].inputs.length = 9;
-  workflow["320:305"].inputs.frames_number = 9;
-
-  console.log(`[${now()}] GPU 实例已启动，正在等待远程渲染服务预热与轻量自检...`);
-  let promptId: string | null = null;
-  let attempt = 0;
-  while (!promptId) {
-    attempt += 1;
-    try { promptId = await submitHealthCheck(baseUrl, workflow); } catch { /* Keep polling while the service boots. */ }
-    if (!promptId) {
-      console.log(`[${now()}] 渲染服务尚未就绪（第 ${attempt} 次检测），5 秒后继续...`);
-      await sleep(5000);
-    }
-  }
-
-  let missingSince: number | null = null;
-  let polls = 0;
-  while (true) {
-    await sleep(5000);
-    polls += 1;
-    try {
-      const response = await fetch(`${baseUrl}/history/${promptId}`, {signal: AbortSignal.timeout(10_000)});
-      if (!response.ok) continue;
-      const result = await response.json() as JsonObject;
-      const currentPromptId = promptId;
-      if (!currentPromptId) continue;
-      const entry = result[currentPromptId];
-      if (!entry) {
-        missingSince ??= Date.now();
-        if (Date.now() - missingSince >= 60_000) {
-          console.log(`[${now()}] 自检任务未登记，远程服务可能已重启，正在重新提交...`);
-          promptId = null;
-          while (!promptId) {
-            try { promptId = await submitHealthCheck(baseUrl, workflow); } catch { /* retry */ }
-            if (!promptId) await sleep(5000);
-          }
-          missingSince = null;
-          polls = 0;
-        }
-        continue;
-      }
-      missingSince = null;
-      const status = String(entry.status?.status_str || "");
-      if (["success", "queued_sttn", "sttn"].includes(status)) {
-        console.log(`[${now()}] GPU 视频生成服务已通过自检（${status}）`);
-        return;
-      }
-      if (status === "error") {
-        console.warn(`[${now()}] 轻量自检任务返回 error，将继续运行（可能是后处理阶段暂时异常）`);
-        return;
-      }
-      if (polls % 6 === 0) console.log(`[${now()}] 轻量自检进行中（${polls * 5}s，状态 ${status || "unknown"}）`);
-    } catch { /* Transient network errors are expected while booting. */ }
-  }
+/** Model/node availability alone cannot establish that H3 can sample and decode. */
+export const waitForRenderService = async (_mode: "h3" = "h3"): Promise<void> => {
+  console.log(`[${now()}] 等待 H3 服务，随后执行最小合法长度的实际视频预热...`);
+  const preview = await warmH3RenderService(getStoryVideoConfig());
+  console.log(`[${now()}] H3 采样、解码与视频校验通过：${preview}`);
 };
 
 /** Start the configured managed GPU, then verify that its video endpoint works. */
-export const startGpu = async (mode: "ltx" | "h3" = "ltx"): Promise<void> => {
+export const startGpu = async (mode: "h3" = "h3"): Promise<void> => {
   const config = await gpuConfig();
   if (!isExternalProvider(config)) {
     const instanceId = process.env.STORY_CLAW_GPU_INSTANCE || config.instance_id || "";
@@ -188,18 +110,23 @@ export const startGpu = async (mode: "ltx" | "h3" = "ltx"): Promise<void> => {
     const publicKey = process.env.COMPSHARE_PUBLIC_KEY || config.public_key || "";
     const privateKey = process.env.COMPSHARE_PRIVATE_KEY || config.private_key || "";
     if (!publicKey || !privateKey) throw new Error("CompShare GPU 配置缺少 public_key 或 private_key");
+    const startupDeadline = Date.now() + Math.max(1, Number(config.start_timeout) || 180) * 1000;
     let attempt = 0;
     while (true) {
       attempt += 1;
       try {
         const current = await locateInstance(config);
         if (current.state.toLowerCase() !== "running") {
-          await invokeCompShare(config, "StartCompShareInstance", {Region: current.region, Zone: current.zone, UHostId: instanceId});
-          await waitForState(config, "Running", Math.max(1, Number(config.start_timeout) || 180));
+          // A prior accepted start may still be booting, including after a lost API response.
+          if (!["initializing", "starting", "pending"].includes(current.state.toLowerCase())) {
+            await invokeCompShare(config, "StartCompShareInstance", {Region: current.region, Zone: current.zone, UHostId: instanceId});
+          }
+          await waitForState(config, "Running", Math.max(1, (startupDeadline - Date.now()) / 1000));
         }
         console.log(`[${now()}] CompShare GPU 已运行（尝试 ${attempt}）`);
         break;
       } catch (error) {
+        if (Date.now() >= startupDeadline) throw new Error(`GPU 启动超时；已停止重试：${error instanceof Error ? error.message : String(error)}`, {cause: error});
         const delay = 5000 + Math.floor(Math.random() * 5000);
         console.warn(`[${now()}] GPU 启动尝试 ${attempt} 失败：${error instanceof Error ? error.message : String(error)}；${(delay / 1000).toFixed(1)} 秒后重试`);
         await sleep(delay);

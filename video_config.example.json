@@ -1,12 +1,9 @@
 {
-  "base_url": "http://127.0.0.1:8188",
-  "workflow_path": "C:/path/to/video_ltx2_3_i2v_PRESUB.json",
   "h3_base_url": "http://127.0.0.1:8188",
   "h3_workflow_path": "",
   "h3_max_duration": 15,
-  "default_duration": 4,
-  "concurrency": 4,
-  "poll_interval_ms": 5000,
-  "max_retries": 3,
-  "retry_sleep_ms": 8000
+  "h3_concurrency": 1,
+  "h3_poll_interval_ms": 5000,
+  "h3_max_retries": 2,
+  "h3_timeout_ms": 1800000
 }

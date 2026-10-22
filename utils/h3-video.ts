@@ -5,6 +5,7 @@ import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {getStoryVideoConfig, H3_FPS, H3_MAX_DURATION, type StoryVideoConfig} from "./story-video-config.js";
 import {resolveMediaCommand} from "./media-binaries.js";
+import {PATHS} from "./paths.js";
 
 type ApiNode = {class_type: string; inputs: Record<string, any>};
 export type H3ApiWorkflow = Record<string, ApiNode>;
@@ -354,4 +355,32 @@ export async function checkH3RenderService(config = getStoryVideoConfig()): Prom
     const names = info[node.class_type]?.input?.required?.[field]?.[0];
     if (!Array.isArray(names) || !names.includes(node.inputs[field])) throw new Error(`ComfyUI 缺少 H3 模型文件: ${node.inputs[field]}`);
   }
+}
+
+/** A real minimum-length inference: load models, sample, decode both VAEs and verify a playable video. */
+export async function warmH3RenderService(config = getStoryVideoConfig()): Promise<string> {
+  await checkH3RenderService(config);
+  const directory = path.join(PATHS.h3Warmups, randomUUID());
+  await fs.mkdir(directory, {recursive: true});
+  const reference = path.join(directory, "reference.png");
+  const workflowPath = path.join(directory, "workflow.json");
+  const nativePath = path.join(directory, "native.mp4");
+  const outputPath = path.join(directory, "warmup.mp4");
+  const {default: sharp} = await import("sharp");
+  await sharp({create: {width: 256, height: 256, channels: 3, background: "#8b9aab"}}).png().toFile(reference);
+  const graph = JSON.parse(await fs.readFile(config.workflowPath, "utf8")) as H3ApiWorkflow;
+  // Only reduce sampling work. Keep the validated pixel budget, minimum native frames and audio/video decode path.
+  const schedulers = nodeIds(graph, "BasicScheduler");
+  if (!schedulers.length) throw new Error("H3 预热需要 BasicScheduler，不能跳过实际采样");
+  for (const id of schedulers) graph[id].inputs.steps = 1;
+  await fs.writeFile(workflowPath, JSON.stringify(graph, null, 2));
+  await generateH3Video({references: [reference], prompt: "A quiet plain scene with a small gentle camera motion. No text.",
+    outputPath, nativePath, requestPath: path.join(directory, "request.json"), aspectRatio: "16:9", duration: 1 / H3_FPS},
+    {...config, workflowPath, maxRetries: 0});
+  const {stdout} = await execFileAsync(resolveMediaCommand("ffprobe"), ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames,r_frame_rate", "-of", "json", nativePath], {timeout: 120_000});
+  const stream = JSON.parse(String(stdout)).streams?.[0];
+  if (Number(stream?.nb_read_frames) < MIN_NATIVE_FRAMES || stream?.r_frame_rate !== "24/1") throw new Error("H3 预热原生视频帧数或帧率不合格");
+  await execFileAsync(resolveMediaCommand("ffmpeg"), ["-v", "error", "-xerror", "-i", nativePath, "-f", "null", "-"], {timeout: 120_000, maxBuffer: 1024 * 1024});
+  await fs.writeFile(path.join(directory, "completed.json"), JSON.stringify({backend: "h3", nativeFrames: Number(stream.nb_read_frames), fps: H3_FPS, completedAt: new Date().toISOString()}));
+  return nativePath;
 }

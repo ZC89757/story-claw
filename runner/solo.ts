@@ -411,19 +411,6 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
       const needsVisualPlanning = essayAnnotationChanged
         || essayTimelineChanged
         || !essayPlanCurrent;
-      if (needsVisualPlanning) {
-        reportPhase({
-          phase: "gpu_queued",
-          label: "GPU 启动与预热中",
-          detail: "时间轴已就绪，正在启动视觉片段生成服务",
-        });
-        console.log(`\n  正在启动 GPU；实例启动后会自动等待渲染服务预热...`);
-        gpuStarted = true;
-        await startManagedGpu();
-        console.log(`  GPU 实例已就绪\n`);
-        reportPhase({ phase: "gpu_ready", label: "GPU 已就绪", detail: "视觉片段生成服务已准备完成" });
-      }
-
       reportPhase({
         phase: "mg_planning",
         label: "生成视觉视频片段",
@@ -443,7 +430,12 @@ export async function runSolo(sel: NovelSelection, onPhase?: SoloPhaseReporter):
           invalidateStages: ["mgPlan", "mgRender", "finalize"],
         });
         const {planEssayMg} = await import("./mg/planner.js");
-        await planEssayMg(sel);
+        await planEssayMg(sel, {beforeGeneratedVideo: async () => {
+          reportPhase({phase: "gpu_queued", label: "GPU 启动与预热中", detail: "本地 MG 片段已完成，正在启动 H3 生成剩余视频"});
+          gpuStarted = true;
+          await startManagedGpu("h3");
+          reportPhase({phase: "gpu_ready", label: "GPU 已就绪", detail: "H3 实际视频预热通过，开始生成剩余片段"});
+        }});
         await markStage(sel.novelName, ep, "mgPlan", "done");
         epRec = getEpisodeRecord(await readProgress(sel.novelName), ep);
         p.done(progressIndex.mgPlan, title, "function_calls.json / render_bundle.json / 视频片段");

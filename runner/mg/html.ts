@@ -2,6 +2,7 @@ import {createRequire} from "node:module";
 import type {ArticleTimelineEntry} from "../render.js";
 import {loadMgTemplateProvider} from "../../utils/mg-template-runtime.js";
 import type {DirectedGraphAnnotation, LocatedMgTag, MgInstanceInfo, MgMode} from "./types.js";
+import {requiresReviewedTopology} from "./reviewed-topology.js";
 
 const require = createRequire(import.meta.url);
 const parse5 = require("parse5") as {parse(input: string): HtmlNode};
@@ -39,11 +40,11 @@ const parseValuesAttribute = (tag: string, raw: string | undefined): string[] =>
   return values;
 };
 
-const parseDirectedGraphTopology = (attrs: Record<string, string>): DirectedGraphAnnotation | undefined => {
+const parseDirectedGraphTopology = (attrs: Record<string, string>, tag: string): DirectedGraphAnnotation | undefined => {
   const hasNodes = attrs.nodes !== undefined;
   const hasEdges = attrs.edges !== undefined;
   if (!hasNodes && !hasEdges) return undefined;
-  if (!hasNodes || !hasEdges) throw new Error("<directed-graph> 的 nodes 和 edges 必须同时提供");
+  if (!hasNodes || !hasEdges) throw new Error(`<${tag}> 的 nodes 和 edges 必须同时提供`);
 
   let rawNodes: unknown;
   let rawEdges: unknown;
@@ -51,29 +52,29 @@ const parseDirectedGraphTopology = (attrs: Record<string, string>): DirectedGrap
     rawNodes = JSON.parse(attrs.nodes);
     rawEdges = JSON.parse(attrs.edges);
   } catch {
-    throw new Error("<directed-graph> 的 nodes/edges 必须是合法 JSON");
+    throw new Error(`<${tag}> 的 nodes/edges 必须是合法 JSON`);
   }
   if (!Array.isArray(rawNodes) || rawNodes.length < 1 || rawNodes.length > 40
     || rawNodes.some((node) => typeof node !== "string" || !node.trim() || node.length > 80)) {
-    throw new Error("<directed-graph> 的 nodes 必须是 1-40 个非空字符串");
+    throw new Error(`<${tag}> 的 nodes 必须是 1-40 个非空字符串`);
   }
   const nodes = rawNodes.map((node) => String(node).trim());
-  if (new Set(nodes).size !== nodes.length) throw new Error("<directed-graph> 的 nodes 不允许重复");
+  if (new Set(nodes).size !== nodes.length) throw new Error(`<${tag}> 的 nodes 不允许重复`);
   if (!Array.isArray(rawEdges) || rawEdges.length < 1 || rawEdges.length > 40
     || rawEdges.some((edge) => !Array.isArray(edge) || edge.length !== 2
       || !Number.isInteger(edge[0]) || !Number.isInteger(edge[1]))) {
-    throw new Error("<directed-graph> 的 edges 必须是 1-40 个 [from,to] 整数对");
+    throw new Error(`<${tag}> 的 edges 必须是 1-40 个 [from,to] 整数对`);
   }
   const edgeKeys = new Set<string>();
   const edges = rawEdges.map((edge) => {
     const from = Number(edge[0]);
     const to = Number(edge[1]);
     if (from < 0 || from >= nodes.length || to < 0 || to >= nodes.length) {
-      throw new Error("<directed-graph> 的 edges 节点索引超出 nodes 范围");
+      throw new Error(`<${tag}> 的 edges 节点索引超出 nodes 范围`);
     }
-    if (from === to) throw new Error("<directed-graph> 的 edges 不能连接节点自身");
+    if (from === to) throw new Error(`<${tag}> 的 edges 不能连接节点自身`);
     const key = `${from}:${to}`;
-    if (edgeKeys.has(key)) throw new Error("<directed-graph> 的 edges 不允许重复方向");
+    if (edgeKeys.has(key)) throw new Error(`<${tag}> 的 edges 不允许重复方向`);
     edgeKeys.add(key);
     return [from, to] as const;
   });
@@ -329,10 +330,9 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       if (!isMg) return;
 
       const generatedVideo = isGeneratedVideoTag(htmlTag);
-      const graphTag = htmlTag === "directed-graph";
       const allowedAttrs = new Set(generatedVideo
-        ? ["group", "order"]
-        : ["group", "order", "mode", "value", "values", ...(graphTag ? ["nodes", "edges"] : [])]);
+        ? ["group", "order", "nodes", "edges"]
+        : ["group", "order", "mode", "value", "values", "nodes", "edges"]);
       const unknownAttrs = Object.keys(attrs).filter((name) => !allowedAttrs.has(name));
       if (unknownAttrs.length) throw new Error(`<${htmlTag}> 包含不支持的属性: ${unknownAttrs.join(", ")}`);
       if (!group || !GROUP_PATTERN.test(group) || group.length > 80) throw new Error(`<${htmlTag}> 缺少合法 group`);
@@ -361,8 +361,10 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       if (valueAnchors && JSON.stringify(valueAnchors.map((anchor) => anchor.text)) !== JSON.stringify(values ?? [])) {
         throw new Error(`<${htmlTag}> 的 mg-value 文本和顺序必须与 values 完全一致`);
       }
-      const graph = graphTag ? parseDirectedGraphTopology(attrs) : undefined;
-      if (graphTag && !graph) throw new Error("<directed-graph> 必须提供已审核的 nodes 和 edges");
+      const graph = parseDirectedGraphTopology(attrs, htmlTag!);
+      const needsTopology = mgProvider.getPlanningTools([htmlTag!])
+        .some((tool) => requiresReviewedTopology(tool.parameters, group));
+      if (needsTopology && !graph) throw new Error(`<${htmlTag}> 的函数契约包含节点和连线，必须提供已审核的 nodes 和 edges`);
       if (!generatedVideo && attrs.mode === "split" && (value === undefined || !Number.isInteger(value) || value < 1)) throw new Error(`<${htmlTag}> 的 split value 必须是正整数`);
       if (!generatedVideo && attrs.mode === "split" && attrs.values !== undefined) throw new Error(`<${htmlTag}> 的 split 不允许使用 values`);
       if (!generatedVideo && attrs.mode === "together" && attrs.value !== undefined) throw new Error(`<${htmlTag}> 的 together 不允许使用 value`);
@@ -430,7 +432,7 @@ const parseStructure = (html: string, articleSource: string): ParsedStructure =>
       throw new Error(`${instanceKey} 出现在不同父实例；这些是独立实例，必须用连续 order 区分`);
     }
     if (instanceTags.some((tag) => JSON.stringify(tag.graph ?? null) !== JSON.stringify(first.graph ?? null))) {
-      throw new Error(`${instanceKey} 的 directed-graph 拓扑不一致`);
+      throw new Error(`${instanceKey} 的 nodes/edges 拓扑不一致`);
     }
     mgProvider.validateAnnotatedInstance({htmlTag: first.tag, tagCount: instanceTags.length});
     const values = [...instanceTags].sort((a, b) => a.documentOrder - b.documentOrder).map((tag) => tag.value);

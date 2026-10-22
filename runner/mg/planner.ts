@@ -6,6 +6,8 @@ import type {ToolDefinition} from "@mariozechner/pi-coding-agent";
 import {runSubAgent} from "../../agent.js";
 import {searchWebTool} from "../../tools/search-web.js";
 import type {NovelSelection} from "../../ui/select.js";
+import {getStoryVideoConfig} from "../../utils/story-video-config.js";
+import {h3ClipCacheIdentity} from "../../utils/h3-clip.js";
 import {novelPaths} from "../../utils/paths.js";
 import {
   generateVisualTagImage,
@@ -20,8 +22,9 @@ import {locateMgInstances, validateMgAnnotationHtml} from "./html.js";
 import {assertMgVideoFrames, runMediaCommand} from "./media.js";
 import {mgProvider, resolveMgFunctionCall} from "./registry.js";
 import {getMgAnnotationWindow} from "./timing.js";
+import {formatReviewedTopology, reviewedTopologyErrors} from "./reviewed-topology.js";
+import {isGeneratedVideoTag, runVisualTaskQueue} from "./task-queue.js";
 import type {
-  DirectedGraphAnnotation,
   MgCompositionNode,
   MgInstanceInfo,
   MgRenderBundle,
@@ -48,19 +51,17 @@ export type MgPlanRefreshOptions = {
   replanInstanceKeys?: readonly string[];
   rerenderInstanceKeys?: readonly string[];
   reuseGeneratedVideoInstanceKeys?: readonly string[];
+  /** Called once, after local clips finish, only when an uncached generated video is needed. */
+  beforeGeneratedVideo?: () => Promise<void>;
+  /** Explicit preplanned calls, validated through the same Provider and reviewed HTML rules. */
+  functionCalls?: readonly RawMgFunctionCall[];
+  /** Trusted local render checkpoints accompanying those exact calls; timing and media are rechecked. */
+  preparedClips?: readonly PreparedMgClip[];
 };
 
-const isGeneratedVideoTag = (tag: string | undefined): boolean =>
-  tag === "sc-video" || tag === "sc-longtake";
+export type PreparedMgClip = Pick<VisualFunctionRecord, "instanceKey" | "name" | "arguments" | "startFrame" | "endFrame"> & {videoPath: string};
 
 
-
-const directedGraphNodeId = (index: number): string => `n${index}`;
-
-const formatDirectedGraphTopology = (graph: DirectedGraphAnnotation): string => JSON.stringify({
-  nodes: graph.nodes.map((label, index) => ({id: directedGraphNodeId(index), label})),
-  edges: graph.edges.map(([from, to]) => ({from: directedGraphNodeId(from), to: directedGraphNodeId(to)})),
-}, null, 2);
 
 export const selectMgFunctionDefinitions = (tags: Iterable<string>) =>
   mgProvider.getPlanningTools([...new Set(tags)]);
@@ -99,6 +100,7 @@ const taskSignature = (input: {
   height: number;
   fps: number;
   existingReferenceImageHash?: string;
+  generatedVideoBackend?: unknown;
   activeWindows?: Array<{startFrame: number; endFrame: number}>;
 }): string => hashId(JSON.stringify(stableValue(input)));
 
@@ -234,40 +236,6 @@ const placementFor = (candidate: WindowCandidate, index: number, video: MgVideoI
   render: candidate.call.render,
 });
 
-const directedGraphTopologyErrors = (
-  call: ResolvedMgFunctionCall,
-  instance: MgInstanceInfo,
-): string[] => {
-  if (instance.tag !== "directed-graph") return [];
-  const graph = instance.graph;
-  if (!graph) return ["HTML directed-graph 缺少已审核的 nodes/edges 拓扑"];
-  const errors: string[] = [];
-  const rawNodes = call.arguments.nodes;
-  const rawEdges = call.arguments.edges;
-  if (!Array.isArray(rawNodes) || rawNodes.length !== graph.nodes.length) {
-    errors.push(`Function Call 的 nodes 数量必须为 ${graph.nodes.length}`);
-  } else {
-    rawNodes.forEach((raw, index) => {
-      const node = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-      const expectedId = directedGraphNodeId(index);
-      if (node.id !== expectedId) errors.push(`nodes[${index}].id 必须保持为 ${expectedId}`);
-      if (node.label !== graph.nodes[index]) errors.push(`nodes[${index}].label 不得修改 HTML 拓扑文字`);
-    });
-  }
-  if (!Array.isArray(rawEdges) || rawEdges.length !== graph.edges.length) {
-    errors.push(`Function Call 的 edges 数量必须为 ${graph.edges.length}`);
-  } else {
-    rawEdges.forEach((raw, index) => {
-      const edge = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-      const [from, to] = graph.edges[index];
-      if (edge.from !== directedGraphNodeId(from) || edge.to !== directedGraphNodeId(to)) {
-        errors.push(`edges[${index}] 必须保持 HTML 中的 ${directedGraphNodeId(from)} -> ${directedGraphNodeId(to)}`);
-      }
-    });
-  }
-  return errors;
-};
-
 const buildScenes = (
   calls: ResolvedMgFunctionCall[],
   instances: Map<string, MgInstanceInfo>,
@@ -304,7 +272,7 @@ const validateResolvedCall = (
   if (call.order !== instance.order) {
     errors.push(`order 应为 ${instance.order ?? "null"}，实际为 ${call.order ?? "null"}`);
   }
-  errors.push(...directedGraphTopologyErrors(call, instance));
+  errors.push(...reviewedTopologyErrors(call.arguments, instance.graph));
   const rootAt = instance.tags[0].start;
   if (!Number.isFinite(call.at) || Math.abs(call.at - rootAt) > AT_TOLERANCE_SECONDS) {
     errors.push(`根 at=${call.at}，应接近 ${rootAt}`);
@@ -354,6 +322,45 @@ const resolveAnnotatedCall = (
     start: instance.tags[0].start,
     end: target.endFrame / video.fps,
   });
+};
+
+export const validateProvidedMgCalls = (
+  rawCalls: readonly RawMgFunctionCall[],
+  instances: Map<string, MgInstanceInfo>,
+  video: MgVideoInfo,
+): Map<string, ResolvedMgFunctionCall> => {
+  if (!Array.isArray(rawCalls)) throw new Error("预规划 Function Calls 必须是数组");
+  const calls = new Map<string, ResolvedMgFunctionCall>();
+  for (const raw of rawCalls) {
+    const call = resolveAnnotatedCall(raw, instances, video);
+    if (calls.has(call.instanceKey)) throw new Error(`重复的预规划实例 ${call.instanceKey}`);
+    validateResolvedCall(call, instances.get(call.instanceKey)!, video.duration);
+    calls.set(call.instanceKey, call);
+  }
+  const missing = [...instances.keys()].filter((key) => !calls.has(key));
+  if (missing.length) throw new Error(`预规划缺少实例: ${missing.join(", ")}`);
+  return calls;
+};
+
+export const adoptPreparedMgClips = async (
+  records: VisualFunctionRecord[],
+  clips: readonly PreparedMgClip[],
+  fps: number,
+): Promise<void> => {
+  const seen = new Set<string>();
+  const accepted: Array<{record: VisualFunctionRecord; clip: PreparedMgClip}> = [];
+  for (const clip of clips) {
+    const record = records.find((candidate) => candidate.instanceKey === clip.instanceKey);
+    if (!record || seen.has(clip.instanceKey)) throw new Error(`预渲染片段实例无效或重复: ${clip.instanceKey}`);
+    seen.add(clip.instanceKey);
+    if (record.name !== clip.name || JSON.stringify(stableValue(record.arguments)) !== JSON.stringify(stableValue(clip.arguments))
+      || record.startFrame !== clip.startFrame || record.endFrame !== clip.endFrame) {
+      throw new Error(`预渲染片段与当前参数或时间不一致: ${clip.instanceKey}`);
+    }
+    await assertMgVideoFrames(clip.videoPath, record.endFrame - record.startFrame, fps);
+    accepted.push({record, clip});
+  }
+  for (const {record, clip} of accepted) Object.assign(record, {status: "completed", videoPath: clip.videoPath, error: undefined});
 };
 
 const scopeRootKey = (instance: MgInstanceInfo, instances: Map<string, MgInstanceInfo>): string => {
@@ -411,10 +418,10 @@ const formatScopePrompt = (
     })
     .join("\n");
   const graphContracts = members
-    .filter((instance) => instance.tag === "directed-graph" && instance.graph)
+    .filter((instance) => instance.graph)
     .map((instance) => [
-      `\n已由人工审核的 directed-graph 固定拓扑（实例 ${instance.instanceKey}；Function Call 必须原样复制，不能增删、改名、改连线；只补每个节点和连线的绝对 at，以及每条边的 relation）：`,
-      formatDirectedGraphTopology(instance.graph!),
+      `\n已由人工审核的 <${instance.tag}> 固定拓扑（实例 ${instance.instanceKey}；Function Call 必须原样复制，不能增删、改名、改连线；只补函数 Schema 允许的图片/属性、绝对 at 和边 relation）：`,
+      formatReviewedTopology(instance.graph!),
       "节点 id 必须使用 n0、n1……，nodes 和 edges 的顺序也必须保持不变。",
     ].join("\n"))
     .join("\n");
@@ -690,6 +697,7 @@ const describeTask = (
   return {
     signature: taskSignature({
       cacheVersion: VISUAL_RENDER_CACHE_VERSION,
+      ...(isGeneratedVideoTag(call.htmlTag) ? {generatedVideoBackend: h3ClipCacheIdentity(getStoryVideoConfig(), fsSync.readFileSync(getStoryVideoConfig().workflowPath))} : {}),
       instanceKey: call.instanceKey,
       scopeKey: scopeRootKey(instance, instances),
       ...(instance.parentInstance ? {parentInstance: instance.parentInstance} : {}),
@@ -1133,6 +1141,9 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
     durationFrames: Math.max(1, Math.ceil(audioDuration * settings.fps)),
   };
 
+  const providedCalls = refresh.functionCalls === undefined ? undefined : validateProvidedMgCalls(refresh.functionCalls, instances, video);
+  if (refresh.preparedClips?.length && !providedCalls) throw new Error("导入预渲染片段需要同时提供已校验的 Function Calls");
+
   const scopes = new Map<string, MgInstanceInfo[]>();
   for (const instance of instances.values()) {
     const rootKey = scopeRootKey(instance, instances);
@@ -1242,6 +1253,7 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
     }
   }
 
+  if (providedCalls) for (const [key, call] of providedCalls) reusableCalls.set(key, call);
   const planningTargets = selectMgPlanningTargets(
     roots, scopes, reusableCalls, targetedRefresh ? replanInstanceKeys : undefined,
   );
@@ -1322,6 +1334,7 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
     return record;
   });
   const flushRecords = createRecordWriter(sel, records);
+  if (refresh.preparedClips?.length) await adoptPreparedMgClips(records, refresh.preparedClips, video.fps);
   await flushRecords();
 
   const updateRecord = async (
@@ -1336,7 +1349,7 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
   const callsByInstance = new Map(resolvedCalls.map((call) => [call.instanceKey, call]));
   // Remotion template renders share a local Chromium/webpack runtime. Running
   // several at once can close browser targets and strand every pending clip.
-  await runWithConcurrency(records, 1, async (record, index) => {
+  await runVisualTaskQueue(records, async (record, index, prepareGeneratedVideo) => {
     let call = callsByInstance.get(record.instanceKey)!;
     if (record.status === "completed" && record.videoPath) {
       if (await reuseValidClip(record.videoPath, record.endFrame - record.startFrame, video.fps)) {
@@ -1345,6 +1358,7 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
       }
       await updateRecord(index, "queued", {videoPath: undefined});
     }
+    if (isGeneratedVideoTag(call.htmlTag)) await prepareGeneratedVideo();
     let lastError: unknown;
     let mediaAttempt = 0;
     let webReplans = 0;
@@ -1390,6 +1404,7 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
         lastError = error;
         const message = error instanceof Error ? error.message : String(error);
         await updateRecord(index, "failed", {error: message, retries: attempt});
+        if (providedCalls && isWebFocusCaptureFailure(error)) break;
         if (isWebFocusTag(call.htmlTag) && isWebFocusCaptureFailure(error)) {
           const rejectedUrl = failedWebFocusUrl(error) ?? String(call.arguments.url ?? "");
           const normalizedRejectedUrl = normalizedWebUrl(rejectedUrl);
@@ -1449,6 +1464,7 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
           if (replacementAccepted) continue;
           break;
         }
+        if (isGeneratedVideoTag(call.htmlTag)) break; // H3 owns retries; never resubmit an ambiguous accepted GPU job.
         mediaAttempt++;
         if (mediaAttempt < MEDIA_MAX_ATTEMPTS) {
           console.warn(`[视觉任务] ${record.instanceKey} 第 ${attempt}/${MEDIA_MAX_ATTEMPTS} 次失败，重试: ${message}`);
@@ -1458,7 +1474,7 @@ export async function planEssayMg(sel: NovelSelection, refresh: MgPlanRefreshOpt
       }
     }
     throw lastError ?? new Error(`${record.instanceKey} 视频任务失败`);
-  });
+  }, refresh.beforeGeneratedVideo);
 
   const nodes = compositionNodesFor(records, callsByInstance, instances);
   const bundle: MgRenderBundle = {

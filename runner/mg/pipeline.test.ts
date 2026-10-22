@@ -8,9 +8,10 @@ import {
   stripMgAnnotationDecoration,
   validateMgAnnotationHtml,
 } from "./html.js";
-import {compileMgScenes, computeScLongtakeSegmentWindows, selectMgFunctionDefinitions, selectMgPlanningTargets, webFocusNeedsPageRead} from "./planner.js";
+import {compileMgScenes, computeScLongtakeSegmentWindows, selectMgFunctionDefinitions, selectMgPlanningTargets, validateProvidedMgCalls, webFocusNeedsPageRead} from "./planner.js";
 import {resolveMgFunctionCall} from "./registry.js";
 import {getMgAnnotationWindow} from "./timing.js";
+import {formatReviewedTopology, requiresReviewedTopology, reviewedTopologyErrors} from "./reviewed-topology.js";
 import type {LocatedMgTag, MgInstanceInfo, MgMode, MgVideoInfo} from "./types.js";
 
 const article = [
@@ -44,6 +45,21 @@ const buildTimeline = (source: string): ArticleTimelineEntry[] =>
     start: Number((index * 0.1).toFixed(3)),
     end: Number(((index + 1) * 0.1).toFixed(3)),
   }));
+
+test("preplanned calls require exact HTML instance coverage and the same Provider validation", () => {
+  const source="甲乙";
+  const markup='<article><mg-title group="slide" order="1" mode="together">甲</mg-title><mg-title group="slide" order="2" mode="together">乙</mg-title></article>';
+  const instances=locateMgInstances(markup,buildTimeline(source),source);
+  const video={width:1280,height:720,fps:24,duration:1,durationFrames:24};
+  const calls=[{id:"one",name:"create_title_cue",arguments:{group:"slide",order:1,text:"甲"}},{id:"two",name:"create_title_cue",arguments:{group:"slide",order:2,text:"乙"}}];
+  const valid=validateProvidedMgCalls(calls,instances,video);
+  assert.equal(valid.size,2);
+  assert.equal([...valid.values()][1].at,0.1);
+  assert.throws(()=>validateProvidedMgCalls(calls.slice(0,1),instances,video),/缺少实例/);
+  assert.throws(()=>validateProvidedMgCalls([calls[0],calls[0]],instances,video),/重复/);
+  assert.throws(()=>validateProvidedMgCalls([{...calls[0],arguments:{...calls[0].arguments,at:0}},calls[1]],instances,video),/宿主|host|whole-instance/);
+  assert.throws(()=>validateProvidedMgCalls([{...calls[0],arguments:{...calls[0].arguments,order:3}},calls[1]],instances,video),/HTML 不包含/);
+});
 
 test("MG HTML preserves clean text and locates nested groups on the real timeline", () => {
   assert.deepEqual(validateMgAnnotationHtml(html, article), {instanceCount: 3, tagCount: 4});
@@ -92,6 +108,50 @@ test("directed-graph keeps the reviewed topology in the located instance", () =>
     () => validateMgAnnotationHtml(valid.replace(" nodes='[\"显卡\",\"研究机构\"]'", ""), source),
     /nodes 和 edges 必须同时提供/,
   );
+});
+
+test("every node-edge function uses the same reviewed HTML topology contract", () => {
+  const source = "内容连接用户。";
+  for (const [tag, group] of [["directed-graph", "flow"], ["image-directed-graph", "flow"], ["collage-network", "network"]]) {
+    const valid = `<!DOCTYPE html><html><body><article><${tag} group="${group}" mode="together" nodes='["内容","用户"]' edges='[[0,1]]'>${source}</${tag}></article></body></html>`;
+    const key = `${tag}::${group}::one`;
+    assert.deepEqual(validateMgAnnotationHtml(valid, source), {instanceCount: 1, tagCount: 1});
+    const instance = locateMgInstances(valid, buildTimeline(source), source).get(key)!;
+    assert.deepEqual(instance.graph, {nodes: ["内容", "用户"], edges: [[0, 1]]});
+    assert.throws(() => validateMgAnnotationHtml(valid.replace(/ nodes='[^']*' edges='[^']*'/, ""), source), /必须提供已审核的 nodes 和 edges/);
+    assert.throws(() => validateMgAnnotationHtml(valid.replace("edges='[[0,1]]'", "edges='[[0,1],[0,1]]'"), source), /不允许重复方向/);
+    assert.throws(() => validateMgAnnotationHtml(valid.replace("edges='[[0,1]]'", "edges='[[1,1]]'"), source), /不能连接节点自身/);
+    assert.throws(() => validateMgAnnotationHtml(valid.replace("edges='[[0,1]]'", "edges='bad'"), source), /必须是合法 JSON/);
+  }
+});
+
+test("topology capabilities come from the function schema rather than template names", () => {
+  const schema = {type: "object", required: ["nodes", "edges"], properties: {
+    group: {type: "string", enum: ["new-style"]},
+    nodes: {type: "array", items: {properties: {id: {type: "string"}, label: {type: "string"}, source: {type: "object"}}}},
+    edges: {type: "array", items: {properties: {from: {type: "string"}, to: {type: "string"}}}},
+  }};
+  assert.equal(requiresReviewedTopology(schema, "new-style"), true);
+  assert.equal(requiresReviewedTopology(schema, "other-style"), false);
+  assert.equal(requiresReviewedTopology({...schema, required: ["nodes"]}, "new-style"), false);
+  assert.equal(requiresReviewedTopology({type: "object", properties: {nodes: {type: "array"}}}, "new-style"), false);
+});
+
+test("image and role properties may vary while reviewed graph identities stay fixed", () => {
+  const graph = {nodes: ["内容", "用户"], edges: [[0, 1] as const]};
+  const args = {nodes: [{id: "n0", label: "内容", source: {mode: "transparent", image: "content.png", prompt: null}, at: 1}, {id: "n1", label: "用户", role: "reader", at: 2}], edges: [{from: "n0", to: "n1", relation: "提供内容", at: 3}]};
+  assert.deepEqual(reviewedTopologyErrors(args, graph), []);
+  assert.deepEqual(JSON.parse(formatReviewedTopology(graph)), {nodes: [{id: "n0", label: "内容"}, {id: "n1", label: "用户"}], edges: [{from: "n0", to: "n1"}]});
+  for (const mutate of [
+    (value: any) => {value.nodes[0].label = "新名称";},
+    (value: any) => {value.nodes.reverse();},
+    (value: any) => {value.nodes.push({id: "n2", label: "多余"});},
+    (value: any) => {value.edges[0].from = "n1"; value.edges[0].to = "n0";},
+    (value: any) => {value.edges = [];},
+  ]) {
+    const value = structuredClone(args); mutate(value);
+    assert.ok(reviewedTopologyErrors(value, graph).length > 0);
+  }
 });
 
 test("sc-longtake is a single relay video instance without mode or value", () => {

@@ -118,25 +118,11 @@ export async function ensureSetup(): Promise<boolean> {
     if (!hasVideo) {
       console.log("  ── 视频生成配置 (video_config.json) ──\n");
 
-      const apiKey = await ask(rl, "  api_key: ");
-      if (!apiKey) { console.log("  api_key 不能为空，中止。"); return false; }
-
-      const baseUrl = await ask(rl, "  base_url (如 https://zenmux.ai/api/vertex-ai): ");
-      if (!baseUrl) { console.log("  base_url 不能为空，中止。"); return false; }
-
-      const config: Record<string, string | number | string[]> = {
-        api_key: apiKey,
-        base_url: baseUrl,
-        models: [
-          "bytedance/doubao-seedance-2.0",
-          "bytedance/doubao-seedance-1.5-pro",
-          "google/veo-3.1-generate-001",
-        ],
-        h3_max_duration: 15,
-        default_duration: 4,
-        concurrency: 4,
+      const config: Record<string, string | number> = {
+        h3_max_duration: 15, h3_concurrency: 1, h3_max_retries: 2,
+        h3_poll_interval_ms: 5000, h3_timeout_ms: 1800000,
       };
-      console.log("  故事使用 H3；服务地址须为 ComfyUI 原生地址，不能使用 LTX 处理服务的 8191 端口。\n");
+      console.log("  故事、议论文与 MG 视频统一使用 H3 原生 ComfyUI 服务。\n");
       const h3BaseUrl = await ask(rl, "  H3 服务地址 (回车使用 http://127.0.0.1:8188): ") || "http://127.0.0.1:8188";
       let h3Endpoint: URL;
       try { h3Endpoint = new URL(h3BaseUrl); } catch {

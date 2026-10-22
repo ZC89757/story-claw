@@ -66,16 +66,13 @@ const SYSTEM_CONFIG_SECTIONS = Object.freeze({
   video: {
     fileName: "video_config.json",
     fields: {
-      base_url: { type: "string", maxLength: 2048 },
-      workflow_path: { type: "string", maxLength: 2048 },
       h3_base_url: { type: "string", maxLength: 2048, rawComfyUi: true },
       h3_workflow_path: { type: "string", maxLength: 2048 },
       h3_max_duration: { type: "number", min: 0.1, max: 15, default: 15 },
-      default_duration: { type: "number", min: 0.1, max: 3600 },
-      concurrency: { type: "integer", min: 1 },
-      poll_interval_ms: { type: "integer", min: 100, max: 600000 },
-      max_retries: { type: "integer", min: 0, max: 100 },
-      retry_sleep_ms: { type: "integer", min: 0, max: 3600000 },
+      h3_concurrency: { type: "integer", min: 1, max: 16, default: 1 },
+      h3_poll_interval_ms: { type: "integer", min: 1, max: 600000, default: 5000 },
+      h3_max_retries: { type: "integer", min: 0, max: 10, default: 2 },
+      h3_timeout_ms: { type: "integer", min: 1, max: 86400000, default: 1800000 },
     },
   },
   tts: {

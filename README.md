@@ -11,7 +11,7 @@ Technology ultimately has to serve people. True productivity does not lie in how
 
 English | [中文](./README_CN.md)
 
-Story Claw is an open-source, AI-powered novel-to-video pipeline for short-drama episodes, MG animation, and storyboard production. It runs locally with a Windows desktop workflow and a self-hosted ComfyUI/LTX rendering backend.
+Story Claw is an open-source, AI-powered novel-to-video pipeline for short-drama episodes, MG animation, and storyboard production. It runs locally with a Windows desktop workflow and a self-hosted ComfyUI/H3 rendering backend.
 
 **Project site:** https://zc89757.github.io/story-claw/ · **Windows downloads:** https://github.com/ZC89757/story-claw/releases
 
@@ -40,9 +40,9 @@ Anyone who has hand-built a novel-to-video pipeline runs into the same handful o
 Story Claw's pipeline is built specifically around these problems:
 
 - **Characters and scenes evolve in stages.** Each character gets one base reference image, plus a new "stage" image only when their *outfit or carried items* meaningfully change — school uniform → hospital gown after an injury → battle-worn after a fight. Scenes get the same treatment for lighting/time-of-day/props ("classroom, first day, bright afternoon" vs. "classroom, exam night, one flickering light"). The pipeline decides per chapter whether a new stage is actually needed, so a 200-chapter novel doesn't regenerate art every chapter, and a character's look still evolves with the plot.
-- **Every video clip is graded by a vision model before it's accepted.** A custom ComfyUI node pipes each generated clip's first/last frame to a VLM right inside the render graph: does the main subject stay the same person start to finish? Did the model hallucinate an extra face? After subtitle removal, is there still a ghost of text on screen? A clip that fails gets silently regenerated inside the pipeline.
+- **Reference preparation and real-video warmup.** H3 receives reviewed reference images. The pipeline starts the configured GPU and completes a minimum-length sample and decode before production. Generated identity, motion and continuity still need visual review.
 - **One voice per character, for the whole show.** The first time a character speaks, they're assigned a TTS voice from the pool and it's written to a per-novel voice map — every later chapter, every later episode, looks them up by name and reuses the same voice. The narrator gets a dedicated voice, never picked from the character pool.
-- **The video model runs on your own GPU.** Rendering is a self-hosted [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 image-to-video workflow — no Seedance/Kling-style per-second billing sitting between you and an episode.
+- **The video model runs on your own GPU.** Rendering is a self-hosted [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + MiniMax H3 reference-to-video workflow — no Seedance/Kling-style per-second billing sitting between you and an episode.
 - **`gpt-image-2` for the actual pixels.** Against the other models we tried, it's the one that best holds up under the kind of dense, multi-constraint prompt this pipeline throws at it — locked character identity + pose + composition + lighting, all at once.
 
 ---
@@ -105,7 +105,7 @@ npm start
 - **LLM API Key** — OpenAI / Anthropic / Google (pick one, drives all sub-agents)
 - **Image generation API** — `gpt-image-2` (recommended) or a Gemini image model
 - **TTS API Key** — for narration and dialogue synthesis
-- **A ComfyUI instance** (self-hosted, local or rented GPU) running an LTX image-to-video workflow
+- **A ComfyUI instance** (self-hosted, local or rented GPU) running an MiniMax H3 reference-to-video workflow
 - *(Optional)* A BGM generation endpoint and a local sound-effect library (`.mp3`/`.wav`) for background music and sfx
 
 ---
@@ -179,7 +179,7 @@ All config files live in `~/.story-claw/` and are created by the first-run setup
 |-------------|---------|
 | `config.json` | LLM provider/model/API key driving all sub-agents |
 | `image_gen_config.json` | Image generation API (`gpt-image-2` recommended) |
-| `video_config.json` | ComfyUI endpoint, LTX workflow path, video duration/concurrency |
+| `video_config.json` | ComfyUI endpoint, H3 workflow path, video duration/concurrency |
 | `tts_config.json` | TTS provider, voice pool, dedicated narrator voice, concurrency |
 | `sfx/` (optional) | Local sound-effect library — drop `.mp3`/`.wav` files here, tagged by filename |
 
@@ -218,7 +218,7 @@ Currently `.txt` files with the naming pattern `第{N}章 {title}.txt`.
 
 ### Do I need to pay for a video generation API?
 
-No. The video stage talks to your own ComfyUI instance running an LTX image-to-video workflow — you provide the GPU, not a per-second-billed commercial API.
+No. The video stage talks to your own ComfyUI instance running an MiniMax H3 reference-to-video workflow — you provide the GPU, not a per-second-billed commercial API.
 
 ### How does it decide when a character needs a new reference image?
 
@@ -239,7 +239,7 @@ Progress is tracked per episode and per stage in `改编进度.json`. Re-running
 - **Runtime** — Node.js + [tsx](https://github.com/privatenumber/tsx)
 - **Agent Framework** — [@mariozechner/pi-coding-agent](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
 - **Image Generation** — `gpt-image-2` (primary), Gemini image models (fallback)
-- **Video Generation** — self-hosted [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 image-to-video, with custom nodes for VLM-based quality gating
+- **Video Generation** — self-hosted [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + MiniMax H3 reference-to-video
 - **Voice Synthesis** — TTS with word-level timestamps (drives sound-effect placement) and persistent per-character voice assignment
 - **Schema Validation** — [@sinclair/typebox](https://github.com/sinclairzx81/typebox)
 

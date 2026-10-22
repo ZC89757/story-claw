@@ -11,7 +11,7 @@
 
 [English](./README.md) | 中文
 
-Story Claw 是一个开源的 AI 小说转视频制作工具，可用于短剧成片、MG 动画和分镜制作。支持 Windows 桌面工作流，并可连接自托管的 ComfyUI/LTX 渲染后端。
+Story Claw 是一个开源的 AI 小说转视频制作工具，可用于短剧成片、MG 动画和分镜制作。支持 Windows 桌面工作流，并可连接自托管的 ComfyUI/H3 渲染后端。
 
 **项目展示页：** https://zc89757.github.io/story-claw/ · **Windows 下载：** https://github.com/ZC89757/story-claw/releases
 
@@ -40,9 +40,9 @@ Story Claw 是一个开源的 AI 小说转视频制作工具，可用于短剧�
 Story Claw 的流水线就是针对这些问题设计的：
 
 - **角色和场景按阶段演进。** 每个角色只生成一张原型图，只有当**服装或随身道具**发生真正的视觉变化时才补一张"造型图"——开学报到背单肩包 → 出事故后坐轮椅 → 打完架衣服脏破。场景同理，光线/时间/道具变了定义为新阶段（"教室，开学第一天，明亮的下午" vs "教室，考试夜晚，只有一盏灯闪烁"）。是否需要新阶段由每章内容判断，两百章的小说不会每章都重新生图，角色的状态也会随着剧情的变化而变化。
-- **每段视频出片前都要过视觉大模型的审核。** 一个自定义 ComfyUI 节点会在生成流程内部，把每段视频的首尾帧让 VLM 判断：主体人物首尾是否是同一个人？有没有凭空多长出一张脸？去完字幕之后画面上还有没有残留的文字鬼影？没通过就在流程内静默重来。
+- **参考图审核与真实视频预热。** H3 使用审核后的参考图。正式生成前启动 GPU 并完成最短合法视频的采样、解码和校验。生成视频的人物、动作和连续性仍需要审片。
 - **一个角色从头到尾一个声音。** 角色第一次开口时，会从音色池里分配一个 TTS 音色，写进这部小说专属的音色映射表；之后不管第几章、第几集，都按角色名查表复用同一个音色。旁白有专属音色，不会跟角色池混用。
-- **视频模型跑在自己的 GPU 上。** 渲染阶段是自己部署的 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 图生视频工作流，中间没有可灵、Seedance 那种按秒计费的商业接口。
+- **视频模型跑在自己的 GPU 上。** 渲染阶段是自己部署的 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + MiniMax H3 参考图生视频工作流，中间没有可灵、Seedance 那种按秒计费的商业接口。
 - **画面实际生成用 `gpt-image-2`。** 面对这套流水线常见的那种"人物身份+姿态+构图+光影"多约束同时给出的密集提示词，对比其他模型gpt-image2效果最好。
 
 ---
@@ -102,7 +102,7 @@ npm start
 - **LLM API Key** — OpenAI / Anthropic / Google 任选其一，驱动全部子智能体
 - **图像生成 API** — 推荐 `gpt-image-2`，也可用 Gemini 系图像模型
 - **TTS API Key** — 用于配音与台词合成
-- **一个 ComfyUI 实例**（自己部署，本地机器或租用 GPU 均可），跑 LTX 图生视频工作流
+- **一个 ComfyUI 实例**（自己部署，本地机器或租用 GPU 均可），跑 MiniMax H3 参考图生视频工作流
 - *（可选）* BGM 生成接口 + 本地音效库（`.mp3`/`.wav`），用于背景音乐和音效
 
 ---
@@ -176,7 +176,7 @@ workspace/
 |----------|------|
 | `config.json` | 驱动全部子智能体的 LLM provider/model/API key |
 | `image_gen_config.json` | 图像生成 API（推荐 `gpt-image-2`） |
-| `video_config.json` | ComfyUI 地址、LTX 工作流路径、视频时长/并发 |
+| `video_config.json` | ComfyUI 地址、H3 工作流路径、视频时长/并发 |
 | `tts_config.json` | TTS provider、可分配音色池、专属旁白音、并发度 |
 | `sfx/`（可选） | 本地音效库 — 放入 `.mp3`/`.wav` 文件，标签取自文件名 |
 
@@ -215,7 +215,7 @@ workspace/
 
 ### 生视频要另外付费吗？
 
-不需要。生视频阶段调用的是你自己部署的 ComfyUI 实例（跑 LTX 图生视频工作流），算力自备，不是按次计费的商业视频 API。
+不需要。生视频阶段调用的是你自己部署的 ComfyUI 实例（跑 MiniMax H3 参考图生视频工作流），算力自备，不是按次计费的商业视频 API。
 
 ### 角色什么时候会补生成新的参考图？
 
@@ -236,7 +236,7 @@ workspace/
 - **Runtime** — Node.js + [tsx](https://github.com/privatenumber/tsx)
 - **Agent Framework** — [@mariozechner/pi-coding-agent](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
 - **图像生成** — `gpt-image-2`（主力），Gemini 系图像模型（降级）
-- **视频生成** — 自建 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + LTX-2.3 图生视频，自定义节点实现 VLM 质检
+- **视频生成** — 自建 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + MiniMax H3 参考图生视频
 - **语音合成** — 支持字级时间戳的 TTS（驱动音效精确定位）+ 全剧统一的角色音色分配
 - **Schema 校验** — [@sinclair/typebox](https://github.com/sinclairzx81/typebox)
 

@@ -32,7 +32,19 @@ export const PATHS = {
 
   /** search_web 保存的最终网页；模板按 URL 读取同一份快照 */
   webSnapshots: path.join(WORK_DIR, "workspace", ".web-snapshots"),
+  h3Warmups: path.join(WORK_DIR, "work", "h3-warmups"),
 };
+
+export const h3ClipPaths = (output: string) => ({
+  directory: `${output}.h3`,
+  completion: `${output}.h3/completed.json`,
+  part: (index: number) => path.join(`${output}.h3`, `part-${index}.mp4`),
+  native: (index: number) => path.join(`${output}.h3`, `native-${index}.mp4`),
+  request: (index: number) => path.join(`${output}.h3`, `request-${index}.json`),
+  lastFrame: (index: number) => path.join(`${output}.h3`, `last-${index}.png`),
+  concat: `${output}.h3/concat.txt`,
+  pending: `${output}.h3/pending.mp4`,
+});
 
 /**
  * Disposable MG media is kept outside the durable C: workspace when the

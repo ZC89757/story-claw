@@ -30,8 +30,9 @@ import {
 import {hasAudioStream} from "./mg/media.js";
 import {resolveMediaCommand} from "../utils/media-binaries.js";
 import {createHash} from "node:crypto";
-import {getStoryVideoConfig} from "../utils/story-video-config.js";
+import {getStoryVideoConfig, H3_FPS} from "../utils/story-video-config.js";
 import {distributeH3PanelDurations, generateH3Video} from "../utils/h3-video.js";
+import {generateH3Clip} from "../utils/h3-clip.js";
 import {prepareH3Panel, prepareH3SceneContext} from "./h3-panel-preparer.js";
 import {assertH3Workspace, h3CompletionKey, needsStaticPanel, prepareH3MasterManifest, completeH3MasterManifest} from "./story-render-policy.js";
 
@@ -77,7 +78,6 @@ function loadConfig(name: string): any {
 }
 
 const imgCfg = loadConfig("image_gen_config.json");
-const vidCfg = loadConfig("video_config.json");
 const llmCfg = loadConfig("config.json");
 const ttsCfg = loadConfig("tts_config.json");
 
@@ -89,40 +89,10 @@ const SELECT_CONCURRENCY = Math.max(1, Number(llmCfg.select_concurrency ?? 2));
 const SELECT_MAX_RETRIES = 3;
 const SELECT_RETRY_SLEEP = 2000; // ms
 
-// 视频生成（ComfyUI）
-const VIDEO_BASE_URL         = (vidCfg.base_url         ?? "http://127.0.0.1:8188") as string;
-const VIDEO_WORKFLOW_PATH    = vidCfg.workflow_path as string;
-const VIDEO_DEFAULT_DURATION = (vidCfg.default_duration ?? 4) as number;
-const VIDEO_CONCURRENCY      = (vidCfg.concurrency      ?? 6) as number;
-const VIDEO_MAX_RETRIES      = (vidCfg.max_retries      ?? 3) as number;
-const VIDEO_RETRY_SLEEP      = (vidCfg.retry_sleep_ms   ?? 8000) as number;
-const VIDEO_POLL_INTERVAL    = (vidCfg.poll_interval_ms ?? 5000) as number;
-
-// workflow JSON 缓存（启动时加载一次）
-let _workflowTemplate: any = null;
-function getWorkflowTemplate(): any {
-  if (!_workflowTemplate) {
-    _workflowTemplate = JSON.parse(fsSync.readFileSync(VIDEO_WORKFLOW_PATH, "utf-8"));
-  }
-  return _workflowTemplate;
-}
-
-// LTX latent 时间维压缩因子：帧数必须为 LTX_FRAME_STEP·k + 1（模型架构属性，非可调参数）
-const LTX_FRAME_STEP = 8;
-
-// fps 的唯一真值来源：workflow 节点 320:300（同时驱动输出帧率与音频帧率）。
-// 改帧率只需改这个节点，代码自动适配——切勿在别处硬编码 fps。
-function getVideoFps(): number {
-  return (getWorkflowTemplate()["320:300"].inputs.value as number) ?? 25;
-}
-
-// 目标时长（秒）→ LTX 合法帧数（最近的 LTX_FRAME_STEP·k+1，k≥1）。
-// 输出时长 = 帧数 / fps，栅格步进 = LTX_FRAME_STEP / fps（25fps 时 0.32s）。
-function durationToFrames(durSec: number, fps: number): number {
-  const ideal = durSec * fps;
-  const k = Math.max(1, Math.round((ideal - 1) / LTX_FRAME_STEP));
-  return k * LTX_FRAME_STEP + 1;
-}
+// All generated video uses H3; legacy LTX config fields are ignored.
+const VIDEO_DEFAULT_DURATION = 4;
+const VIDEO_CONCURRENCY = getStoryVideoConfig().concurrency;
+const getVideoFps = (): number => H3_FPS;
 
 // LLM（资源选择）
 const LLM_API_KEY    = llmCfg.api_key as string;
@@ -184,28 +154,9 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * 将 group 总时长均分给各 panel。前 n-1 个 panel 各自按 LTX 帧栅格取整，
- * 最后一个 panel 承担全部取整残差，使 group 总帧数精确贴合 group 级取整值
- * （durationToFrames(groupDur)），把"每 panel 独立取整再累积"的误差压成
- * "group 级单次取整"，整集累积误差从 ~2s 降到 ~1s，调速比趋近 ×1.00。
- */
+/** Share exactly rounded 24 fps frames across the group's panels. */
 function distributePanelDurations(groupDur: number, panels: any[]): number[] {
-  const n = panels.length;
-  if (n === 1) return [groupDur];
-  const fps = getVideoFps();
-  const groupFrames = durationToFrames(groupDur, fps);     // group 级取整（误差≤半栅格）
-  const per = groupDur / n;
-  let frontFrames = 0;
-  const front: number[] = [];
-  for (let i = 0; i < n - 1; i++) {
-    const f = durationToFrames(per, fps);
-    front.push(f);
-    frontFrames += f;
-  }
-  const lastFrames = Math.max(9, groupFrames - frontFrames);  // 至少 9 帧（LTX 最小 k=1）
-  const frontDur = front.map((f) => f / fps);
-  return [...frontDur, lastFrames / fps];
+  return distributeH3PanelDurations(groupDur, panels.length);
 }
 
 /** ffprobe 获取媒体时长（秒） */
@@ -293,7 +244,7 @@ async function mixSfx(segPath: string, sfxFile: string, triggerTime: number): Pr
   await fs.unlink(tmp).catch(() => {});
 }
 
-/** 议论文静帧：把单张图做成定长静帧 mp4，不调 LTX。帧数走 durationToFrames，与 LTX panel 同 8k+1 栅格，便于 -c:v copy 拼接。 */
+/** Static essay panels share the final 24 fps timeline and need no GPU inference. */
 async function generateStillVideo(
   imagePath: string,
   outputPath: string,
@@ -301,7 +252,7 @@ async function generateStillVideo(
   aspectRatio: string,
 ): Promise<void> {
   const fps = getVideoFps();
-  const frames = durationToFrames(duration, fps);
+  const frames = Math.max(1, Math.round(duration * fps));
   const [targetW, targetH] = videoSize(aspectRatio);
   const normalizeFilter = [
     `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase`,
@@ -591,76 +542,6 @@ export function getVisualTagVideoSettings(aspectRatio: string): {width: number; 
   return {width, height, fps: getVideoFps()};
 }
 
-async function tryGenerateVideoComfyUI(
-  imgBase64: string,
-  prompt: string,
-  outputPath: string,
-  duration: number,
-  aspectRatio: string,
-): Promise<void> {
-  const [width, height] = videoSize(aspectRatio);
-
-  // 深拷贝 workflow，注入参数
-  const workflow = JSON.parse(JSON.stringify(getWorkflowTemplate()));
-  workflow["324"].inputs.base64_data          = imgBase64;
-  workflow["320:319"].inputs.value            = prompt;
-  workflow["320:312"].inputs.value            = width;
-  workflow["320:299"].inputs.value            = height;
-
-  // 时长控制：把秒按 fps 吸附到 LTX 合法帧数，直接写入 latent 长度的两个消费节点，
-  // 绕过 workflow 内 a*fps+1（320:323）的整数秒瓶颈，使视频时长精确贴合音频。
-  const fps    = getVideoFps();
-  const frames = durationToFrames(duration, fps);
-  workflow["320:295"].inputs.length         = frames;  // EmptyLTXVLatentVideo（视频）
-  workflow["320:305"].inputs.frames_number  = frames;  // LTXVEmptyLatentAudio（音频，须与视频同帧数）
-
-  // 提交任务
-  const submitResp = await fetch(`${VIDEO_BASE_URL}/prompt`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: workflow }),
-  });
-  if (!submitResp.ok) {
-    throw new Error(`ComfyUI 提交失败: HTTP ${submitResp.status} ${(await submitResp.text()).slice(0, 200)}`);
-  }
-  const { prompt_id } = await submitResp.json() as { prompt_id: string };
-  console.log(`    [视频] prompt_id=${prompt_id}，轮询中...`);
-
-  // 轮询 /history/{prompt_id}
-  while (true) {
-    await sleep(VIDEO_POLL_INTERVAL);
-    const histResp = await fetch(`${VIDEO_BASE_URL}/history/${prompt_id}`);
-    if (!histResp.ok) continue;
-    const hist = await histResp.json() as Record<string, any>;
-    const entry = hist[prompt_id];
-    if (!entry) continue;
-
-    const status = entry.status?.status_str ?? "";
-    if (status === "error") {
-      throw new Error(`ComfyUI 生成失败: ${JSON.stringify(entry.status)}`);
-    }
-    if (status !== "success" && !entry.status?.completed) continue;
-
-    // 从 SaveVideo 节点（75）的输出拿文件信息（ComfyUI 返回 key 为 images）
-    const videoOutputs = entry.outputs?.["75"]?.videos ?? entry.outputs?.["75"]?.images;
-    if (!videoOutputs?.length) {
-      throw new Error(`ComfyUI 输出中未找到视频: ${JSON.stringify(entry.outputs)}`);
-    }
-    const { filename, subfolder, type } = videoOutputs[0];
-
-    // 下载视频
-    const viewUrl = `${VIDEO_BASE_URL}/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder ?? "")}&type=${encodeURIComponent(type ?? "output")}`;
-    const vidResp = await fetch(viewUrl);
-    if (!vidResp.ok) {
-      throw new Error(`ComfyUI 下载失败: HTTP ${vidResp.status}`);
-    }
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, Buffer.from(await vidResp.arrayBuffer()));
-    console.log(`    [视频] 已保存: ${path.basename(outputPath)}`);
-    return;
-  }
-}
-
 async function generateVideo(
   vidSem: Semaphore,
   imagePath: string,
@@ -671,33 +552,8 @@ async function generateVideo(
 ): Promise<void> {
   await vidSem.acquire();
   try {
-    const imgBase64 = (await fs.readFile(imagePath)).toString("base64");
-    const _fps = getVideoFps();
-    const _frames = durationToFrames(duration, _fps);
-    console.log(`    [视频] 提交: ${path.basename(outputPath)}（目标 ${duration.toFixed(2)}s → ${_frames}帧/${(_frames / _fps).toFixed(2)}s, ${aspectRatio}）`);
-
-    for (let attempt = 1; attempt <= VIDEO_MAX_RETRIES; attempt++) {
-      try {
-        await tryGenerateVideoComfyUI(imgBase64, prompt, outputPath, duration, aspectRatio);
-        return;
-      } catch (e) {
-        if (attempt < VIDEO_MAX_RETRIES) {
-          const cause = (e as any)?.cause;
-          const causeStr = cause
-            ? ` [cause: ${cause?.code ?? cause?.message ?? String(cause)}]`
-            : "";
-          const now = new Date();
-          const ts = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
-          console.log(`    [视频][${ts}] 第 ${attempt} 次失败: ${e}${causeStr}，${VIDEO_RETRY_SLEEP / 1000}s 后重试...`);
-          await sleep(VIDEO_RETRY_SLEEP);
-        } else {
-          throw new Error(`视频生成失败（${VIDEO_MAX_RETRIES}次）: ${path.basename(outputPath)}: ${e}`);
-        }
-      }
-    }
-  } finally {
-    vidSem.release();
-  }
+    await generateH3Clip({imagePath, prompt, outputPath, aspectRatio, duration});
+  } finally { vidSem.release(); }
 }
 
 // ── Semaphore ─────────────────────────────────────────────────────────────────
@@ -1821,12 +1677,12 @@ export async function renderScene(
   const storyVideoConfig = !isEssay && !sel.imagesOnly ? getStoryVideoConfig() : undefined;
   const useH3 = !isEssay && !sel.imagesOnly;
   let workflowHash = "";
-  if (!isEssay && !sel.imagesOnly) {
+  if (!sel.imagesOnly) {
     const backendPath = novelPaths.storyRenderBackend(sel.novelName, ep, sceneName);
     const existing = await fs.readFile(backendPath, "utf8").then((text) => JSON.parse(text)).catch(() => undefined);
     const files = await fs.readdir(outputDir);
     assertH3Workspace(existing?.backend, files.some((name) => /^g\d+(?:_p\d+)?\.mp4$/.test(name)));
-    workflowHash = createHash("sha256").update(await fs.readFile(storyVideoConfig!.workflowPath)).digest("hex");
+    workflowHash = createHash("sha256").update(await fs.readFile((storyVideoConfig ?? getStoryVideoConfig()).workflowPath)).digest("hex");
     await fs.writeFile(backendPath, `${JSON.stringify({backend: "h3"}, null, 2)}\n`, "utf8");
   }
   console.log(`\n场景: ${sceneName}，共 ${groups.length} 个 group`);
@@ -2037,14 +1893,14 @@ export async function renderScene(
               return;
             }
 
-            // 议论文静帧：无 video_prompt 的 panel（图表/统计/截图类）用静态图填满时长，不调 LTX
+            // 议论文静帧：无 video_prompt 的 panel（图表/统计/截图类）用静态图填满时长，无需 GPU 生成
             if (isEssay && !((panel.video_prompt ?? "").trim())) {
               if (!actualImg || !fsSync.existsSync(actualImg)) {
                 console.log(`    [${prefix}] 议论文静帧：无参考图，跳过`);
                 return;
               }
               await generateStillVideo(actualImg, panelVidPath, duration, sel.aspectRatio);
-              console.log(`    [${prefix}] 议论文静帧视频: ${path.basename(panelVidPath)}（${duration.toFixed(2)}s，不调 LTX）`);
+              console.log(`    [${prefix}] 议论文静帧视频: ${path.basename(panelVidPath)}（${duration.toFixed(2)}s，无需 GPU 生成）`);
               return;
             }
 

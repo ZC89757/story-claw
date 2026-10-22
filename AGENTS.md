@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-**Story Claw** is an AI-powered pipeline that transforms stories or argumentative articles into short-form videos. Story projects plan textual storyboards, prepare existing character/scene references and generate videos directly with MiniMax H3. Essay projects keep their separate LTX visual-generation and HTML-driven MG pipeline. Story `imagesOnly` still generates static storyboard images.
+**Story Claw** is an AI-powered pipeline that transforms stories or argumentative articles into short-form videos. Story projects plan textual storyboards, prepare existing character/scene references and generate videos directly with MiniMax H3. Essay projects use the same H3 backend for generated video and retain their HTML-driven MG planning pipeline. Story `imagesOnly` still generates static storyboard images.
 
 ## Commands
 
@@ -34,7 +34,7 @@ Defined in `runner/pipeline.ts`, orchestrated by `runner/solo.ts`（**唯一模�
 | 剧本分场 | `segment()` | LLM sub-agent 按场景将原文切分为多个 `.md`；sub-agent 的 cwd 设为 `scripts/`，只写裸文件名 `{场景名}.md` |
 | 分镜制作 | `storyboard()` | 每个故事场景独立 LLM sub-agent，喂入角色名单**与音效库标签清单**，用 `append_group` 逐句写入 `storyboards/*.jsonl`；`image_prompt` 用 `[实际参考图文件名去掉.png]` 锁定人物；保留静态构图与动态描述，供 H3 准备 Agent 融合。完整渲染与 `imagesOnly` 使用同一 H3 拆镜上限；可选在 group 加 `sfx` |
 | 全局排序 | `assignGlobalOrder()` | storyboard 完成后、render 前调用。读取 `画面预设.txt` 的原文行序，与各 JSONL group 的 `text` 做子串匹配，为每个 group 写入 `global_order` 字段；未匹配的 group 打印警告日志并置为 999 |
-| 原画渲染 | `renderScene()` | 故事**先逐 group 配音**拿真实时长 `d_g`，按 24 fps 分配 panel 时间；共享场景空间约定 → 子 Agent 读图、裁剪、复看 → 短英文融合提示词 → H3 多参考图直接生视频，跳过分镜图生图。议论文保留独立 LTX/MG 路径 |
+| 原画渲染 | `renderScene()` | 故事**先逐 group 配音**拿真实时长 `d_g`，按 24 fps 分配 panel 时间；共享场景空间约定 → 子 Agent 读图、裁剪、复看 → 短英文融合提示词 → H3 多参考图直接生视频，跳过分镜图生图。议论文的动态画面与 SC Video / SC Longtake 统一使用 H3；MG 标注/规划独立 |
 | 原画母版 | `buildEpisodeMaster()` | 拼接无声原画为不可覆盖的 `epXX_raw.mp4`，输出对齐音轨、`article_timeline.json` 和全局字幕；此时尚未加入 MG、字幕或音轨 |
 | MG Function Calling（仅议论文） | `planEssayMg()` | 第二次 AI 调用。AI 读取已审核 HTML 与真实字级时间轴，每个逻辑实例恰好调用一次模板函数，只为内部元素填写绝对 `at`；宿主统一从标签计算实例 start/end，根参数不接受 `at`、`startTime` 或 `endTime` |
 | MG 渲染（仅议论文） | `renderAndAssembleEssayMg()` | 按 `mode` 编译动画窗口：`together` 连续渲染，`split` 只在节点运动区间显示；支持标题/重点大字嵌套覆盖，输出 `mg/epXX_mg_raw.mp4` |
@@ -52,7 +52,7 @@ Defined in `runner/pipeline.ts`, orchestrated by `runner/solo.ts`（**唯一模�
 Stored in `~/.story-claw/` (not in the repo):
 - `config.json`: LLM provider/model/api_key/base_url
 - `image_gen_config.json`: `{ api_key, model, base_url, api_format? }` — 当前 model 为 `openai/gpt-image-2:openai`，base_url 为 `https://zenmux.ai/api/vertex-ai`；`api_format` 可显式选 `vertex` / `openai`
-- `video_config.json`: 故事固定 H3，无 `story_backend` 选择。`h3_base_url` 默认 `http://127.0.0.1:8188`，必须是 ComfyUI 原生服务，不能接 LTX wrapper 的 8191；`h3_workflow_path` 留空使用内置 `workflows/minimax-h3-reference-api.json`；`h3_max_duration` 默认 15 秒。可选 `h3_concurrency=1`、`h3_max_retries=2`、`h3_poll_interval_ms=5000`、`h3_timeout_ms=1800000`。原 `base_url`、`workflow_path`、`default_duration`、`concurrency`、轮询/重试参数保留给议论文 LTX/MG，H3 不从这些字段继承服务地址或任务参数。示例见 `video_config.example.json`
+- `video_config.json`: 故事固定 H3，无 `story_backend` 选择。`h3_base_url` 默认 `http://127.0.0.1:8188`，必须是 ComfyUI 原生服务，不能接 LTX wrapper 的 8191；`h3_workflow_path` 留空使用内置 `workflows/minimax-h3-reference-api.json`；`h3_max_duration` 默认 15 秒。可选 `h3_concurrency=1`、`h3_max_retries=2`、`h3_poll_interval_ms=5000`、`h3_timeout_ms=1800000`。故事、议论文动态 panel 与 SC Video / SC Longtake 共用以上 H3 参数；旧 `base_url`、`workflow_path` 和 LTX 任务参数不再被生产链路读取。示例见 `video_config.example.json`
 - `tts_config.json`: 豆包语音（火山引擎 语音合成大模型 V3，HTTP Chunked 单向流式）api_key（X-Api-Key）、base_url（`https://openspeech.bytedance.com/api/v3/tts/unidirectional`）、resource_id（`seed-tts-1.0`，决定可用音色版本与计费）、voices（`{voice_type: 性别}` 可分配音色池，key 为豆包 voice_type，**不应包含旁白音**）、narrator_voice（旁白专用 voice_type，独立于 voices 池）、concurrency、assign_character_voice（可选，默认 `true`；设为 `false` 时音色照常分配，但 TTS 合成时全部强制用 narrator_voice，相当于全程旁白音）、sfx_enabled（可选，默认 `true`；关闭后音效全程跳过）、sfx_volume（可选，默认 `0.7`；音效相对人声的音量 0–1）
 - `sfx/`（目录，可选）: 全局音效库，放 `*.mp3`/`*.wav`，**标签 = 去扩展名的文件名**（可含空格，如 `玻璃破碎 心碎时刻`）。增删文件即增删标签，代码无需改（见「音效（SFX）」）
 
@@ -192,27 +192,15 @@ Chapter files: `第{N}章 {title}.txt`，放在用户指定的小说文件夹中
 
 > 注意：`imagesOnly` 模式仍使用与完整故事相同的 H3 拆镜上限，但跳过 GPU、TTS、H3 参考准备、生视频、拼接与合并，所有 panel 都生成静态图，且不推进章节。切换完整渲染后复用文本分镜与跨集资源，H3 直接参考现有角色/场景资源，不经过已有静态分镜图。
 
-### GPU 渲染服务端组件：`pipeline_wrapper.py`（可选，独立于本仓库主流程部署）
+### GPU 启动与 H3 实际预热
 
-`pipeline_wrapper.py` + `video_ltx2_3_i2v_PRESUB.json` + `video_ltx2_3_subtitle_remove.json` 是跑在 GPU 渲染服务器上的独立 LTX HTTP 服务（端口 8191，见 `systemd/story-claw-services.conf`），仅可用于保留的议论文 LTX/MG 路径。原 `base_url` 可指向它以获得 LTX 人物 Gate 与去字幕能力。故事 H3 使用独立 `h3_base_url` 连接 ComfyUI 原生服务，不经过 wrapper，不自动获得此处 LTX Gate/去字幕能力。
+`utils/gpu-lifecycle.ts:startGpu()` 先按 `gpu_config.json` 启动已配置的 CompShare 实例，再等待原生 ComfyUI 的节点和模型可用，最后实际生成一段最小合法长度的 H3 视频。预热只将采样步数降为 1，保留 0.4 MP、124 帧、视频和音频 VAE 解码链；下载原生视频、核验至少 124 帧 / 24 fps 并完整解码成功后才放行正式任务。预热失败不视作就绪，也不重复提交状态不明的任务。
 
-部署时必须给 ComfyUI 与 `pipeline_wrapper.py` 两个进程设置同一个 `STORY_CLAW_VISION_API_KEY` 环境变量，人物 Gate 与字幕预检都从这里读取视觉模型凭据；不要把密钥写进源码或 supervisor 配置文件。
+`provider=external/manual` 明确跳过云实例启停；保存 API 凭据不会自动覆盖此配置。托管启动需要 `provider=compshare` 和明确的 `instance_id`。实例启动受 `start_timeout` 限制，容量不足时有界重试，超时后保留失败状态。流水线在 finally 中关机。
 
-**角色**：单张参考图→单个 i2v 短视频 panel 生成的质检+后处理外壳，在原始 i2v 生成结果之上叠加两类保障：
-1. **人物/人脸一致性质检**（Gate1/2，`PersonFaceGate` 节点，直接嵌在 i2v ComfyUI 工作流图里，不是 wrapper 这边代码触发的）
-2. **去字幕/去水印**（原来是外部 STTN+LaMa 工具，v6 起换成 LTX2.3 IC-LoRA 生成式修复工作流）
+`scripts/grab_gpu.py` 仅兼容转调 `scripts/gpu-service.ts start`，使用同一条 H3 启动和预热路径。GPU 服务器的 `scripts/setup_autostart.sh` 安装 `systemd/story-claw-services.conf` 和 `scripts/start-h3-service.sh`，由 supervisor 在实例开机时自动启动原生 ComfyUI；可通过 `COMFYUI_DIR`、`H3_PYTHON`、`H3_PORT` 指定服务器安装位置。部署前检查现有服务，不运行旧 wrapper 启动逻辑。
 
-**双队列调度**（`_scheduler_loop`，唯一后台线程）：`i2v_pending` 和 `sttn_pending` 两个队列严格分阶段轮流耗尽，保证 i2v 生成和去字幕生成不会同时抢 GPU——这是为了替换掉早期"猜时机"调度里的一个真实竞态 bug。
-
-- **i2v 阶段**（`build_and_submit_i2v`）：`/prompt` 收到 render.ts 的请求后只登记 + 塞进 `i2v_pending`，立即返回 `prompt_id`（不即时提交 ComfyUI）；调度循环轮到时才真正提交，读 `video_ltx2_3_i2v_PRESUB.json` 模板，注入参考图（拷进 ComfyUI `input/`）、prompt、分辨率、按目标时长换算的帧数、**两个每次都重新随机的种子**（同一 panel 因 Gate 拒绝而重试时，图/prompt/时长完全相同，种子若不变 LTX 大概率复现一模一样的缺陷，重试等于白跑）、以及注入给 `gate12`（PersonFaceGate）节点的 `job_key`。
-- **去字幕阶段**（`_run_subtitle_stage`）：
-  1. `check_subtitle_presence` 前置探测——抽 i2v 输出视频中间 3 帧（排除首尾）喂视觉 LLM，判断有没有字幕/水印；判不出来时保守当作"有"（漏判代价更高）。
-  2. 无字幕 → 直接把原视频拷过去当结果，跳过后面所有步骤（省下一整段生成式修复的 GPU 时间）。
-  3. 有字幕 → `run_ltx_subtitle_removal`：把视频拷进 ComfyUI `input/`，提交 `video_ltx2_3_subtitle_remove.json`（LTX2.3 去水印/去字幕 IC-LoRA 工作流）。这个工作流跟 i2v 共用同一个底模 + 蒸馏 LoRA（只是叠加的 IC-LoRA 不同），ComfyUI 自身的模型缓存能免掉大部分重新加载，因此两阶段之间**不需要**主动腾显存（旧版外部 STTN 工具是独立子进程，需要专门调 ComfyUI 的 `/free` 腾显存，这套逻辑随外部工具一起被去掉了）。
-
-**人物质检重试怎么触发**：`gate_decide(job_key, passed)` 按 `job_key` 累计 Gate1/2 连续失败次数，达到阈值（dashboard 上可调，默认 5）前返回 `"reject"`（本次判失败），达到阈值后返回 `"accept_anyway"`（强制放行，避免无限卡死）。**重新生成本身是靠 render.ts 重新发一次 `/prompt` 完成的**——`job_key` 由参考图+prompt+时长+宽高比的哈希算出，同一 panel 原样重试会算出同一个 `job_key`，wrapper 侧不需要 render.ts 显式传"这是第几次重试"。字幕 VLM 只做去字幕前置判断，不参与重试计数；判不出来时按"有字幕"处理并执行修复工作流。
-
-**Dashboard**（`GET /`，:8191）：任务统计（成功/失败/字幕触发率/平均耗时/P50/P95）、最近 30 条任务详情、实时日志尾、可在线改视觉模型 id 和人物 Gate1/2 的重试阈值（持久化到 `/root/gate_config.json`，重启不丢）。
+旧 `pipeline_wrapper.py`、LTX 工作流及人物 Gate 脚本仅保留为历史开发资料，不被生产入口调用、打包或自动启动；H3 不继承旧 LTX 去字幕或人物 Gate 能力。
 
 ### 故事 H3 视频时长控制（`utils/h3-video.ts`）
 - 帧率固定 24 fps；原生帧数为 `17k+5`，当前工作流训练/验证范围为最少 124 帧、最多 362 帧，约 5.17–15.08 秒
@@ -221,12 +209,11 @@ Chapter files: `第{N}章 {title}.txt`，放在用户指定的小说文件夹中
 - group 配音时长先取最近的整组帧数，再分给 panels；全部 panel 目标帧数之和必须等于 group 帧数
 - 文本分镜按同一 H3 上限留出真实 TTS 余量；`imagesOnly` 不改变拆镜上限。真实音频分配后超上限就报错，不能提交一条 18 秒 H3 请求
 
-### 议论文 LTX 视频时长控制（`tryGenerateVideoComfyUI` / `durationToFrames`）
-LTX 帧数必须为 `8k+1`（latent 时间维 8× 压缩，模型架构属性，常量 `LTX_FRAME_STEP=8`），故输出时长按 **`LTX_FRAME_STEP/fps` 的栅格**量化（25fps 时 0.32s/步），**无法精确到 0.1s**。
-- **fps 单一真值**：从 workflow 节点 `320:300` 读取（`getVideoFps`），它同时驱动输出帧率与帧数换算。**改帧率只改这一个节点，代码自动适配，切勿在别处硬编码 fps。**
-- **秒→帧**：`durationToFrames(durSec, fps)` 取最近的 `8k+1` 帧数（`k≥1`），误差 ≤ 半个栅格（25fps 时 ±0.16s）。
-- **注入方式**：直接把帧数写入 latent 长度的两个消费节点 `320:295.length`（视频）与 `320:305.frames_number`（音频，须同帧数），**绕过** workflow 内 `320:323` 的 `a*fps+1` 整数秒瓶颈（注入后 `320:301`/`320:323` 成孤立节点，不影响执行）。
-- **设计取舍**：误差从旧版「短组被 4s 地板撑长、单向累积」变为「每组随机 ±0.16s、整段近乎抵消」，使统一调速（步骤 4）趋近 ×1.00、听感无损。若要清零残差只能给视频侧逐组 setpts 微调（≤±4%，画面无感），通常不需要。
+### 议论文与 MG H3 视频窗口
+
+`utils/h3-clip.ts` 接收一个完整的 HTML 视频窗口，按 24 fps 总帧数分配为不超过 `h3_max_duration` 的内部片段。各段分别生成，后续段使用上一段实际剪辑尾帧作为 frame-zero guide，再拼成一个精确总帧数的视频；HTML 标签、Function Calling 参数和实例数量不拆。首帧和后续引导只约束参考，不代表自动保证无缝运镜，需要审片。
+
+SC Video / SC Longtake 的缓存签名包含 H3 后端、工作流字节和单段上限；旧 LTX 缓存不会被复用。H3 自身处理有界重试，MG 外层不再重复重试 H3 生成，避免状态不明时再次排入 GPU 队列。既有配音、字级时间轴与字幕累计逻辑保持原样，已发现的编码填充累计问题按用户要求仍待核验。
 
 ### 音色分配（`assignVoices`，archive 阶段）
 - 在 `archive()` 解析出 `archive-tasks` 后、生图前调用，**一次性为本章新角色分配音色**（无并发竞态）。
