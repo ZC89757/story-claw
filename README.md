@@ -15,6 +15,8 @@ Story Claw is an open-source, AI-powered novel-to-video pipeline for short-drama
 
 **Project site:** https://zc89757.github.io/story-claw/ · **Windows downloads:** https://github.com/ZC89757/story-claw/releases
 
+**Desktop interface languages (v1.0.4+):** Choose **Language** in the top-right corner for English, Русский, 简体中文, or System default. Changes apply immediately and are saved on this device. Unsupported system languages fall back to English. Source text, project names, AI-generated content, template-pack metadata and raw diagnostic logs keep their original language. Install v1.0.4 or later to use these features.
+
 Point it at a folder of novel chapters. It hands back a finished short-drama episode — narrated, scored, sound-effected, rendered — with one command. If you want to turn a web novel into short-drama episodes without paying per second for video generation or babysitting character consistency by hand, this is built for exactly that.
 
 <p align="center">

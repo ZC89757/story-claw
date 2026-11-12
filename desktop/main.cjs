@@ -1082,12 +1082,15 @@ async function approveVisualPreset(novelName, episode) {
   return { novelName: resolvedName, episode: Number(key) };
 }
 
-async function chooseSource(kind) {
+async function chooseSource(kind, locale) {
+  const { translate, resolveLocale } = require("./renderer/i18n.cjs");
+  const language = resolveLocale(locale, [app.getLocale()]);
+  const t = (key) => translate(language, key);
   const properties = kind === "directory" ? ["openDirectory"] : ["openFile"];
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: kind === "directory" ? "选择章节文件夹" : "选择章节文件",
+    title: t(kind === "directory" ? "选择章节文件夹" : "选择章节文件"),
     properties,
-    filters: kind === "file" ? [{ name: "章节文件", extensions: ["txt", "md"] }] : undefined,
+    filters: kind === "file" ? [{ name: t("章节文件"), extensions: ["txt", "md"] }] : undefined,
   });
   if (result.canceled || !result.filePaths[0]) return null;
   return { kind, path: result.filePaths[0] };
@@ -1982,7 +1985,7 @@ ipcMain.handle("system-config:save", (_event, payload) => saveSystemConfig(paylo
 ipcMain.handle("system-config:open-directory", (_event, target) => openSystemConfigDirectory(target));
 ipcMain.handle("assets:list", (_event, novelName) => getAssets(novelName));
 ipcMain.handle("episode:preview", (_event, novelName, episode) => getEpisodePreview(novelName, episode));
-ipcMain.handle("source:choose", (_event, kind) => chooseSource(kind === "file" ? "file" : "directory"));
+ipcMain.handle("source:choose", (_event, kind, locale) => chooseSource(kind === "file" ? "file" : "directory", locale));
 ipcMain.handle("source:inspect", (_event, inputPath) => inspectSource(inputPath));
 ipcMain.handle("mg-annotation:open", (_event, novelName, episode) => openMgAnnotation(novelName, episode));
 ipcMain.handle("mg-template-gallery:open", () => openMgTemplateGallery());

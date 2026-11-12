@@ -1,6 +1,6 @@
 {
   "name": "story-claw",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "productName": "Story Claw",
   "description": "AI-powered novel-to-storyboard pipeline. Transform web novels into visual short drama panels.",
   "type": "module",

@@ -1,4 +1,7 @@
-﻿<div id="storyclaw-gui-concept" class="sc-root">
+﻿<!doctype html>
+<meta charset="utf-8">
+<title>Story Claw</title>
+<div id="storyclaw-gui-concept" class="sc-root">
   <style>
     #storyclaw-gui-concept {
       color-scheme: dark;
@@ -1102,6 +1105,7 @@
 
   <div class="claw-app">
     <section class="claw-library" data-claw-screen="library">
+      <div class="claw-library-controls"><div class="claw-language-picker"><label><span>Language</span><select data-ui-language aria-label="界面语言"><option value="system">跟随系统</option><option value="zh-CN" lang="zh-CN">简体中文</option><option value="en" lang="en">English</option><option value="ru" lang="ru">Русский</option></select></label><p data-language-status role="status"></p></div><button type="button" class="claw-settings-trigger" data-claw-system-settings-open aria-label="系统设置"><i data-lucide="settings-2" aria-hidden="true"></i><span>系统设置</span></button></div>
       <div class="claw-brand" aria-label="Story Claw">
         <img class="claw-brand-mark" data-img="brand-logo" alt="" aria-hidden="true">
         <span class="claw-brand-name">Story Claw</span>
@@ -1112,7 +1116,7 @@
         <button type="button" class="claw-nav-item" data-claw-page="projects" aria-pressed="true"><i data-lucide="folder-check" aria-hidden="true"></i><span>项目</span></button>
         <button type="button" class="claw-nav-item" data-claw-page="assets" aria-pressed="false"><i data-lucide="archive" aria-hidden="true"></i><span>资产</span></button>
       </nav>
-      <button type="button" class="claw-settings-trigger" data-claw-system-settings-open aria-label="系统设置"><i data-lucide="settings-2" aria-hidden="true"></i><span>系统设置</span></button>
+
 
       <main class="claw-library-view claw-home-view" data-claw-view="home" hidden>
         <h1 class="claw-home-headline" data-claw-home-landing>说出你的想法，AI帮你一键成片。</h1>
@@ -1852,17 +1856,10 @@
   #storyclaw-gui-concept .claw-library-view:not(.claw-home-view) { overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
   #storyclaw-gui-concept .claw-editor { width: 100%; height: 100%; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 </style>
+<script src="./vendor/lucide/lucide.js"></script>
+<script src="./locales.cjs"></script>
+<script src="./i18n.cjs"></script>
 <script src="./app.js"></script>
-<script id="storyclaw-lucide" async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
 <script>
-  (() => {
-    const initializeIcons = () => {
-      globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
-    };
-    if (globalThis.lucide) {
-      initializeIcons();
-      return;
-    }
-    document.getElementById("storyclaw-lucide")?.addEventListener("load", initializeIcons, { once: true });
-  })();
+  globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
 </script>

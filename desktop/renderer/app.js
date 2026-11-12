@@ -1,4 +1,6 @@
 (() => {
+  const i18n = window.storyClawI18n;
+  const t = i18n.t;
   const api = window.storyClaw;
   const root = document.getElementById("storyclaw-gui-concept");
   if (!api || !root) return;
@@ -44,6 +46,16 @@
 
   const style = document.createElement("style");
   style.textContent = `
+    #storyclaw-gui-concept .claw-system-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+    #storyclaw-gui-concept .claw-system-form { height: auto; min-height: 0; }
+    #storyclaw-gui-concept .claw-library-controls { position: absolute; top: 20px; right: 24px; z-index: 10; display: flex; align-items: center; gap: 20px; }
+    #storyclaw-gui-concept .claw-library-controls .claw-settings-trigger { position: static; }
+    #storyclaw-gui-concept .claw-language-picker label { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    #storyclaw-gui-concept [data-language-status]:empty { display: none; }
+    #storyclaw-gui-concept [data-ui-language] { color: #f5f5f3; background: #1d1f23; border: 1px solid #41454c; border-radius: 8px; padding: 8px 12px; min-height: 40px; max-width: 100%; }
+    #storyclaw-gui-concept .claw-system-nav button { height: auto; min-height: 44px; white-space: normal; overflow-wrap: anywhere; text-align: start; }
+    #storyclaw-gui-concept .claw-settings-choice-field label { white-space: normal; }
+    #storyclaw-gui-concept .claw-system-layout { grid-template-columns: minmax(150px, 190px) minmax(0, 1fr); }
     html, body { width: 100%; height: 100%; min-width: 0; min-height: 0; margin: 0; overflow: hidden !important; background: #090a0c; }
     #storyclaw-gui-concept { width: 100%; height: 100vh; min-height: 0; overflow: hidden !important; border: 0 !important; border-radius: 0 !important; }
     #storyclaw-gui-concept .sc-shell { display: none !important; }
@@ -829,7 +841,7 @@
 
   function showToast(message) {
     if (!toast) return;
-    toast.textContent = message;
+    i18n.bindText(toast, () => message);
     toast.hidden = false;
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => { toast.hidden = true; }, 2400);
@@ -1044,7 +1056,7 @@
         state.settings = await api.saveSettings(payload);
         applySettingsForm(activeSettingsTemplate());
         dialog.close?.();
-        showToast(`已保存模板：${state.settings.activeTemplate || "未启用"}`);
+        showToast(t("已保存模板：{0}", [state.settings.activeTemplate || t("未启用")]));
       } catch (error) {
         showToast(error instanceof Error ? error.message : "保存制作设置失败");
       }
@@ -1069,12 +1081,12 @@
       if (input.type === "text" && input.dataset.systemSecret === "true") input.type = "password";
     });
     dialog.querySelectorAll("[data-claw-secret-toggle]").forEach((button) => {
-      button.setAttribute("aria-label", "显示密钥");
-      button.title = "显示密钥";
+      i18n.bindAttribute(button, "aria-label", () => "显示密钥");
+      i18n.bindAttribute(button, "title", () => "显示密钥");
       button.innerHTML = '<i data-lucide="eye" aria-hidden="true"></i>';
     });
     const status = dialog.querySelector("[data-claw-system-status]");
-    if (status) status.textContent = "";
+    if (status) i18n.bindText(status, () => "");
     window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
   }
 
@@ -1110,7 +1122,7 @@
           try {
             value = JSON.parse(raw);
           } catch {
-            throw new Error(`${input.closest("label")?.querySelector(":scope > span")?.textContent || fieldName} 不是有效的 JSON`);
+            throw new Error(t("{0} 不是有效的 JSON", [input.closest("label")?.querySelector(":scope > span")?.textContent || fieldName]));
           }
         }
       } else if (input.type === "number") {
@@ -1134,16 +1146,16 @@
     root.querySelectorAll("[data-claw-system-settings-open]").forEach((button) => button.addEventListener("click", async () => {
       clearSystemSettingsForm(dialog);
       setSystemSettingsTab("llm");
-      if (status) status.textContent = "正在读取本机配置...";
+      if (status) i18n.bindText(status, () => "正在读取本机配置...");
       if (saveButton) saveButton.disabled = true;
       dialog.showModal?.();
       try {
         const config = await api.getSystemConfig();
         applySystemSettingsForm(dialog, config);
-        if (status) status.textContent = "";
+        if (status) i18n.bindText(status, () => "");
         if (saveButton) saveButton.disabled = false;
       } catch (error) {
-        if (status) status.textContent = error instanceof Error ? error.message : "读取系统设置失败";
+        if (status) i18n.bindText(status, () => error instanceof Error ? error.message : "读取系统设置失败");
       }
     }));
 
@@ -1162,8 +1174,8 @@
       const visible = input.type === "text";
       input.type = visible ? "password" : "text";
       input.dataset.systemSecret = "true";
-      button.setAttribute("aria-label", visible ? "显示密钥" : "隐藏密钥");
-      button.title = visible ? "显示密钥" : "隐藏密钥";
+      i18n.bindAttribute(button, "aria-label", () => visible ? "显示密钥" : "隐藏密钥");
+      i18n.bindAttribute(button, "title", () => visible ? "显示密钥" : "隐藏密钥");
       button.innerHTML = `<i data-lucide="${visible ? "eye" : "eye-off"}" aria-hidden="true"></i>`;
       window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
     }));
@@ -1171,21 +1183,21 @@
       try {
         await api.openSystemConfigDirectory(button.dataset.clawSystemOpenDirectory);
       } catch (error) {
-        if (status) status.textContent = error instanceof Error ? error.message : "打开目录失败";
+        if (status) i18n.bindText(status, () => error instanceof Error ? error.message : "打开目录失败");
       }
     }));
     dialog.querySelector("[data-claw-system-settings-form]")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!event.currentTarget.reportValidity()) return;
       if (saveButton) saveButton.disabled = true;
-      if (status) status.textContent = "正在保存...";
+      if (status) i18n.bindText(status, () => "正在保存...");
       try {
         const payload = collectSystemSettings(dialog);
         await api.saveSystemConfig(payload);
         dialog.close?.();
         showToast("系统设置已保存");
       } catch (error) {
-        if (status) status.textContent = error instanceof Error ? error.message : "保存系统设置失败";
+        if (status) i18n.bindText(status, () => error instanceof Error ? error.message : "保存系统设置失败");
         if (saveButton) saveButton.disabled = false;
       }
     });
@@ -1227,7 +1239,7 @@
   }
 
   function projectTitle(project) {
-    return `${project.novelName} · 第 ${project.adaptedCount + 1} 集`;
+    return t("{0} · 第 {1} 集", [project.novelName, project.adaptedCount + 1]);
   }
 
   function createProjectCard(project) {
@@ -1252,7 +1264,7 @@
     name.textContent = project.novelName;
     const date = document.createElement("span");
     date.className = "claw-project-date";
-    date.textContent = project.episodeCount ? `已完成 ${project.episodeCount} 集 · 下一章 ${project.nextChapter}` : "尚未开始制作";
+    i18n.bindText(date, () => project.episodeCount ? t("已完成 {0} 集 · 下一章 {1}", [project.episodeCount, project.nextChapter]) : "尚未开始制作");
     info.append(name, date);
     card.append(cover, info);
     card.addEventListener("click", () => openProject(project));
@@ -1268,7 +1280,7 @@
     if (!state.projects.length) {
       const empty = document.createElement("div");
       empty.className = "desktop-empty";
-      empty.textContent = "还没有项目，从左侧首页创建一个作品";
+      i18n.bindText(empty, () => "还没有项目，从左侧首页创建一个作品");
       grid.appendChild(empty);
       return;
     }
@@ -1282,7 +1294,7 @@
     if (!state.projects.length) {
       const empty = document.createElement("div");
       empty.className = "desktop-project-option-empty";
-      empty.textContent = "暂无项目";
+      i18n.bindText(empty, () => "暂无项目");
       filter.appendChild(empty);
       return;
     }
@@ -1295,9 +1307,9 @@
       const title = document.createElement("strong");
       title.textContent = project.novelName;
       const meta = document.createElement("span");
-      meta.textContent = project.articleType === "essay"
+      i18n.bindText(meta, () => project.articleType === "essay"
         ? "MG 动画素材"
-        : `${project.characterCount} 人物 · ${project.sceneCount} 场景`;
+        : t("{0} 人物 · {1} 场景", [project.characterCount, project.sceneCount]));
       button.append(title, meta);
       button.addEventListener("click", () => renderAssets(project));
       filter.appendChild(button);
@@ -1315,7 +1327,7 @@
     const name = document.createElement("strong");
     name.textContent = item.name;
     const kind = document.createElement("span");
-    kind.textContent = item.kind;
+    i18n.bindText(kind, () => item.kind);
     meta.append(name, kind);
     article.append(image, meta);
     return article;
@@ -1326,7 +1338,7 @@
       ? document.createElement("video")
       : document.createElement("img");
     preview.className = "claw-mg-preview";
-    preview.setAttribute("aria-label", item.previewUrl ? `${item.name}动画预览` : "暂无预览视频，请尝试重启");
+    i18n.bindAttribute(preview, "aria-label", () => item.previewUrl ? t("{0}动画预览", [item.name]) : "暂无预览视频，请尝试重启");
     if (item.previewUrl) {
       preview.muted = true;
       preview.playsInline = true;
@@ -1342,7 +1354,7 @@
   function makeMgStyleCard(item) {
     const article = document.createElement("article");
     article.className = "claw-mg-style-card";
-    article.title = item.description || item.name;
+    i18n.bindAttribute(article, "title", () => item.description || item.name);
     const badge = document.createElement("span");
     badge.className = "claw-mg-card-badge";
     badge.textContent = item.category;
@@ -1351,7 +1363,7 @@
     const name = document.createElement("strong");
     name.textContent = item.name;
     const detail = document.createElement("span");
-    detail.textContent = `${item.structureName} · ${item.renderMode === "overlay" ? "叠加" : "整屏"}`;
+    i18n.bindText(detail, () => `${item.structureName} · ${t(item.renderMode === "overlay" ? "叠加" : "整屏")}`);
     meta.append(name, detail);
     const preview = makeMgPreview(item);
     article.append(preview, badge, meta);
@@ -1375,7 +1387,7 @@
       const badge = document.createElement("span");
       badge.className = "claw-mg-order-badge";
       badge.textContent = String(usage.order);
-      badge.title = `${usage.structureName} 的第 ${usage.order} 个动画实例`;
+      i18n.bindAttribute(badge, "title", () => t("{0} 的第 {1} 个动画实例", [usage.structureName, usage.order]));
       article.appendChild(badge);
     }
     const head = document.createElement("div");
@@ -1383,13 +1395,13 @@
     const title = document.createElement("strong");
     title.textContent = usage.structureName;
     const meta = document.createElement("span");
-    meta.textContent = `${usage.styleName} · ${usage.mode}`;
+    i18n.bindText(meta, () => `${usage.styleName} · ${usage.mode}`);
     head.append(title, meta);
     article.append(head);
 
     const locked = document.createElement("span");
     locked.className = "claw-mg-lock-note";
-    locked.textContent = "由视觉标签 HTML 自动确定";
+    i18n.bindText(locked, () => "由视觉标签 HTML 自动确定");
     article.appendChild(locked);
     return article;
   }
@@ -1413,8 +1425,8 @@
       const assets = await api.getAssets(project.novelName);
       if (assets.kind === "mg") {
         if (galleryButton) galleryButton.hidden = false;
-        if (subtitle) subtitle.textContent = "查看模板样式和视觉标签 HTML 已使用的实例";
-        if (meta) meta.textContent = `${assets.styleCount} 种 MG 样式 · 本文已使用 ${assets.instanceCount} 个实例`;
+        if (subtitle) i18n.bindText(subtitle, () => "查看模板样式和视觉标签 HTML 已使用的实例");
+        if (meta) i18n.bindText(meta, () => t("{0} 种 MG 样式 · 本文已使用 {1} 个实例", [assets.styleCount, assets.instanceCount]));
         if (mgEpisodeSelect) {
           const episodes = [...new Set((assets.episodes || assets.usages || [])
             .map((item) => Number(typeof item === "number" ? item : item.episode))
@@ -1431,7 +1443,7 @@
             const option = document.createElement("option");
             const count = (assets.usages || []).filter((usage) => Number(usage.episode) === episode).length;
             option.value = String(episode);
-            option.textContent = `第 ${episode} 集${count ? ` · ${count} 个实例` : ""}`;
+            i18n.bindText(option, () => t("第 {0} 集{1}", [episode, count ? t(" · {0} 个实例", [count]) : ""]));
             option.selected = episode === selectedEpisode;
             return option;
           }));
@@ -1440,12 +1452,12 @@
           mgEpisodeSelect.dataset.project = project.novelName;
           mgEpisodeSelect.onchange = () => renderAssets(project, Number(mgEpisodeSelect.value));
         }
-        if (peopleTab) peopleTab.textContent = "全部 MG 样式";
-        if (scenesTab) scenesTab.textContent = "本文已使用";
+        if (peopleTab) i18n.bindText(peopleTab, () => "全部 MG 样式");
+        if (scenesTab) i18n.bindText(scenesTab, () => "本文已使用");
         if (peoplePane) {
           peoplePane.replaceChildren();
           (assets.styles || []).forEach((item) => peoplePane.appendChild(makeMgStyleCard(item)));
-          if (!assets.styles?.length) peoplePane.innerHTML = '<div class="desktop-empty">暂无可用 MG 样式</div>';
+          if (!assets.styles?.length) i18n.setHTML(peoplePane, '<div class="desktop-empty">暂无可用 MG 样式</div>');
         }
         if (scenesPane) {
           scenesPane.replaceChildren();
@@ -1455,9 +1467,9 @@
             : (assets.usages || []);
           usages.forEach((item) => scenesPane.appendChild(makeMgUsageCard(project, item)));
           if (!usages.length) {
-            scenesPane.innerHTML = assets.usages?.length
+            i18n.setHTML(scenesPane, assets.usages?.length
               ? '<div class="desktop-empty">本集尚未使用 MG 动画</div>'
-              : '<div class="desktop-empty">当前项目尚未生成 MG 标注</div>';
+              : '<div class="desktop-empty">当前项目尚未生成 MG 标注</div>');
           }
         }
         return;
@@ -1469,28 +1481,28 @@
         mgEpisodeSelect.onchange = null;
         delete mgEpisodeSelect.dataset.project;
       }
-      if (subtitle) subtitle.textContent = "按项目管理人物与场景参考图";
-      if (meta) meta.textContent = `${project.characterCount + project.sceneCount} 项资产 · 跨集共享`;
-      if (peopleTab) peopleTab.textContent = "人物参考图";
-      if (scenesTab) scenesTab.textContent = "场景参考图";
+      if (subtitle) i18n.bindText(subtitle, () => "按项目管理人物与场景参考图");
+      if (meta) i18n.bindText(meta, () => t("{0} 项资产 · 跨集共享", [project.characterCount + project.sceneCount]));
+      if (peopleTab) i18n.bindText(peopleTab, () => "人物参考图");
+      if (scenesTab) i18n.bindText(scenesTab, () => "场景参考图");
       if (peoplePane) {
         peoplePane.replaceChildren();
         (assets.people || []).forEach((item) => peoplePane.appendChild(makeAssetCard(item)));
-        if (!assets.people?.length) peoplePane.innerHTML = '<div class="desktop-empty">暂无人物参考图</div>';
+        if (!assets.people?.length) i18n.setHTML(peoplePane, '<div class="desktop-empty">暂无人物参考图</div>');
       }
       if (scenesPane) {
         scenesPane.replaceChildren();
         (assets.scenes || []).forEach((item) => scenesPane.appendChild(makeAssetCard(item)));
-        if (!assets.scenes?.length) scenesPane.innerHTML = '<div class="desktop-empty">暂无场景参考图</div>';
+        if (!assets.scenes?.length) i18n.setHTML(scenesPane, '<div class="desktop-empty">暂无场景参考图</div>');
       }
     } catch (error) {
       if (galleryButton) galleryButton.hidden = true;
       const detail = error instanceof Error ? error.message : "读取资产失败";
-      if (meta) meta.textContent = project.articleType === "essay" ? "MG 标注协议错误" : "资产读取失败";
+      if (meta) i18n.bindText(meta, () => project.articleType === "essay" ? "MG 标注协议错误" : "资产读取失败");
       if (subtitle) {
-        subtitle.textContent = project.articleType === "essay"
+        i18n.bindText(subtitle, () => project.articleType === "essay"
           ? "当前文件不是新的 MG HTML 协议，请重新生成 MG 标注"
-          : "按项目管理人物与场景参考图";
+          : "按项目管理人物与场景参考图");
       }
       if (mgEpisodeSelect) {
         mgEpisodeSelect.hidden = true;
@@ -1502,16 +1514,16 @@
         peoplePane.replaceChildren();
         const errorCard = document.createElement("div");
         errorCard.className = "desktop-empty";
-        errorCard.textContent = project.articleType === "essay"
+        i18n.bindText(errorCard, () => project.articleType === "essay"
           ? "当前 MG 标注格式无效，请重新生成"
-          : detail;
+          : detail);
         peoplePane.appendChild(errorCard);
       }
       if (scenesPane) scenesPane.replaceChildren();
       const peopleTab = root.querySelector('[data-claw-asset-tab="people"]');
       const scenesTab = root.querySelector('[data-claw-asset-tab="scenes"]');
-      if (peopleTab) peopleTab.textContent = project.articleType === "essay" ? "全部 MG 样式" : "人物参考图";
-      if (scenesTab) scenesTab.textContent = project.articleType === "essay" ? "本文已使用" : "场景参考图";
+      if (peopleTab) i18n.bindText(peopleTab, () => project.articleType === "essay" ? "全部 MG 样式" : "人物参考图");
+      if (scenesTab) i18n.bindText(scenesTab, () => project.articleType === "essay" ? "本文已使用" : "场景参考图");
       showToast(detail);
     }
   }
@@ -1561,7 +1573,10 @@
   function renderEpisodeOptions(project, selectedEpisode) {
     const projectName = root.querySelector("[data-claw-editor-project-name]");
     const select = root.querySelector("[data-claw-episode-select]");
-    if (projectName) projectName.textContent = project?.novelName || "未命名项目";
+    if (projectName) {
+      if (project?.novelName) projectName.textContent = project.novelName;
+      else i18n.bindText(projectName, () => "未命名项目");
+    }
     if (!select) return;
 
     const normalizedEpisode = Math.max(1, Math.trunc(Number(selectedEpisode) || 1));
@@ -1571,7 +1586,7 @@
     select.replaceChildren(...episodes.map((episode) => {
       const option = document.createElement("option");
       option.value = String(episode);
-      option.textContent = `第 ${episode} 集`;
+      i18n.bindText(option, () => t("第 {0} 集", [episode]));
       return option;
     }));
     select.value = String(normalizedEpisode);
@@ -1581,7 +1596,7 @@
     const button = root.querySelector("[data-claw-play]");
     if (!button) return;
     button.dataset.playing = String(Boolean(playing));
-    button.setAttribute("aria-label", playing ? "暂停" : "播放");
+    i18n.bindAttribute(button, "aria-label", () => playing ? "暂停" : "播放");
     button.innerHTML = `<i data-lucide="${playing ? "pause" : "play"}" aria-hidden="true"></i>`;
     window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
   }
@@ -1593,8 +1608,8 @@
     const showing = state.showingFinalFilm;
     if (regenerate) regenerate.hidden = showing;
     button.setAttribute("aria-pressed", String(showing));
-    button.setAttribute("aria-label", showing ? "返回分镜预览" : "展示本集成片");
-    button.innerHTML = `<i data-lucide="${showing ? "arrow-left" : "clapperboard"}" aria-hidden="true"></i><span>${showing ? "返回分镜" : "成片展示"}</span>`;
+    i18n.bindAttribute(button, "aria-label", () => showing ? "返回分镜预览" : "展示本集成片");
+    i18n.setHTML(button, `<i data-lucide="${showing ? "arrow-left" : "clapperboard"}" aria-hidden="true"></i><span>${showing ? "返回分镜" : "成片展示"}</span>`);
     window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
   }
 
@@ -1631,8 +1646,8 @@
     root.querySelectorAll(".claw-shot-strip .claw-shot").forEach((shot, shotIndex) => {
       shot.setAttribute("aria-pressed", String(shotIndex === index));
     });
-    if (scriptLabel) scriptLabel.textContent = `分镜${String(index + 1).padStart(2, "0")}`;
-    if (scriptLead) scriptLead.textContent = "";
+    if (scriptLabel) i18n.bindText(scriptLabel, () => t("分镜{0}", [String(index + 1).padStart(2, "0")]));
+    if (scriptLead) i18n.bindText(scriptLead, () => "");
     scriptParagraphs.forEach((paragraph, paragraphIndex) => {
       paragraph.textContent = paragraphIndex === 0 ? item.scriptText || "" : "";
       paragraph.hidden = paragraphIndex !== 0;
@@ -1642,7 +1657,7 @@
     preview.dataset.videoUrl = item.videoUrl || "";
     preview.poster = item.dataUrl || "";
     preview.classList.toggle("is-pending", !item.dataUrl && !item.videoUrl);
-    preview.setAttribute("aria-label", item.name || "当前分镜预览");
+    i18n.bindAttribute(preview, "aria-label", () => item.name || "当前分镜预览");
     preview.removeAttribute("src");
     if (item.videoUrl) preview.src = item.videoUrl;
     preview.load?.();
@@ -1688,10 +1703,10 @@
     updateFinalFilmButton();
     updatePreviewNavigation();
     root.querySelectorAll(".claw-shot-strip .claw-shot").forEach((shot) => shot.setAttribute("aria-pressed", "false"));
-    if (scriptLabel) scriptLabel.textContent = "成片";
-    if (scriptLead) scriptLead.textContent = "";
+    if (scriptLabel) i18n.bindText(scriptLabel, () => "成片");
+    if (scriptLead) i18n.bindText(scriptLead, () => "");
     scriptParagraphs.forEach((paragraph, paragraphIndex) => {
-      paragraph.textContent = paragraphIndex === 0 ? `第 ${episode} 集完整成片` : "";
+      i18n.bindText(paragraph, () => paragraphIndex === 0 ? t("第 {0} 集完整成片", [episode]) : "");
       paragraph.hidden = paragraphIndex !== 0;
     });
 
@@ -1700,7 +1715,7 @@
     preview.dataset.videoUrl = videoUrl;
     preview.poster = "";
     preview.classList.remove("is-pending");
-    preview.setAttribute("aria-label", `${project.novelName} 第 ${episode} 集成片`);
+    i18n.bindAttribute(preview, "aria-label", () => t("{0} 第 {1} 集成片", [project.novelName, episode]));
     preview.removeAttribute("src");
     preview.src = videoUrl;
     preview.load?.();
@@ -1730,7 +1745,7 @@
       preview.dataset.videoUrl = "";
       preview.poster = "";
       preview.classList.add("is-pending");
-      preview.setAttribute("aria-label", message);
+      i18n.bindAttribute(preview, "aria-label", () => message);
       preview.removeAttribute("src");
       preview.load?.();
     }
@@ -1742,10 +1757,10 @@
     }
     if (current) current.textContent = formatPreviewTime(0);
     if (duration) duration.textContent = " / 00:00:00";
-    if (scriptLabel) scriptLabel.textContent = "分镜";
-    if (scriptLead) scriptLead.textContent = "";
+    if (scriptLabel) i18n.bindText(scriptLabel, () => "分镜");
+    if (scriptLead) i18n.bindText(scriptLead, () => "");
     scriptParagraphs.forEach((paragraph, paragraphIndex) => {
-      paragraph.textContent = paragraphIndex === 0 ? message : "";
+      i18n.bindText(paragraph, () => paragraphIndex === 0 ? message : "");
       paragraph.hidden = paragraphIndex !== 0;
     });
     setPreviewPlayIcon(false);
@@ -1764,13 +1779,13 @@
     state.showingFinalFilm = false;
     updateFinalFilmButton();
     const shotCount = root.querySelector("[data-claw-shot-count]");
-    if (shotCount) shotCount.textContent = String(state.previewItems.length);
+    if (shotCount) i18n.bindText(shotCount, () => String(state.previewItems.length));
     const totalDuration = root.querySelector("[data-claw-total-duration]");
     const durationSeconds = Number(episodeDuration);
     if (totalDuration) {
-      totalDuration.textContent = Number.isFinite(durationSeconds) && durationSeconds > 0
+      i18n.bindText(totalDuration, () => Number.isFinite(durationSeconds) && durationSeconds > 0
         ? formatPreviewTime(durationSeconds)
-        : "--:--:--";
+        : "--:--:--");
     }
     strip.replaceChildren();
     state.previewItems.forEach((item, index) => {
@@ -1788,14 +1803,14 @@
       } else {
         visual = document.createElement("span");
         visual.className = "claw-shot-placeholder";
-        visual.innerHTML = item.videoUrl
+        i18n.setHTML(visual, item.videoUrl
           ? '<i data-lucide="clapperboard" aria-hidden="true"></i><span>视频已生成</span>'
-          : '<i data-lucide="image-off" aria-hidden="true"></i><span>暂未生成</span>';
+          : '<i data-lucide="image-off" aria-hidden="true"></i><span>暂未生成</span>');
       }
       const caption = document.createElement("span");
       caption.className = "claw-shot-caption";
       const label = document.createElement("strong");
-      label.textContent = `分镜${String(index + 1).padStart(2, "0")}`;
+      i18n.bindText(label, () => t("分镜{0}", [String(index + 1).padStart(2, "0")]));
       const scene = document.createElement("span");
       scene.textContent = item.scene || "";
       caption.append(label, scene);
@@ -2184,10 +2199,10 @@
     copy.className = "claw-pipeline-copy";
     const title = document.createElement("strong");
     title.className = "claw-pipeline-title";
-    title.textContent = snapshot.label;
+    i18n.bindText(title, () => snapshot.label);
     const detail = document.createElement("span");
     detail.className = "claw-pipeline-detail";
-    detail.textContent = snapshot.detail;
+    i18n.bindText(detail, () => i18n.phaseText(snapshot.detail));
     copy.append(title, detail);
     if (snapshot.log) {
       const log = document.createElement("span");
@@ -2225,7 +2240,7 @@
       dot.setAttribute("aria-hidden", "true");
       const label = document.createElement("span");
       label.className = "claw-pipeline-step-label";
-      label.textContent = step.label;
+      i18n.bindText(label, () => step.label);
       item.append(dot, label);
       steps.appendChild(item);
     });
@@ -2283,13 +2298,13 @@
     wrapper.dataset.status = card?.status || "superseded";
     wrapper.dataset.articleType = articleType;
     wrapper.setAttribute("role", "region");
-    wrapper.setAttribute("aria-label", `画面预设审核，共 ${parsed.rows.length} 条画面预设`);
+    i18n.bindAttribute(wrapper, "aria-label", () => t("画面预设审核，共 {0} 条画面预设", [parsed.rows.length]));
     const head = document.createElement("div");
     head.className = "claw-preset-review-head";
     const copy = document.createElement("div");
     copy.className = "claw-preset-review-copy";
     const title = document.createElement("strong");
-    title.textContent = `画面预设 · ${parsed.rows.length} 条`;
+    i18n.bindText(title, () => t("画面预设 · {0} 条", [parsed.rows.length]));
     copy.appendChild(title);
     head.appendChild(copy);
     wrapper.appendChild(head);
@@ -2300,7 +2315,7 @@
     table.className = "claw-preset-table";
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    ["序号", "原文", ...parsed.fields].forEach((label) => { const th = document.createElement("th"); th.textContent = label; headRow.appendChild(th); });
+    ["序号", "原文", ...parsed.fields].forEach((label) => { const th = document.createElement("th"); i18n.bindText(th, () => label); headRow.appendChild(th); });
     thead.appendChild(headRow);
     table.appendChild(thead);
     const tbody = document.createElement("tbody");
@@ -2320,7 +2335,7 @@
       const approve = document.createElement("button");
       approve.type = "button";
       approve.className = "claw-preset-approve";
-      approve.textContent = "确认";
+      i18n.bindText(approve, () => "确认");
       approve.disabled = currentRunNeedsPresetReview() === false;
       approve.addEventListener("click", () => confirmVisualPresetCard(card, approve));
       actions.appendChild(approve);
@@ -2355,7 +2370,7 @@
     wrapper.className = "claw-settings-summary-card";
     wrapper.dataset.settingsSummaryId = card?.id || "";
     const title = document.createElement("strong");
-    title.textContent = "本次制作设置";
+    i18n.bindText(title, () => "本次制作设置");
     const meta = document.createElement("div");
     meta.className = "claw-settings-summary-items";
     const article = settings?.articleType === "essay" ? "议论文 / 科普文" : settings?.articleType === "story" ? "叙事小说" : "文章类型待选择";
@@ -2364,7 +2379,7 @@
       article,
       settings?.aspectRatio || "画幅待选择",
       mode,
-      settings?.ethnicity ? `人物风格：${settings.ethnicity}` : "人物风格：自动",
+      settings?.ethnicity ? () => t("人物风格：{0}", [settings.ethnicity]) : "人物风格：自动",
       typeof settings?.reviewVisualPreset === "boolean"
         ? settings.reviewVisualPreset
           ? "审核画面预设"
@@ -2372,7 +2387,7 @@
         : "审核选项待选择",
       typeof settings?.requireFinalConfirmation === "boolean" ? (settings.requireFinalConfirmation ? "需要最终确认" : "最终确认选项待选择") : "最终确认选项待选择",
     ].filter(Boolean);
-    values.forEach((value) => { const item = document.createElement("span"); item.textContent = value; meta.appendChild(item); });
+    values.forEach((value) => { const item = document.createElement("span"); i18n.bindText(item, () => typeof value === "function" ? value() : value); meta.appendChild(item); });
     wrapper.append(title, meta);
     return wrapper;
   }
@@ -2383,8 +2398,8 @@
     const action = currentRunIsActive() ? "stop" : "send";
     button.disabled = stopping;
     button.dataset.runAction = action;
-    button.setAttribute("aria-label", action === "stop" ? "暂停流水线并关闭 GPU" : "发送");
-    button.title = action === "stop" ? "暂停流水线并关闭 GPU" : "发送";
+    i18n.bindAttribute(button, "aria-label", () => action === "stop" ? "暂停流水线并关闭 GPU" : "发送");
+    i18n.bindAttribute(button, "title", () => action === "stop" ? "暂停流水线并关闭 GPU" : "发送");
     const iconName = action === "stop" ? "square" : "send";
     const currentIcon = button.querySelector("[data-lucide]")?.getAttribute("data-lucide")
       || button.querySelector("svg")?.getAttribute("data-lucide");
@@ -2396,16 +2411,16 @@
 
   function updateComposerInput(input) {
     if (!input) return;
-    if (!input.dataset.idlePlaceholder) input.dataset.idlePlaceholder = input.getAttribute("placeholder") || "继续对话";
+    if (!input.dataset.idlePlaceholder) input.dataset.idlePlaceholder = input.dataset.i18nPlaceholder || "继续对话";
     const active = currentRunIsActive();
     const stopping = active && state.running?.status === "stopping";
     input.readOnly = active;
     input.setAttribute("aria-readonly", String(active));
-    input.placeholder = active
+    i18n.bindAttribute(input, "placeholder", () => active
       ? stopping
         ? "正在保存进度并关闭 GPU"
         : "流水线运行中，暂停后可继续提问"
-      : input.dataset.idlePlaceholder;
+      : input.dataset.idlePlaceholder);
   }
 
   function renderChoiceCard(card) {
@@ -2415,12 +2430,12 @@
     wrapper.dataset.selected = String(Boolean(card.selectedOptionId));
     const title = document.createElement("strong");
     title.className = "claw-choice-title";
-    title.textContent = card.title || "请选择";
+    i18n.bindText(title, () => card.title || "请选择");
     wrapper.appendChild(title);
     if (card.description) {
       const description = document.createElement("p");
       description.className = "claw-choice-description";
-      description.textContent = card.description;
+      i18n.bindText(description, () => card.description);
       wrapper.appendChild(description);
     }
     const options = document.createElement("div");
@@ -2432,11 +2447,11 @@
       button.disabled = Boolean(card.selectedOptionId) || currentRunIsActive();
       button.dataset.optionId = option.id;
       const label = document.createElement("strong");
-      label.textContent = option.label;
+      i18n.bindText(label, () => option.label);
       button.appendChild(label);
       if (option.description) {
         const detail = document.createElement("span");
-        detail.textContent = option.description;
+        i18n.bindText(detail, () => option.description);
         button.appendChild(detail);
       }
       if (card.selectedOptionId === option.id) button.setAttribute("aria-pressed", "true");
@@ -2493,7 +2508,8 @@
       const item = document.createElement("div");
       item.className = messageClass;
       item.dataset.role = message.role;
-      item.textContent = message.text;
+      if (message.role === "system") i18n.bindText(item, () => message.text);
+      else item.textContent = message.text;
       list.appendChild(item);
     };
     for (let index = 0; index <= state.agentMessages.length; index += 1) {
@@ -2654,17 +2670,17 @@
     panel.className = "claw-agent-panel";
     panel.dataset.agentPanel = "true";
     panel.hidden = true;
-    panel.innerHTML = `
+    i18n.setHTML(panel, `
       <button type="button" class="claw-icon-control claw-agent-collapse" data-agent-collapse aria-label="收回对话" aria-expanded="true"><i data-lucide="panel-right-close" aria-hidden="true"></i></button>
       <div class="claw-agent-messages" data-agent-messages></div>
-      <form class="claw-agent-composer" data-agent-composer><textarea data-agent-input rows="1" placeholder="继续对话" aria-label="继续项目对话"></textarea><button type="submit" class="claw-agent-send" data-agent-send aria-label="发送"><i data-lucide="send" aria-hidden="true"></i></button></form>`;
+      <form class="claw-agent-composer" data-agent-composer><textarea data-agent-input rows="1" placeholder="继续对话" aria-label="继续项目对话"></textarea><button type="submit" class="claw-agent-send" data-agent-send aria-label="发送"><i data-lucide="send" aria-hidden="true"></i></button></form>`);
     editorScreen.appendChild(panel);
     panel.querySelector("[data-agent-collapse]")?.addEventListener("click", () => {
       state.agentCollapsed = !state.agentCollapsed;
       const button = panel.querySelector("[data-agent-collapse]");
       if (button) {
         button.setAttribute("aria-expanded", String(!state.agentCollapsed));
-        button.setAttribute("aria-label", state.agentCollapsed ? "展开对话" : "收回对话");
+        i18n.bindAttribute(button, "aria-label", () => state.agentCollapsed ? "展开对话" : "收回对话");
         button.innerHTML = `<i data-lucide="${state.agentCollapsed ? "panel-right-open" : "panel-right-close"}" aria-hidden="true"></i>`;
       }
       updateAgentPanel();
@@ -2745,12 +2761,12 @@
 
   async function chooseInput(kind) {
     try {
-      const selected = await api.chooseSource(kind);
+      const selected = await api.chooseSource(kind, i18n.locale);
       if (!selected) return;
       state.pendingInput = selected;
       const status = root.querySelector("[data-claw-upload-status]");
       if (status) {
-        status.textContent = selected.kind === "directory" ? `已选择文件夹：${selected.path}` : `已选择文件：${selected.path}`;
+        i18n.bindText(status, () => selected.kind === "directory" ? t("已选择文件夹：{0}", [selected.path]) : t("已选择文件：{0}", [selected.path]));
         status.hidden = false;
       }
     } catch (error) {
@@ -2804,7 +2820,7 @@
       collapse.addEventListener("click", () => {
         const collapsed = editor?.classList.toggle("is-script-collapsed") || false;
         collapse.setAttribute("aria-expanded", String(!collapsed));
-        collapse.setAttribute("aria-label", collapsed ? "展开文稿" : "收起文稿");
+        i18n.bindAttribute(collapse, "aria-label", () => collapsed ? "展开文稿" : "收起文稿");
         collapse.innerHTML = `<i data-lucide="${collapsed ? "panel-left-open" : "panel-left-close"}" aria-hidden="true"></i>`;
         window.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
       });
@@ -2847,7 +2863,7 @@
       if (duration) duration.textContent = ` / ${formatPreviewTime(total)}`;
       if (preview.dataset.previewMode === "final") {
         const totalDuration = root.querySelector("[data-claw-total-duration]");
-        if (totalDuration) totalDuration.textContent = formatPreviewTime(total);
+        if (totalDuration) i18n.bindText(totalDuration, () => formatPreviewTime(total));
       }
     });
     preview.addEventListener("timeupdate", () => {
@@ -2873,7 +2889,7 @@
           preview.removeAttribute("src");
           preview.load?.();
         }
-        showToast(`第 ${episode} 集暂未生成成片`);
+        showToast(t("第 {0} 集暂未生成成片", [episode]));
         return;
       }
       showToast("当前分镜视频无法加载");
